@@ -41,8 +41,14 @@
 2. **Today** — all open tasks in the list plus tasks done today; add, rename, complete / reopen, delete, and "Focus" (move to top) — all sent back to Google Tasks
 3. **Settings** — Google connection (client ID, secret, list name), show start time, show elapsed, always on top
 
+## v0.4 — queue and idle time
+- [x] Tasks wait in a queue; nothing starts until you click Start (Now screen or Today)
+- [x] Stop a task without finishing it
+- [x] Idle time: time at the computer with no task running, shown on Now and in the Log (per period and per day)
+- [x] Current task line and its start time / time on task about 20% larger
+
 ## Next
-- [ ] Test sign-in and sync against a real Google account on Windows
+- [x] Test sign-in and sync against a real Google account on Windows
 
 ## Later
 - [ ] Microsoft To Do (needs an Entra directory and app registration)

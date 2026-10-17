@@ -33,9 +33,9 @@ One family: **Inter**, falling back to the system UI font. Numbers always use `t
 | Role | Size | Weight | Notes |
 |---|---|---|---|
 | Time | `clamp(56px, 22cqw, 140px)` | 500 | Tracking −0.04em, line-height 0.9 |
-| Task | `clamp(14px, 4.2cqw, 20px)` | 400 | Secondary ink, single line, ellipsis |
+| Task | `clamp(17px, 5cqw, 24px)` | 400 | Secondary ink when running, `--fg-date` ink when queued, single line, ellipsis |
 | Date | `clamp(14px, 4cqw, 18px)` | 400 | Above the time, format "Sat, Oct 17", tracking 0.04em, `--fg-date` ink |
-| Task start time | `clamp(13px, 3.6cqw, 16px)` | 400 | Tertiary ink, same line as task, time only (no label), `--space-2` gap |
+| Task start time · time on task (or "Idle 12m") | `clamp(16px, 4.3cqw, 19px)` | 400 | Tertiary ink, same line as task, time only (no label), `--space-2` gap |
 | AM/PM | 0.36em of time | 400 | Tertiary ink, suffix to the time; never wraps |
 
 Sizes scale with the window width (container units, `cqw`) so the hierarchy holds from a tiny corner window to half a screen.
@@ -75,7 +75,7 @@ Window padding is `--space-5`. Major groups (clock → task) are separated by `-
 - No OS title bar. The window is frameless and the top 36px strip drags it.
 - Top left: the menu (Now · Log · Today · Settings), 12px text. Top right: minimize, maximize, close as thin 10px line glyphs.
 - Both are hidden at rest and fade in over 400ms while the pointer is over the window. Inside a panel the menu stays visible so you can always get back.
-- On the Now screen, **Done** (a hairline pill) appears on hover after the task.
+- On the Now screen, hairline pills appear on hover in a row under the task: **Start** when a task is queued, **Done** and **Stop** while one runs. They never shift the layout.
 
 ## Panels (Log, Today, Settings)
 

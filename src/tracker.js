@@ -1,6 +1,9 @@
-// Time tracking. A "session" is a stretch of time with one task current
-// while you're at the computer. Pure logic: no Electron imports.
+// Time tracking. While you're at the computer, exactly one session runs:
+// a task session when a task is started, otherwise an idle session.
+// Locked, asleep, quit or away (10 min no input) = nothing runs.
+// Pure logic: no Electron imports.
 const MIN_SESSION_MS = 5000;
+const IDLE = { key: 'idle', title: 'Idle', googleId: null };
 const iso = () => new Date().toISOString();
 
 class Tracker {
@@ -19,8 +22,8 @@ class Tracker {
   }
 
   _open(at = iso()) {
-    if (!this.s.current || this.pauses.size || this.s.open) return;
-    const { key, title, googleId } = this.s.current;
+    if (this.pauses.size || this.s.open) return;
+    const { key, title, googleId } = this.s.current || IDLE;
     this.s.open = { key, title, googleId, start: at };
   }
 
@@ -31,7 +34,7 @@ class Tracker {
     if (Date.parse(at) - Date.parse(o.start) >= MIN_SESSION_MS) this.s.sessions.push({ ...o, end: at });
   }
 
-  // task: { key, title, googleId } or null. Returns true when the task changed.
+  // Start a task ({ key, title, googleId }) or stop (null). Returns true when it changed.
   setCurrent(task) {
     const cur = this.s.current;
     if (cur && task && cur.key === task.key) {

@@ -12,8 +12,8 @@
 
   --size-time: clamp(56px, 22cqw, 140px);
   --size-date: clamp(14px, 4cqw, 18px);
-  --size-task: clamp(14px, 4.2cqw, 20px);
-  --size-since: clamp(13px, 3.6cqw, 16px);
+  --size-task: clamp(17px, 5cqw, 24px);
+  --size-since: clamp(16px, 4.3cqw, 19px);
   --size-ui: 13px;
   --size-small: 12px;
 
@@ -172,6 +172,7 @@ button:focus-visible, input:focus-visible { outline: 1px solid var(--fg-tertiary
 .task__text:hover,
 .task__text:focus-visible { color: var(--fg); }
 .task__text.is-empty { color: var(--fg-tertiary); }
+.task__text.is-queued { color: var(--fg-date); }
 
 .task__input {
   flex: 1;
@@ -193,9 +194,19 @@ button:focus-visible, input:focus-visible { outline: 1px solid var(--fg-tertiary
   font-variant-numeric: tabular-nums;
 }
 
-.task__done {
+/* Actions sit on their own row under the task so they never squeeze it. */
+.task { position: relative; }
+.task__acts {
+  position: absolute;
+  top: calc(100% + var(--space-2));
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: var(--space-2);
+}
+.pill {
   flex-shrink: 0;
-  font-size: var(--size-small);
+  font-size: 14px;
   color: var(--fg-tertiary);
   border: 1px solid var(--hairline);
   border-radius: 999px;
@@ -204,8 +215,8 @@ button:focus-visible, input:focus-visible { outline: 1px solid var(--fg-tertiary
   pointer-events: none;
   transition: opacity 400ms var(--ease), color var(--dur) var(--ease);
 }
-.is-hover .task__done, .task__done:focus-visible { opacity: 1; pointer-events: auto; }
-.task__done:hover { color: var(--fg); }
+.is-hover .pill, .pill:focus-visible { opacity: 1; pointer-events: auto; }
+.pill:hover { color: var(--fg); }
 
 /* ---------- panels: Log, Today, Settings ---------- */
 
@@ -248,6 +259,7 @@ button:focus-visible, input:focus-visible { outline: 1px solid var(--fg-tertiary
 .summary { display: flex; flex-direction: column; gap: var(--space-1); }
 .summary__big { font-size: 32px; font-weight: 500; letter-spacing: -0.02em; color: var(--fg); font-variant-numeric: tabular-nums; }
 .summary__meta { color: var(--fg-tertiary); font-variant-numeric: tabular-nums; }
+.day__idle { color: var(--fg-tertiary); margin-right: var(--space-2); }
 
 .day { display: flex; justify-content: space-between; margin-top: var(--space-3); padding-bottom: var(--space-1); font-size: var(--size-small); color: var(--fg-tertiary); }
 .day:first-child { margin-top: 0; }

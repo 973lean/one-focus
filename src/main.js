@@ -27,10 +27,12 @@ function makeClient() {
 
 function snapshot() {
   const cur = state.current;
+  const next = today.open.find((t) => !cur || t.id !== cur.googleId) || null;
   return {
     settings: state.settings,
     connected: !!client,
-    current: cur,
+    current: cur, // the started task, or null when idle
+    next, // first unfinished task that isn't running: waits for Start
     open: state.open,
     tracked: cur ? tracker.trackedSince(cur) : 0,
     today,
@@ -85,8 +87,14 @@ async function doSync() {
         tracker.recordCompletion({ key: 'g:' + t.id, title: t.title.trim(), googleId: t.id }, t.completed);
 
     today = { open: open.map(pick), done: done.map(pick), syncedAt: new Date().toISOString(), error: null };
-    const first = open[0];
-    tracker.setCurrent(first ? { key: 'g:' + first.id, title: first.title.trim(), googleId: first.id } : null);
+
+    // Tasks never start on their own. If the running task was finished or
+    // deleted (here or in Google Tasks), stop it and go idle.
+    const cur = state.current;
+    if (cur && cur.googleId) {
+      const live = today.open.find((t) => t.id === cur.googleId);
+      tracker.setCurrent(live ? { key: cur.key, title: live.title, googleId: live.id } : null);
+    }
   } catch (e) {
     today = {
       ...today,
@@ -192,6 +200,29 @@ ipcMain.handle('manual:set', (_e, text) => {
   return snapshot();
 });
 
+// Start a task: the given one, or the first in the queue. Starting a task
+// that isn't first moves it to the top in Google so the order matches.
+ipcMain.handle('current:start', async (_e, id) => {
+  if (!client) return { error: 'Connect Google Tasks in Settings first.' };
+  const t = id ? today.open.find((x) => x.id === id) : snapshot().next;
+  if (!t) return { error: 'Nothing in the list to start.' };
+  tracker.setCurrent({ key: 'g:' + t.id, title: t.title, googleId: t.id });
+  push();
+  try {
+    if (today.open[0] && today.open[0].id !== t.id) await client.move(state.google.listId, t.id);
+    await resync();
+  } catch (e) {
+    return { error: e.message };
+  }
+  return { ok: true };
+});
+
+ipcMain.handle('current:stop', () => {
+  tracker.setCurrent(null);
+  push();
+  return snapshot();
+});
+
 ipcMain.handle('task:action', async (_e, action, id, value) => {
   if (!client || !state.google.listId) return { error: 'Connect Google Tasks in Settings first.' };
   const listId = state.google.listId;
@@ -273,13 +304,13 @@ app.whenReady().then(() => {
 
   setInterval(sync, SYNC_MS);
 
-  // Heartbeat keeps crash recovery accurate; idle check pauses the log
-  // after 10 minutes away and ends the session when you went idle.
+  // Heartbeat keeps crash recovery accurate. After 10 minutes with no
+  // input you're "away": the log stops, back-dated to when input stopped.
   setInterval(() => {
     const idle = powerMonitor.getSystemIdleTime();
-    if (idle >= IDLE_SECONDS && !tracker.isPaused('idle'))
-      tracker.pause('idle', new Date(Date.now() - idle * 1000).toISOString());
-    else if (idle < IDLE_SECONDS && tracker.isPaused('idle')) tracker.resume('idle');
+    if (idle >= IDLE_SECONDS && !tracker.isPaused('away'))
+      tracker.pause('away', new Date(Date.now() - idle * 1000).toISOString());
+    else if (idle < IDLE_SECONDS && tracker.isPaused('away')) tracker.resume('away');
     tracker.heartbeat();
     push();
   }, HEARTBEAT_MS);

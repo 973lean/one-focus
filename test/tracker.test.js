@@ -41,11 +41,28 @@ test('pauses stack; resume only when all reasons clear', () => {
   assert.ok(s.open);
 });
 
+test('no task running logs idle time', () => {
+  const s = fresh();
+  const t = new Tracker(s, () => {});
+  t.recover();
+  assert.equal(s.open.key, 'idle');
+  s.open.start = ago(300e3);
+  t.setCurrent({ key: 'g:1', title: 'A', googleId: '1' });
+  assert.equal(s.sessions[0].key, 'idle');
+  s.open.start = ago(60e3);
+  t.setCurrent(null);
+  assert.equal(s.sessions[1].key, 'g:1');
+  assert.equal(s.open.key, 'idle');
+  t.pause('away');
+  assert.equal(s.open, null);
+});
+
 test('very short sessions are dropped', () => {
   const s = fresh();
   const t = new Tracker(s, () => {});
   t.setCurrent({ key: 'm:a', title: 'a', googleId: null });
   t.setCurrent({ key: 'm:b', title: 'b', googleId: null });
+  t.setCurrent(null);
   assert.equal(s.sessions.length, 0);
 });
 

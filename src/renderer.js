@@ -58,7 +58,9 @@ const clockEl = $('clock');
 const taskEl = $('task');
 const inputEl = $('task-input');
 const metaEl = $('meta');
+const startEl = $('start');
 const doneEl = $('done');
+const stopEl = $('stop');
 let editing = false;
 
 function tick() {
@@ -72,34 +74,41 @@ function tick() {
   renderMeta();
 }
 
+// Running: start time · time on task. Idle: how long nothing has run.
 function renderMeta() {
-  const cur = S && S.current;
-  if (!cur) return (metaEl.textContent = '');
+  if (!S) return;
+  const cur = S.current;
+  const live = S.open ? Date.now() - Date.parse(S.open.start) : 0;
+  if (!cur) {
+    metaEl.textContent = S.open && S.open.key === 'idle' ? 'Idle ' + dur(live) : '';
+    return;
+  }
   const parts = [];
   if (S.settings.showSince) parts.push(hm(cur.since));
-  if (S.settings.showElapsed) parts.push(dur(S.tracked + (S.open ? Date.now() - Date.parse(S.open.start) : 0)));
+  if (S.settings.showElapsed) parts.push(dur(S.tracked + (S.open && S.open.key === cur.key ? live : 0)));
   metaEl.textContent = parts.join(' · ');
 }
 
 function renderNow() {
   if (editing || !S) return;
   const cur = S.current;
-  if (cur) {
-    taskEl.textContent = cur.title;
-    taskEl.classList.remove('is-empty');
-  } else {
-    taskEl.textContent = S.connected ? (S.today.error ? 'Can’t reach Google Tasks' : 'Your list is empty') : 'What are you doing?';
-    taskEl.classList.add('is-empty');
-  }
-  taskEl.title = S.connected ? 'Open today’s list' : 'Click to set your focus';
-  doneEl.hidden = !(S.connected && cur && cur.googleId);
+  const next = S.connected ? S.next : null;
+  taskEl.classList.toggle('is-queued', !cur && !!next);
+  taskEl.classList.toggle('is-empty', !cur && !next);
+  if (cur) taskEl.textContent = cur.title;
+  else if (next) taskEl.textContent = next.title;
+  else taskEl.textContent = S.connected ? (S.today.error ? 'Can’t reach Google Tasks' : 'Your list is empty') : 'What are you doing?';
+  taskEl.title = S.connected ? 'Open today’s list' : 'Click to type what you’re doing';
+  startEl.hidden = !(!cur && next);
+  doneEl.hidden = !(cur && cur.googleId);
+  stopEl.hidden = !cur;
   renderMeta();
 }
 
 function startEditing() {
   editing = true;
   inputEl.value = S && S.current ? S.current.title : '';
-  taskEl.hidden = metaEl.hidden = doneEl.hidden = true;
+  taskEl.hidden = metaEl.hidden = startEl.hidden = doneEl.hidden = stopEl.hidden = true;
   inputEl.hidden = false;
   inputEl.focus();
   inputEl.select();
@@ -123,12 +132,19 @@ inputEl.addEventListener('keydown', async (e) => {
 });
 inputEl.addEventListener('blur', () => editing && stopEditing());
 
-doneEl.addEventListener('click', async () => {
-  if (!S.current || !S.current.googleId) return;
-  doneEl.disabled = true;
-  await api.task('complete', S.current.googleId);
-  doneEl.disabled = false;
-});
+async function busy(btn, fn) {
+  btn.disabled = true;
+  try {
+    await fn();
+  } finally {
+    btn.disabled = false;
+  }
+}
+startEl.addEventListener('click', () => busy(startEl, () => api.start()));
+stopEl.addEventListener('click', () => busy(stopEl, async () => (S = await api.stop()) && render()));
+doneEl.addEventListener('click', () =>
+  busy(doneEl, () => S.current && S.current.googleId && api.task('complete', S.current.googleId))
+);
 
 // ---------- Log ----------
 
@@ -154,18 +170,20 @@ function renderLog() {
   if (logData.open) all.push({ ...logData.open, end: null });
 
   const sessions = [];
+  const idle = [];
   for (const s of all) {
     const a = Math.max(Date.parse(s.start), from);
     const b = s.end ? Date.parse(s.end) : now;
-    if (b > a) sessions.push({ ...s, a, b, ms: b - a, live: !s.end });
+    if (b > a) (s.key === 'idle' ? idle : sessions).push({ ...s, a, b, ms: b - a, live: !s.end });
   }
   const total = sessions.reduce((n, s) => n + s.ms, 0);
+  const idleTotal = idle.reduce((n, s) => n + s.ms, 0);
   const done = logData.completions.filter((c) => Date.parse(c.at) >= from).length;
 
   document.querySelectorAll('.tab').forEach((t) => t.setAttribute('aria-selected', String(t.dataset.range === logRange)));
   $('log-total').textContent = dur(total);
   const n = sessions.length;
-  $('log-meta').textContent = `${done} done · ${n} session${n === 1 ? '' : 's'}`;
+  $('log-meta').textContent = `idle ${dur(idleTotal)} · ${done} done · ${n} session${n === 1 ? '' : 's'}`;
 
   // Sessions, newest first, grouped by day.
   const list = $('log-sessions');
@@ -173,16 +191,24 @@ function renderLog() {
   if (!sessions.length) list.append(el('div', 'empty', 'No sessions in this period.'));
   // Time tracked per day, shown on the right of each date.
   const perDay = new Map();
+  const idleDay = new Map();
   for (const s of sessions) {
     const day = dayFmt.format(new Date(s.a));
     perDay.set(day, (perDay.get(day) || 0) + s.ms);
+  }
+  for (const s of idle) {
+    const day = dayFmt.format(new Date(s.a));
+    idleDay.set(day, (idleDay.get(day) || 0) + s.ms);
   }
   let lastDay = '';
   for (const s of sessions.sort((x, y) => y.a - x.a).slice(0, 300)) {
     const day = dayFmt.format(new Date(s.a));
     if (day !== lastDay) {
       const head = el('div', 'day');
-      head.append(el('span', null, day), el('span', 'day__total', dur(perDay.get(day))));
+      const right = el('span');
+      if (idleDay.get(day)) right.append(el('span', 'day__idle', 'idle ' + dur(idleDay.get(day))));
+      right.append(el('span', 'day__total', dur(perDay.get(day))));
+      head.append(el('span', null, day), right);
       list.append(head);
     }
     lastDay = day;
@@ -207,7 +233,7 @@ document.querySelectorAll('.tab').forEach((t) =>
 
 let renaming = false;
 
-function taskRow(t, { current, done }) {
+function taskRow(t, { current, next, done }) {
   const li = el('li', 'row' + (current ? ' is-current' : '') + (done ? ' is-done' : ''));
   const check = el('button', 'check');
   check.setAttribute('aria-label', done ? 'Mark not done' : 'Mark done');
@@ -215,6 +241,7 @@ function taskRow(t, { current, done }) {
   title.tabIndex = 0;
   li.append(check, title);
   if (current) li.append(el('span', 'tag', 'NOW'));
+  else if (next) li.append(el('span', 'tag', 'NEXT'));
 
   const run = async (action, value) => {
     li.classList.add('is-busy');
@@ -226,11 +253,20 @@ function taskRow(t, { current, done }) {
 
   if (!done) {
     const acts = el('div', 'acts');
-    if (!current) {
-      const focus = el('button', 'act', 'Focus');
-      focus.title = 'Move to the top so it becomes the current task';
-      focus.addEventListener('click', () => run('focus'));
-      acts.append(focus);
+    if (current) {
+      const stop = el('button', 'act', 'Stop');
+      stop.addEventListener('click', async () => (S = await api.stop()) && render());
+      acts.append(stop);
+    } else {
+      const start = el('button', 'act', 'Start');
+      start.title = 'Start this task now';
+      start.addEventListener('click', async () => {
+        li.classList.add('is-busy');
+        const r = await api.start(t.id);
+        li.classList.remove('is-busy');
+        if (r && r.error) $('today-status').textContent = r.error;
+      });
+      acts.append(start);
     }
     const del = el('button', 'act', 'Delete');
     del.addEventListener('click', () => run('delete'));
@@ -275,7 +311,9 @@ function renderToday() {
   const { open, done, syncedAt, error } = S.today;
 
   const openEl = $('today-open');
-  openEl.replaceChildren(...open.map((t, i) => taskRow(t, { current: i === 0 })));
+  const runningId = S.current && S.current.googleId;
+  const nextId = S.next && S.next.id;
+  openEl.replaceChildren(...open.map((t) => taskRow(t, { current: t.id === runningId, next: t.id === nextId })));
   if (!open.length) openEl.append(el('li', 'empty', 'Nothing left. Add a task below.'));
   $('today-open-title').textContent = `Up next · ${open.length}`;
 
@@ -336,7 +374,7 @@ function renderSettings() {
   $('g-connect').hidden = S.connected;
   $('g-disconnect').hidden = !S.connected;
   $('g-status').textContent = S.connected
-    ? S.today.error || `Connected. One Focus shows the first unfinished task in “${s.listName}”.`
+    ? S.today.error || `Connected. The first unfinished task in “${s.listName}” waits for you to start it.`
     : 'Not connected. One Focus will use one Google Tasks list and create it if it doesn’t exist.';
 }
 
