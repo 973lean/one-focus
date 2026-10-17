@@ -69,3 +69,9 @@ inputEl.addEventListener('keydown', async (e) => {
 inputEl.addEventListener('blur', stopEditing);
 
 window.oneFocus.current().then(showTask);
+
+// Window controls: shown only while the pointer is over the window.
+window.oneFocus.onHover((inside) => document.body.classList.toggle('is-hover', inside));
+document.querySelectorAll('.bar__btn').forEach((btn) =>
+  btn.addEventListener('click', () => window.oneFocus.windowAction(btn.dataset.action))
+);

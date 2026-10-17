@@ -1,14 +1,52 @@
 {
   "name": "one-focus",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A small, quiet window that keeps you on one thing at a time.",
   "main": "src/main.js",
   "private": true,
   "scripts": {
     "start": "electron .",
-    "dev": "electron . --dev"
+    "dev": "electron . --dev",
+    "dist": "electron-builder"
   },
   "devDependencies": {
-    "electron": "^33.2.0"
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
+  },
+  "author": "One Focus",
+  "productName": "One Focus",
+  "build": {
+    "appId": "com.onefocus.app",
+    "productName": "One Focus",
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "signAndEditExecutable": false
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "category": "public.app-category.productivity"
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "category": "Utility"
+    }
   }
 }

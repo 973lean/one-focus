@@ -16,6 +16,8 @@ npm install
 npm start
 ```
 
+To build an executable: `npm run dist` builds for the OS you run it on. Windows gives a single portable `.exe` (no install), macOS a `.dmg`, Linux an AppImage. Output goes to `dist/`.
+
 For live editing, run `npm run dev`: the window reloads whenever you save `index.html`, `styles.css` or `renderer.js`. Changes to `main.js` or `preload.js` need a restart.
 
 ## Roadmap

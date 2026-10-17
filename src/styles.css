@@ -48,28 +48,47 @@ html, body {
   padding: var(--space-5);
 }
 
-.menu {
+.bar {
   position: absolute;
-  top: var(--space-3);
-  left: var(--space-4);
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 36px;
   display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  font-size: 12px;
-  letter-spacing: 0.02em;
-  text-align: left;
+  justify-content: flex-end;
+  align-items: center;
+  padding-right: var(--space-2);
+  -webkit-app-region: drag; /* the whole strip drags the window, even when hidden */
+}
+.bar__btn {
+  -webkit-app-region: no-drag;
+  width: 32px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  color: var(--fg-tertiary);
+  cursor: default;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 400ms var(--ease);
+  transition: opacity 400ms var(--ease), color var(--dur) var(--ease);
 }
-.stage:hover .menu,
-.stage:focus-within .menu {
+.bar__btn svg {
+  width: 10px;
+  height: 10px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.2;
+}
+/* is-hover is set from the main process (reliable over drag regions). */
+.is-hover .bar__btn,
+.stage:focus-within .bar__btn {
   opacity: 1;
   pointer-events: auto;
 }
-.menu__item { color: var(--fg-tertiary); }
-.menu__item.is-active { color: var(--fg-secondary); }
-.menu__item em { font-style: normal; opacity: 0.6; margin-left: var(--space-1); }
+.bar__btn:hover { color: var(--fg); }
 
 .clock {
   font-size: var(--size-time);

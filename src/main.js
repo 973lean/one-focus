@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, screen } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
@@ -26,6 +26,7 @@ function createWindow() {
     minHeight: 180,
     backgroundColor: '#0B0B0C',
     title: 'One Focus',
+    frame: false, // no OS title bar; controls are drawn in the page and appear on hover
     autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -34,6 +35,20 @@ function createWindow() {
     },
   });
   win.loadFile(path.join(__dirname, 'index.html'));
+
+  // Tell the page when the pointer is over the window. Polling the cursor
+  // is more reliable than CSS :hover, which drag regions can swallow.
+  let inside = false;
+  const hoverTimer = setInterval(() => {
+    if (win.isDestroyed()) return clearInterval(hoverTimer);
+    const p = screen.getCursorScreenPoint();
+    const b = win.getBounds();
+    const now = p.x >= b.x && p.x < b.x + b.width && p.y >= b.y && p.y < b.y + b.height;
+    if (now !== inside) {
+      inside = now;
+      win.webContents.send('window:hover', inside);
+    }
+  }, 100);
 
   // Dev mode: reload the window whenever a renderer file changes.
   if (process.argv.includes('--dev')) {
@@ -45,6 +60,14 @@ function createWindow() {
     });
   }
 }
+
+ipcMain.on('window:action', (e, action) => {
+  const win = BrowserWindow.fromWebContents(e.sender);
+  if (!win) return;
+  if (action === 'minimize') win.minimize();
+  else if (action === 'maximize') win.isMaximized() ? win.unmaximize() : win.maximize();
+  else if (action === 'close') win.close();
+});
 
 ipcMain.handle('tasks:current', () => {
   const tasks = readTasks();

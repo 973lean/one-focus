@@ -70,11 +70,11 @@ Window padding is `--space-5`. Major groups (clock → task) are separated by `-
 - Interactions are invisible until needed: click the task to edit it inline, **Enter** to save, **Esc** to cancel.
 - No visible buttons. Hover lifts text from secondary to primary ink — that is the only affordance.
 
-## Hover menu
+## Window chrome
 
-- Top-left, 12px, tertiary ink (active item secondary ink), stacked text only: no icons, no box.
-- Hidden at rest. Fades in over 400ms when the pointer is over the window, or on keyboard focus, and fades out when it leaves.
-- Items not yet available are marked "soon".
+- No OS title bar. The window is frameless and the top 36px strip drags it.
+- Minimize, maximize and close sit top right as thin 10px line glyphs in tertiary ink; hover lifts them to primary ink.
+- Hidden at rest. They fade in over 400ms while the pointer is over the window and fade out when it leaves, so the resting window is only the date, time and task.
 
 ## Adding something new
 

@@ -8,11 +8,11 @@
 </head>
 <body>
   <main class="stage">
-    <nav class="menu" aria-label="Task source">
-      <span class="menu__item is-active">Manual</span>
-      <span class="menu__item is-soon" aria-disabled="true">Google Tasks <em>soon</em></span>
-      <span class="menu__item is-soon" aria-disabled="true">Microsoft To Do <em>soon</em></span>
-    </nav>
+    <div class="bar" aria-label="Window controls">
+      <button class="bar__btn" data-action="minimize" aria-label="Minimize"><svg viewBox="0 0 10 10"><path d="M1 5h8"/></svg></button>
+      <button class="bar__btn" data-action="maximize" aria-label="Maximize"><svg viewBox="0 0 10 10"><rect x="1.5" y="1.5" width="7" height="7"/></svg></button>
+      <button class="bar__btn" data-action="close" aria-label="Close"><svg viewBox="0 0 10 10"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7"/></svg></button>
+    </div>
     <div id="date" class="date"></div>
     <time id="clock" class="clock">--:--</time>
 
