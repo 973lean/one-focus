@@ -5,7 +5,7 @@ const inputEl = document.getElementById('task-input');
 const sinceEl = document.getElementById('since');
 
 const timeFmt = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' });
-const dateFmt = new Intl.DateTimeFormat(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
+const dateFmt = new Intl.DateTimeFormat('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 
 // Feature 1: time and date.
 function tick() {
@@ -31,7 +31,7 @@ function showTask(task) {
   if (task && task.text) {
     taskEl.textContent = task.text;
     taskEl.classList.remove('is-empty');
-    sinceEl.textContent = 'since ' + timeFmt.format(new Date(task.startedAt));
+    sinceEl.textContent = timeFmt.format(new Date(task.startedAt));
   } else {
     taskEl.textContent = 'What are you doing?';
     taskEl.classList.add('is-empty');
