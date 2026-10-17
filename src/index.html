@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; script-src 'self'" />
+  <title>One Focus</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <main class="stage">
+    <time id="clock" class="clock">--:--</time>
+    <div id="date" class="date"></div>
+
+    <div class="task">
+      <span id="task" class="task__text" tabindex="0" title="Click to set your focus">What are you doing?</span>
+      <input id="task-input" class="task__input" type="text" placeholder="What are you doing?" maxlength="120" hidden />
+      <span id="since" class="task__since"></span>
+    </div>
+  </main>
+  <script src="renderer.js"></script>
+</body>
+</html>

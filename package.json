@@ -1,0 +1,13 @@
+{
+  "name": "one-focus",
+  "version": "0.1.0",
+  "description": "A small, quiet window that keeps you on one thing at a time.",
+  "main": "src/main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^33.2.0"
+  }
+}
