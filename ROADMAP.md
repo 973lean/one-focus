@@ -37,7 +37,7 @@
 - [x] Imports the v0.1 manual task history
 
 ### Menu (top left, appears on hover)
-1. **Log** — time tracked, tasks done and sessions for Today / Week / Month / All, top tasks by time, session list
+1. **Log** — time tracked, tasks done and sessions for Today / Week / Month / All; session list grouped by day with each day's total
 2. **Today** — all open tasks in the list plus tasks done today; add, rename, complete / reopen, delete, and "Focus" (move to top) — all sent back to Google Tasks
 3. **Settings** — Google connection (client ID, secret, list name), show start time, show elapsed, always on top
 

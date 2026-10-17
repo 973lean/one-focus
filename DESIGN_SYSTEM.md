@@ -86,11 +86,11 @@ Panels are for the occasional look, not the resting state, so they can be denser
 - Section labels: 11px uppercase, tracking 0.08em, tertiary ink.
 - Rows are separated by hairlines, never boxed. Row actions (Focus, Delete) appear on hover.
 - Controls: text buttons, a hairline-bordered button for the main action, small switches for toggles. No colour accents.
-- The one big number (time tracked in Log) is 32px, weight 500, primary ink. Bars are 2px hairline tracks with a tertiary fill.
+- The one big number (time tracked in Log) is 32px, weight 500, primary ink. In the session list each date heading shows that day's total on the right in secondary ink.
 
 | Token | Value | Use |
 |---|---|---|
-| `--fill` | `rgba(245,245,244,0.06)` | Bar tracks, switch background |
+| `--fill` | `rgba(245,245,244,0.06)` | Switch background |
 
 ## Adding something new
 

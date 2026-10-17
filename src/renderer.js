@@ -167,36 +167,24 @@ function renderLog() {
   const n = sessions.length;
   $('log-meta').textContent = `${done} done · ${n} session${n === 1 ? '' : 's'}`;
 
-  // Most time: group by task, latest title wins.
-  const by = new Map();
-  for (const s of sessions) {
-    const g = by.get(s.key) || { title: s.title, ms: 0, last: 0 };
-    g.ms += s.ms;
-    if (s.b >= g.last) (g.title = s.title), (g.last = s.b);
-    by.set(s.key, g);
-  }
-  const top = [...by.values()].sort((x, y) => y.ms - x.ms).slice(0, 5);
-  const topEl = $('log-top');
-  topEl.replaceChildren();
-  if (!top.length) topEl.append(el('li', 'empty', 'Nothing logged yet.'));
-  for (const g of top) {
-    const li = el('li');
-    const track = el('div', 'track');
-    const fill = el('div', 'fill');
-    fill.style.width = (top[0].ms ? (g.ms / top[0].ms) * 100 : 0) + '%';
-    track.append(fill);
-    li.append(el('span', 't', g.title), el('span', 'd', dur(g.ms)), track);
-    topEl.append(li);
-  }
-
   // Sessions, newest first, grouped by day.
   const list = $('log-sessions');
   list.replaceChildren();
   if (!sessions.length) list.append(el('div', 'empty', 'No sessions in this period.'));
+  // Time tracked per day, shown on the right of each date.
+  const perDay = new Map();
+  for (const s of sessions) {
+    const day = dayFmt.format(new Date(s.a));
+    perDay.set(day, (perDay.get(day) || 0) + s.ms);
+  }
   let lastDay = '';
   for (const s of sessions.sort((x, y) => y.a - x.a).slice(0, 300)) {
     const day = dayFmt.format(new Date(s.a));
-    if (logRange !== 'today' && day !== lastDay) list.append(el('div', 'day', day));
+    if (day !== lastDay) {
+      const head = el('div', 'day');
+      head.append(el('span', null, day), el('span', 'day__total', dur(perDay.get(day))));
+      list.append(head);
+    }
     lastDay = day;
     const row = el('div', 'sess' + (s.live ? ' is-live' : ''));
     row.append(

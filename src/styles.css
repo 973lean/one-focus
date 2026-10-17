@@ -249,14 +249,9 @@ button:focus-visible, input:focus-visible { outline: 1px solid var(--fg-tertiary
 .summary__big { font-size: 32px; font-weight: 500; letter-spacing: -0.02em; color: var(--fg); font-variant-numeric: tabular-nums; }
 .summary__meta { color: var(--fg-tertiary); font-variant-numeric: tabular-nums; }
 
-.bars { list-style: none; display: flex; flex-direction: column; gap: var(--space-2); }
-.bars li { display: grid; grid-template-columns: 1fr auto; gap: var(--space-1) var(--space-3); align-items: baseline; }
-.bars .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
-.bars .d { color: var(--fg-tertiary); font-variant-numeric: tabular-nums; }
-.bars .track { grid-column: 1 / -1; height: 2px; background: var(--fill); border-radius: 1px; }
-.bars .fill { height: 100%; background: var(--fg-tertiary); border-radius: 1px; }
-
-.day { margin-top: var(--space-2); font-size: var(--size-small); color: var(--fg-tertiary); }
+.day { display: flex; justify-content: space-between; margin-top: var(--space-3); padding-bottom: var(--space-1); font-size: var(--size-small); color: var(--fg-tertiary); }
+.day:first-child { margin-top: 0; }
+.day__total { color: var(--fg-secondary); font-variant-numeric: tabular-nums; }
 .sess { display: grid; grid-template-columns: 128px 1fr auto; gap: var(--space-3); padding: 6px 0; border-bottom: 1px solid var(--hairline); align-items: baseline; }
 .sess .w { white-space: nowrap; color: var(--fg-tertiary); font-variant-numeric: tabular-nums; font-size: var(--size-small); }
 .sess .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }

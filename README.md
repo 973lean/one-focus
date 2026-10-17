@@ -7,7 +7,7 @@ A small, quiet window for a secondary monitor that keeps you on one thing at a t
 - **Now:** the time, large, with the date above. Under it is your current task, plus (optionally) when it started and how long you've spent on it. Hover to show **Done**.
 - **Google Tasks:** One Focus uses one list (default name "One Focus", created for you). The current task is the first unfinished task in that list. Finish it and the next appears.
 - **Menu** (top left, on hover):
-  - **Log:** time tracked, tasks done and sessions for Today / Week / Month / All, your top tasks by time, and every session.
+  - **Log:** time tracked, tasks done and sessions for Today / Week / Month / All, and every session grouped by day with each day's total.
   - **Today:** your list, plus tasks done today. Add, rename (click the title), complete, reopen, delete, or **Focus** a task to make it current. Changes go straight back to Google Tasks.
   - **Settings:** Google connection, show start time, show time on task, always on top.
 - **Time log:** a session runs while a task is current and you're at the computer. It pauses on lock, sleep, quit and after 10 minutes idle.
