@@ -1,48 +1,47 @@
 # Roadmap
 
-**Goal:** a small always-on window that shows the time, the date, and the task you're on right now, pulled from Google Tasks.
+**Goal:** a small always-on window that shows the time and the one task you're on, pulled from a single Google Tasks list, and logs how long you actually spend on each task.
 
-**Status:** parked. v0.1 is done. Pick this up at Phase 1.
+## Done
 
-## Done (v0.1)
-
+### v0.1–0.2
 - [x] Time and date, centred, time most prominent
-- [x] Manual current task with start time, saved locally to `tasks.json`
-- [x] Hover menu (top left) listing task sources
-- [x] `npm run dev` with auto-reload
+- [x] Manual current task with start time, saved locally
+- [x] Frameless window; minimize / maximize / close fade in on hover
+- [x] `npm run dev` with auto-reload, `npm run dist` for executables
 - [x] Design system (`DESIGN_SYSTEM.md`)
 
-## Phase 1: Google setup (needs you, ~5 min)
+## v0.3 — Google Tasks + time log (in progress)
 
-- [ ] Create a Google Cloud project
-- [ ] Enable the Google Tasks API
-- [ ] Configure the OAuth consent screen (External, add your own Google account as a test user)
-- [ ] Create an OAuth client ID of type **Desktop app** and note the client ID
-- [ ] Decide which Google account and which task list to use
+### Principles
+- **One list.** One Focus uses a single Google Tasks list (default name "One Focus", created automatically). Everything else in Google Tasks is ignored.
+- **One task at a time.** The current task is the first unfinished task in that list. Finish it and the next one appears.
+- **Honest time.** Time is logged only while a task is current and you're at the computer.
 
-## Phase 2: Connect
+### Main screen
+- [ ] Time (most prominent) and date
+- [ ] Current task, with optional start time and optional time elapsed (both toggled in Settings)
+- [ ] "Done" appears on hover: completes the task in Google Tasks and moves to the next
+- [ ] Without Google connected, falls back to typing a task manually
 
-- [ ] Sign in with Google from the app (browser opens once, loopback redirect with PKCE)
-- [ ] Request read-only access (`tasks.readonly`)
-- [ ] Store the refresh token with Electron `safeStorage`, never in plain text
-- [ ] "Sign out" option in the hover menu
+### Google Tasks connection
+- [ ] Sign in once through the browser (OAuth loopback + PKCE), using your own Google Cloud Desktop client ID
+- [ ] Find or create the One Focus list automatically
+- [ ] Sync every minute, after every edit, and on wake/unlock
+- [ ] Sign-in token stored with OS encryption (Electron `safeStorage`)
 
-## Phase 3: Show the current task
+### Task log
+- [ ] A session is logged each time a task is current: start, end, task
+- [ ] Sessions pause on screen lock, sleep, quit, and after 10 minutes idle
+- [ ] Crash-safe: an unfinished session is closed at the last heartbeat on next launch
+- [ ] Imports the v0.1 manual task history
 
-- [ ] Fetch the chosen list from the Tasks API (`tasks.googleapis.com`)
-- [ ] Current task = first incomplete task in list order
-- [ ] Show its title and the time it became current, same layout as today
-- [ ] Refresh about once a minute and when the window regains focus
-- [ ] Offline or signed-out state falls back to the manual task
-
-## Phase 4: Make it feel right
-
-- [ ] Hover menu becomes a real source switcher (Manual / Google Tasks)
-- [ ] Optional: mark the current task done from the window (needs write access)
-- [ ] Optional: always-on-top and remember window size and position
-- [ ] Optional: bundle Inter so the font is identical on every machine
+### Menu (top left, appears on hover)
+1. **Log** — time tracked, tasks done and sessions for Today / Week / Month / All, top tasks by time, session list
+2. **Today** — all open tasks in the list plus tasks done today; add, rename, complete / reopen, delete, and "Focus" (move to top) — all sent back to Google Tasks
+3. **Settings** — Google connection (client ID, secret, list name), show start time, show elapsed, always on top
 
 ## Later
-
 - [ ] Microsoft To Do (needs an Entra directory and app registration)
-- [ ] Show what's next when the current task is done
+- [ ] App icon and bundled Inter font
+- [ ] Mac and Linux builds through the GitHub Actions workflow
