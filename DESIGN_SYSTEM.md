@@ -22,7 +22,8 @@ Dark by default — it disappears next to a main monitor.
 | `--bg` | `#0B0B0C` | Window background |
 | `--fg` | `#F5F5F4` | Primary — the time |
 | `--fg-secondary` | `rgba(245,245,244,0.62)` | Current task |
-| `--fg-tertiary` | `rgba(245,245,244,0.32)` | Meta — date, "since" time, placeholders |
+| `--fg-date` | `rgba(245,245,244,0.48)` | Date — between task and meta |
+| `--fg-tertiary` | `rgba(245,245,244,0.32)` | Meta — task start time, AM/PM, placeholders |
 | `--hairline` | `rgba(245,245,244,0.10)` | The only line allowed: input underline |
 
 ## Typography
@@ -31,9 +32,9 @@ One family: **Inter**, falling back to the system UI font. Numbers always use `t
 
 | Role | Size | Weight | Notes |
 |---|---|---|---|
-| Time | `clamp(56px, 22cqw, 140px)` | 600 | Tracking −0.04em, line-height 0.9 |
+| Time | `clamp(56px, 22cqw, 140px)` | 500 | Tracking −0.04em, line-height 0.9 |
 | Task | `clamp(14px, 4.2cqw, 20px)` | 400 | Secondary ink, single line, ellipsis |
-| Date | `clamp(12px, 3.2cqw, 15px)` | 400 | Above the time, format "Sat, Oct 17", tracking 0.04em, tertiary ink |
+| Date | `clamp(14px, 4cqw, 18px)` | 400 | Above the time, format "Sat, Oct 17", tracking 0.04em, `--fg-date` ink |
 | Task start time | `clamp(13px, 3.6cqw, 16px)` | 400 | Tertiary ink, same line as task, time only (no label), `--space-2` gap |
 | AM/PM | 0.36em of time | 400 | Tertiary ink, suffix to the time; never wraps |
 
