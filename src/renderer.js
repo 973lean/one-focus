@@ -60,7 +60,6 @@ const inputEl = $('task-input');
 const metaEl = $('meta');
 const startEl = $('start');
 const doneEl = $('done');
-const stopEl = $('stop');
 let editing = false;
 
 function tick() {
@@ -101,14 +100,13 @@ function renderNow() {
   taskEl.title = S.connected ? 'Open today’s list' : 'Click to type what you’re doing';
   startEl.hidden = !(!cur && next);
   doneEl.hidden = !(cur && cur.googleId);
-  stopEl.hidden = !cur;
   renderMeta();
 }
 
 function startEditing() {
   editing = true;
   inputEl.value = S && S.current ? S.current.title : '';
-  taskEl.hidden = metaEl.hidden = startEl.hidden = doneEl.hidden = stopEl.hidden = true;
+  taskEl.hidden = metaEl.hidden = startEl.hidden = doneEl.hidden = true;
   inputEl.hidden = false;
   inputEl.focus();
   inputEl.select();
@@ -141,7 +139,6 @@ async function busy(btn, fn) {
   }
 }
 startEl.addEventListener('click', () => busy(startEl, () => api.start()));
-stopEl.addEventListener('click', () => busy(stopEl, async () => (S = await api.stop()) && render()));
 doneEl.addEventListener('click', () =>
   busy(doneEl, () => S.current && S.current.googleId && api.task('complete', S.current.googleId))
 );
@@ -253,11 +250,7 @@ function taskRow(t, { current, next, done }) {
 
   if (!done) {
     const acts = el('div', 'acts');
-    if (current) {
-      const stop = el('button', 'act', 'Stop');
-      stop.addEventListener('click', async () => (S = await api.stop()) && render());
-      acts.append(stop);
-    } else {
+    if (!current) {
       const start = el('button', 'act', 'Start');
       start.title = 'Start this task now';
       start.addEventListener('click', async () => {

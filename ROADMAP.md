@@ -43,7 +43,8 @@
 
 ## v0.4 — queue and idle time
 - [x] Tasks wait in a queue; nothing starts until you click Start (Now screen or Today)
-- [x] Stop a task without finishing it
+- [x] No Stop: a task ends with Done, or by starting another from Today
+- [x] Start time and time on task sit on their own line under the task
 - [x] Idle time: time at the computer with no task running, shown on Now and in the Log (per period and per day)
 - [x] Current task line and its start time / time on task about 20% larger
 

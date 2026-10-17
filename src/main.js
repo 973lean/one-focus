@@ -109,9 +109,9 @@ async function doSync() {
 function createWindow() {
   win = new BrowserWindow({
     width: 420,
-    height: 260,
+    height: 300,
     minWidth: 280,
-    minHeight: 180,
+    minHeight: 220,
     backgroundColor: '#0B0B0C',
     title: 'One Focus',
     frame: false, // no OS title bar; controls are drawn in the page and appear on hover

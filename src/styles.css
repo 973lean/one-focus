@@ -145,9 +145,9 @@ button:focus-visible, input:focus-visible { outline: 1px solid var(--fg-tertiary
 .task {
   margin-top: var(--space-5);
   display: flex;
-  align-items: baseline;
-  justify-content: center;
-  gap: var(--space-2);
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
   min-width: 0;
   max-width: 100%;
 }
@@ -175,7 +175,7 @@ button:focus-visible, input:focus-visible { outline: 1px solid var(--fg-tertiary
 .task__text.is-queued { color: var(--fg-date); }
 
 .task__input {
-  flex: 1;
+  width: min(100%, 28ch);
   background: transparent;
   border: 0;
   border-bottom: 1px solid var(--hairline);

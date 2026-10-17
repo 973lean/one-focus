@@ -4,7 +4,7 @@ A small, quiet window for a secondary monitor that keeps you on one thing at a t
 
 ## What it does (v0.3)
 
-- **Now:** the time, large, with the date above. Under it is your task. Nothing starts on its own: the next task waits (dimmed) with an idle counter until you hover and click **Start**. While it runs you see when it started and time on task, with **Done** and **Stop** on hover.
+- **Now:** the time, large, with the date above. Under it is your task. Nothing starts on its own: the next task waits (dimmed) with an idle counter until you hover and click **Start**. While it runs you see when it started and time on task, underneath, and **Done** on hover. To switch tasks, start another one from Today.
 - **Google Tasks:** One Focus uses one list (default name "One Focus", created for you). The first unfinished task is next up. Finish it and the next one waits for you to start it.
 - **Menu** (top left, on hover):
   - **Log:** time tracked, idle time, tasks done and sessions for Today / Week / Month / All, and every session grouped by day with each day's task and idle totals.
