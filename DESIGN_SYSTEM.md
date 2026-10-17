@@ -74,7 +74,7 @@ Window padding is `--space-5`. Major groups (clock → task) are separated by `-
 
 - No OS title bar. The window is frameless and the top 36px strip drags it.
 - Top left: the menu (Now · Log · Today · Settings), 12px text. Top right: minimize, maximize, close as thin 10px line glyphs.
-- Both are hidden at rest and fade in over 400ms while the pointer is over the window. Inside a panel the menu stays visible so you can always get back.
+- Both are hidden at rest. Each fades in over 400ms only when the pointer comes near it: the top 64px of the window, left half for the menu, right half for the controls. Inside a panel the menu stays visible so you can always get back.
 - On the Now screen, hairline pills appear on hover in a row under the task: **Start** when a task is queued, **Done** while one runs. There is no Stop: a task ends with Done or by starting another. They never shift the layout.
 
 ## Panels (Log, Today, Settings)

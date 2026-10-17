@@ -48,6 +48,10 @@ document.addEventListener('keydown', (e) => {
 
 // Window controls and hover state.
 api.onHover((inside) => document.body.classList.toggle('is-hover', inside));
+api.onZone((zone) => {
+  document.body.classList.toggle('near-menu', zone === 'menu');
+  document.body.classList.toggle('near-controls', zone === 'controls');
+});
 document.querySelectorAll('.controls__btn').forEach((btn) =>
   btn.addEventListener('click', () => api.windowAction(btn.dataset.action))
 );

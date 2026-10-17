@@ -14,4 +14,5 @@ contextBridge.exposeInMainWorld('oneFocus', {
   setView: (name) => ipcRenderer.send('view:set', name),
   windowAction: (action) => ipcRenderer.send('window:action', action),
   onHover: (cb) => ipcRenderer.on('window:hover', (_e, inside) => cb(inside)),
+  onZone: (cb) => ipcRenderer.on('window:zone', (_e, zone) => cb(zone)),
 });

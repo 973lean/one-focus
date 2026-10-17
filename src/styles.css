@@ -91,10 +91,11 @@ button:focus-visible, input:focus-visible { outline: 1px solid var(--fg-tertiary
 }
 .controls__btn svg { width: 10px; height: 10px; fill: none; stroke: currentColor; stroke-width: 1.2; }
 
-/* is-hover is set from the main process (reliable over drag regions).
+/* near-menu / near-controls are set from the main process when the pointer
+   is in the top-left / top-right of the window (reliable over drag regions).
    Inside a panel the menu stays visible so you can always get back. */
-.is-hover .menu__item,
-.is-hover .controls__btn,
+.near-menu .menu__item,
+.near-controls .controls__btn,
 .app:not([data-view="now"]) .menu__item,
 .bar:focus-within .menu__item,
 .bar:focus-within .controls__btn {

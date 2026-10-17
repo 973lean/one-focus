@@ -128,7 +128,11 @@ function createWindow() {
 
   // Tell the page when the pointer is over the window. Polling the cursor
   // is more reliable than CSS :hover, which drag regions can swallow.
+  // Also report which top corner the pointer is near, so the menu (left)
+  // and window controls (right) only appear when you reach for them.
+  const NEAR_TOP = 64;
   let inside = false;
+  let zone = null;
   const hoverTimer = setInterval(() => {
     if (win.isDestroyed()) return clearInterval(hoverTimer);
     const p = screen.getCursorScreenPoint();
@@ -137,6 +141,11 @@ function createWindow() {
     if (now !== inside) {
       inside = now;
       win.webContents.send('window:hover', inside);
+    }
+    const z = now && p.y - b.y < NEAR_TOP ? (p.x - b.x < b.width / 2 ? 'menu' : 'controls') : null;
+    if (z !== zone) {
+      zone = z;
+      win.webContents.send('window:zone', zone);
     }
   }, 100);
 
