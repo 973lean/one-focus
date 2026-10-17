@@ -20,10 +20,7 @@ For live editing, run `npm run dev`: the window reloads whenever you save `index
 
 ## Roadmap
 
-- [x] Clock and date
-- [x] Manual current task with start time, saved locally
-- [ ] Connect Microsoft To Do and/or Google Tasks so the current task comes from your real list
-- [ ] Guide the day: show what's next when the current task is done
+See [ROADMAP.md](ROADMAP.md).
 
 ## Design
 
