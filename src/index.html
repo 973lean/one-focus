@@ -7,21 +7,88 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <main class="stage">
-    <div class="bar" aria-label="Window controls">
-      <button class="bar__btn" data-action="minimize" aria-label="Minimize"><svg viewBox="0 0 10 10"><path d="M1 5h8"/></svg></button>
-      <button class="bar__btn" data-action="maximize" aria-label="Maximize"><svg viewBox="0 0 10 10"><rect x="1.5" y="1.5" width="7" height="7"/></svg></button>
-      <button class="bar__btn" data-action="close" aria-label="Close"><svg viewBox="0 0 10 10"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7"/></svg></button>
-    </div>
-    <div id="date" class="date"></div>
-    <time id="clock" class="clock">--:--</time>
+  <!-- app:start -->
+  <div class="app" id="app" data-view="now">
+    <header class="bar">
+      <nav class="menu" aria-label="Menu">
+        <button class="menu__item" data-view="now">Now</button>
+        <button class="menu__item" data-view="log">Log</button>
+        <button class="menu__item" data-view="today">Today</button>
+        <button class="menu__item" data-view="settings">Settings</button>
+      </nav>
+      <div class="controls" aria-label="Window controls">
+        <button class="controls__btn" data-action="minimize" aria-label="Minimize"><svg viewBox="0 0 10 10"><path d="M1 5h8"/></svg></button>
+        <button class="controls__btn" data-action="maximize" aria-label="Maximize"><svg viewBox="0 0 10 10"><rect x="1.5" y="1.5" width="7" height="7"/></svg></button>
+        <button class="controls__btn" data-action="close" aria-label="Close"><svg viewBox="0 0 10 10"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7"/></svg></button>
+      </div>
+    </header>
 
-    <div class="task">
-      <span id="task" class="task__text" tabindex="0" title="Click to set your focus">What are you doing?</span>
-      <input id="task-input" class="task__input" type="text" placeholder="What are you doing?" maxlength="120" hidden />
-      <span id="since" class="task__since"></span>
-    </div>
-  </main>
+    <main class="stage" id="view-now">
+      <div id="date" class="date"></div>
+      <time id="clock" class="clock">--:--</time>
+      <div class="task">
+        <span id="task" class="task__text is-empty" tabindex="0">What are you doing?</span>
+        <input id="task-input" class="task__input" type="text" placeholder="What are you doing?" maxlength="200" hidden />
+        <span id="meta" class="task__meta"></span>
+        <button id="done" class="task__done" hidden>Done</button>
+      </div>
+    </main>
+
+    <section class="panel" id="view-log" hidden>
+      <div class="tabs" role="tablist" id="log-tabs">
+        <button class="tab" data-range="today">Today</button>
+        <button class="tab" data-range="week">Week</button>
+        <button class="tab" data-range="month">Month</button>
+        <button class="tab" data-range="all">All</button>
+      </div>
+      <div class="summary">
+        <div class="summary__big" id="log-total">0m</div>
+        <div class="summary__meta" id="log-meta"></div>
+      </div>
+      <h2 class="eyebrow">Most time</h2>
+      <ol class="bars" id="log-top"></ol>
+      <h2 class="eyebrow">Sessions</h2>
+      <div id="log-sessions"></div>
+    </section>
+
+    <section class="panel" id="view-today" hidden>
+      <div id="today-off" class="note" hidden>
+        Connect Google Tasks in <button class="link" data-view="settings">Settings</button> to see your list here.
+      </div>
+      <div id="today-on">
+        <h2 class="eyebrow" id="today-open-title">Up next</h2>
+        <ul class="rows" id="today-open"></ul>
+        <input id="today-add" class="add" type="text" placeholder="Add a task" maxlength="1024" />
+        <h2 class="eyebrow" id="today-done-title">Done today</h2>
+        <ul class="rows" id="today-done"></ul>
+        <p class="status" id="today-status"></p>
+      </div>
+    </section>
+
+    <section class="panel" id="view-settings" hidden>
+      <h2 class="eyebrow">Google Tasks</h2>
+      <p class="note" id="g-status"></p>
+      <div id="g-setup">
+        <label class="field"><span>Client ID</span><input id="s-client-id" type="text" spellcheck="false" autocomplete="off" /></label>
+        <label class="field"><span>Client secret</span><input id="s-client-secret" type="password" spellcheck="false" autocomplete="off" /></label>
+        <p class="hint">Google Cloud Console → APIs &amp; Services → Credentials → Create OAuth client ID → Desktop app. Enable the Google Tasks API first.</p>
+      </div>
+      <label class="field"><span>List name</span><input id="s-list" type="text" spellcheck="false" /></label>
+      <div class="actions">
+        <button class="btn" id="g-connect">Connect</button>
+        <button class="btn btn--quiet" id="g-disconnect" hidden>Disconnect</button>
+        <span class="status" id="g-msg"></span>
+      </div>
+
+      <h2 class="eyebrow">Display</h2>
+      <label class="toggle"><input type="checkbox" id="s-since" /><span>Show when the task started</span></label>
+      <label class="toggle"><input type="checkbox" id="s-elapsed" /><span>Show time on task</span></label>
+
+      <h2 class="eyebrow">Window</h2>
+      <label class="toggle"><input type="checkbox" id="s-top" /><span>Always on top</span></label>
+    </section>
+  </div>
+  <!-- app:end -->
   <script src="renderer.js"></script>
 </body>
 </html>

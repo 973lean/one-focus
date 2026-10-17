@@ -73,8 +73,24 @@ Window padding is `--space-5`. Major groups (clock → task) are separated by `-
 ## Window chrome
 
 - No OS title bar. The window is frameless and the top 36px strip drags it.
-- Minimize, maximize and close sit top right as thin 10px line glyphs in tertiary ink; hover lifts them to primary ink.
-- Hidden at rest. They fade in over 400ms while the pointer is over the window and fade out when it leaves, so the resting window is only the date, time and task.
+- Top left: the menu (Now · Log · Today · Settings), 12px text. Top right: minimize, maximize, close as thin 10px line glyphs.
+- Both are hidden at rest and fade in over 400ms while the pointer is over the window. Inside a panel the menu stays visible so you can always get back.
+- On the Now screen, **Done** (a hairline pill) appears on hover after the task.
+
+## Panels (Log, Today, Settings)
+
+Panels are for the occasional look, not the resting state, so they can be denser than Now.
+
+- The window grows to at least 440 × 480 while a panel is open and returns to its size on **Now** (or Esc).
+- Left-aligned, 13px text in secondary ink, `--space-4` side padding, `--space-3` between blocks.
+- Section labels: 11px uppercase, tracking 0.08em, tertiary ink.
+- Rows are separated by hairlines, never boxed. Row actions (Focus, Delete) appear on hover.
+- Controls: text buttons, a hairline-bordered button for the main action, small switches for toggles. No colour accents.
+- The one big number (time tracked in Log) is 32px, weight 500, primary ink. Bars are 2px hairline tracks with a tertiary fill.
+
+| Token | Value | Use |
+|---|---|---|
+| `--fill` | `rgba(245,245,244,0.06)` | Bar tracks, switch background |
 
 ## Adding something new
 
