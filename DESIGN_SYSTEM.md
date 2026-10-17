@@ -70,6 +70,12 @@ Window padding is `--space-5`. Major groups (clock → task) are separated by `-
 - Interactions are invisible until needed: click the task to edit it inline, **Enter** to save, **Esc** to cancel.
 - No visible buttons. Hover lifts text from secondary to primary ink — that is the only affordance.
 
+## Hover menu
+
+- Top-left, 12px, tertiary ink (active item secondary ink), stacked text only: no icons, no box.
+- Hidden at rest. Fades in over 400ms when the pointer is over the window, or on keyboard focus, and fades out when it leaves.
+- Items not yet available are marked "soon".
+
 ## Adding something new
 
 Before adding an element, ask: does it help the user know what to do *right now*? If not, it doesn't go on the main view.
