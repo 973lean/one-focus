@@ -34,6 +34,15 @@
           <button id="start" class="pill" hidden>Start</button>
           <button id="done" class="pill" hidden>Done</button>
         </span>
+        <div class="wrap" id="wrap" hidden>
+          <div class="wrap__cats" id="wrap-cats">
+            <div class="chips" id="wrap-chips"></div>
+            <input id="wrap-search" class="wrap__search" type="text" placeholder="Search" maxlength="40" spellcheck="false" />
+          </div>
+          <div class="stars" id="wrap-stars" aria-label="Rate focus and vibe">
+            <button data-r="1">★</button><button data-r="2">★</button><button data-r="3">★</button><button data-r="4">★</button><button data-r="5">★</button>
+          </div>
+        </div>
       </div>
     </main>
 
@@ -48,6 +57,8 @@
         <div class="summary__big" id="log-total">0m</div>
         <div class="summary__meta" id="log-meta"></div>
       </div>
+      <h2 class="eyebrow" id="log-cat-title">By category</h2>
+      <ul class="cats" id="log-cats"></ul>
       <h2 class="eyebrow">Sessions</h2>
       <div id="log-sessions"></div>
     </section>
@@ -85,8 +96,23 @@
       <label class="toggle"><input type="checkbox" id="s-since" /><span>Show when the task started</span></label>
       <label class="toggle"><input type="checkbox" id="s-elapsed" /><span>Show time on task</span></label>
 
+      <h2 class="eyebrow">After Done</h2>
+      <label class="toggle"><input type="checkbox" id="s-ask-cat" /><span>Pick a category</span></label>
+      <label class="toggle"><input type="checkbox" id="s-ask-rating" /><span>Rate focus and vibe</span></label>
+
+      <h2 class="eyebrow">Jolt</h2>
+      <div class="tabs" id="s-jolt">
+        <button class="tab" data-min="0">Off</button>
+        <button class="tab" data-min="30">30m</button>
+        <button class="tab" data-min="60">60m</button>
+        <button class="tab" data-min="90">90m</button>
+        <button class="tab" data-min="120">120m</button>
+      </div>
+      <p class="hint">The time and task flash blue for a moment, so your eye comes back to them.</p>
+
       <h2 class="eyebrow">Window</h2>
       <label class="toggle"><input type="checkbox" id="s-top" /><span>Always on top</span></label>
+      <label class="toggle"><input type="checkbox" id="s-login" /><span>Open when I log in</span></label>
     </section>
   </div>
   <!-- app:end -->

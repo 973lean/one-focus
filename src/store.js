@@ -12,6 +12,10 @@ const DEFAULTS = {
     listName: 'One Focus',
     clientId: '',
     clientSecret: '',
+    askCategory: true, // category chips after Done
+    askRating: true, // 1–5 stars after Done
+    joltMinutes: 60, // 0 = off
+    launchAtLogin: false,
   },
   google: { refreshToken: null, listId: null, connectedAt: null },
   current: null, // { key, title, googleId, since }
@@ -19,6 +23,9 @@ const DEFAULTS = {
   sessions: [], // finished sessions: { key, title, googleId, start, end }
   completions: [], // { key, title, googleId, at }
   heartbeat: null,
+  categories: [], // { name, lastUsed }
+  taskMeta: {}, // task key -> { category, rating }
+  window: null, // last window bounds { x, y, width, height }
 };
 
 const dir = () => app.getPath('userData');

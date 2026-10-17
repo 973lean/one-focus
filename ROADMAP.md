@@ -48,6 +48,15 @@
 - [x] Idle time: time at the computer with no task running, shown on Now and in the Log (per period and per day)
 - [x] Current task line and its start time / time on task about 20% larger
 
+## v0.5 — after Done, jolts, polish
+- [x] After Done: pick a category (3 recent chips + search) and rate focus and vibe (1–5 stars). Both optional, both can be turned off
+- [x] Log: time per category with average rating
+- [x] Jolt: time and task flash blue for 0.3s every Off / 30 / 60 / 90 / 120 minutes
+- [x] App icon, remembers window position and size, open at login (Settings)
+
+## Parked
+- [ ] Full-screen announcements: blur all monitors, one small clear modal on the primary monitor with a message to keep you on track. Minimal.
+
 ## Next
 - [x] Test sign-in and sync against a real Google account on Windows
 

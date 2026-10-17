@@ -1,6 +1,6 @@
 {
   "name": "one-focus",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "A small, quiet window that keeps you on one thing at a time.",
   "main": "src/main.js",
   "private": true,
@@ -12,7 +12,8 @@
   },
   "devDependencies": {
     "electron": "^33.2.0",
-    "electron-builder": "^25.1.8"
+    "electron-builder": "^25.1.8",
+    "resedit": "^1.7.2"
   },
   "author": "One Focus",
   "productName": "One Focus",
@@ -48,6 +49,7 @@
         "AppImage"
       ],
       "category": "Utility"
-    }
+    },
+    "afterPack": "scripts/after-pack.js"
   }
 }

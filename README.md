@@ -12,6 +12,10 @@ A small, quiet window for a secondary monitor that keeps you on one thing at a t
   - **Settings:** Google connection, show start time, show time on task, always on top.
 - **Time log:** while you're at the computer, time counts either toward the running task or as idle. Nothing counts while the screen is locked, the computer sleeps, the app is closed, or after 10 minutes with no input.
 
+- **After Done:** pick a category (3 recent, or search; Enter creates a new one) and rate focus and vibe 1–5. Both optional and can be turned off. The Log shows time per category with the average rating.
+- **Jolt:** every 30 / 60 / 90 / 120 minutes the time and task flash blue for a moment. Off by choice in Settings.
+- Remembers where you put the window, and can open when you log in.
+
 Without Google connected, click the task line to type what you're doing.
 
 ## Connect Google Tasks (one time, ~5 minutes)

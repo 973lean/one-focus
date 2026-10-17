@@ -36,7 +36,22 @@ function snapshot() {
     open: state.open,
     tracked: cur ? tracker.trackedSince(cur) : 0,
     today,
+    categories: recentCategories(),
   };
+}
+
+function recentCategories() {
+  return [...state.categories].sort((a, b) => b.lastUsed.localeCompare(a.lastUsed)).map((c) => c.name);
+}
+
+// Usable saved bounds: still on a connected screen.
+function savedBounds() {
+  const w = state.window;
+  if (!w) return null;
+  const visible = screen.getAllDisplays().some(({ workArea: a }) =>
+    w.x < a.x + a.width && w.x + w.width > a.x && w.y < a.y + a.height && w.y + w.height > a.y
+  );
+  return visible ? w : null;
 }
 
 function push() {
@@ -107,9 +122,9 @@ async function doSync() {
 // ---------- window ----------
 
 function createWindow() {
+  const saved = savedBounds();
   win = new BrowserWindow({
-    width: 420,
-    height: 300,
+    ...(saved || { width: 420, height: 300 }),
     minWidth: 280,
     minHeight: 220,
     backgroundColor: '#0B0B0C',
@@ -117,6 +132,7 @@ function createWindow() {
     frame: false, // no OS title bar; controls are drawn in the page and appear on hover
     autoHideMenuBar: true,
     alwaysOnTop: !!state.settings.alwaysOnTop,
+    icon: path.join(__dirname, 'assets', 'icon.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -125,6 +141,19 @@ function createWindow() {
   });
   win.loadFile(path.join(__dirname, 'index.html'));
   win.on('focus', () => sync());
+
+  // Remember where the window lives (not the temporary panel size).
+  let saveTimer;
+  const remember = () => {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => {
+      if (win.isDestroyed() || restoreBounds || win.isMaximized() || win.isMinimized()) return;
+      state.window = win.getBounds();
+      store.save(state);
+    }, 400);
+  };
+  win.on('moved', remember);
+  win.on('resized', remember);
 
   // Tell the page when the pointer is over the window. Polling the cursor
   // is more reliable than CSS :hover, which drag regions can swallow.
@@ -196,6 +225,7 @@ ipcMain.on('view:set', (_e, name) => setView(name));
 ipcMain.handle('state:get', () => snapshot());
 
 ipcMain.handle('log:get', () => ({
+  taskMeta: state.taskMeta,
   sessions: state.sessions,
   open: state.open,
   completions: state.completions,
@@ -254,10 +284,29 @@ ipcMain.handle('task:action', async (_e, action, id, value) => {
   }
 });
 
+// Category and/or rating for a finished task. A new category name is added.
+ipcMain.handle('task:meta', (_e, key, patch) => {
+  if (!key) return snapshot();
+  const meta = (state.taskMeta[key] = { ...(state.taskMeta[key] || {}) });
+  if (typeof patch.category === 'string' && patch.category.trim()) {
+    const name = patch.category.trim().slice(0, 40);
+    const hit = state.categories.find((c) => c.name.toLowerCase() === name.toLowerCase());
+    if (hit) hit.lastUsed = new Date().toISOString();
+    else state.categories.push({ name, lastUsed: new Date().toISOString() });
+    meta.category = hit ? hit.name : name;
+  }
+  if (Number.isInteger(patch.rating) && patch.rating >= 1 && patch.rating <= 5) meta.rating = patch.rating;
+  store.save(state);
+  push();
+  return snapshot();
+});
+
 ipcMain.handle('settings:update', async (_e, patch) => {
-  const allowed = ['showSince', 'showElapsed', 'alwaysOnTop', 'listName', 'clientId', 'clientSecret'];
+  const allowed = ['showSince', 'showElapsed', 'alwaysOnTop', 'listName', 'clientId', 'clientSecret', 'askCategory', 'askRating', 'launchAtLogin'];
   const prev = { ...state.settings };
   for (const k of allowed) if (k in patch) state.settings[k] = typeof patch[k] === 'string' ? patch[k].trim() : !!patch[k];
+  if ('joltMinutes' in patch) state.settings.joltMinutes = [0, 30, 60, 90, 120].includes(+patch.joltMinutes) ? +patch.joltMinutes : 0;
+  if (state.settings.launchAtLogin !== prev.launchAtLogin) app.setLoginItemSettings({ openAtLogin: state.settings.launchAtLogin });
   if (!state.settings.listName) state.settings.listName = 'One Focus';
   if (state.settings.alwaysOnTop !== prev.alwaysOnTop) win.setAlwaysOnTop(state.settings.alwaysOnTop);
   const listChanged = state.settings.listName !== prev.listName;

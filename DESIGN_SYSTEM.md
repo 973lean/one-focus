@@ -92,6 +92,17 @@ Panels are for the occasional look, not the resting state, so they can be denser
 |---|---|---|
 | `--fill` | `rgba(245,245,244,0.06)` | Switch background |
 
+## After Done
+
+- When a task is finished from Now, its title stays briefly (struck through, tertiary) with "Done · 47m" under it.
+- Below: up to 3 category chips (most recent, or search matches) and a 9ch search field, then five 13px stars. All 12px, hairline, no labels.
+- Both are optional. The row closes on its own once everything asked is answered, after 20s without input, or on Esc.
+
+## Jolt (the one colour)
+
+- `--jolt: #5B8CFF`. It is the only colour in the app and is used for nothing else.
+- Every N minutes (Off / 30 / 60 / 90 / 120, set in Settings) the time and task turn blue for 0.3s, then fade back over 240ms. This is the one deliberate exception to "calm motion".
+
 ## Adding something new
 
 Before adding an element, ask: does it help the user know what to do *right now*? If not, it doesn't go on the main view.

@@ -75,11 +75,13 @@ function tick() {
   clockEl.dateTime = now.toISOString();
   $('date').textContent = dateFmt.format(now);
   renderMeta();
+  maybeJolt();
 }
 
 // Running: start time · time on task. Idle: how long nothing has run.
 function renderMeta() {
   if (!S) return;
+  if (wrap) return (metaEl.textContent = 'Done · ' + dur(wrap.ms));
   const cur = S.current;
   const live = S.open ? Date.now() - Date.parse(S.open.start) : 0;
   if (!cur) {
@@ -96,6 +98,13 @@ function renderNow() {
   if (editing || !S) return;
   const cur = S.current;
   const next = S.connected ? S.next : null;
+  taskEl.classList.toggle('is-finished', !!wrap);
+  if (wrap) {
+    taskEl.textContent = wrap.title;
+    taskEl.classList.remove('is-queued', 'is-empty');
+    startEl.hidden = doneEl.hidden = true;
+    return renderMeta();
+  }
   taskEl.classList.toggle('is-queued', !cur && !!next);
   taskEl.classList.toggle('is-empty', !cur && !next);
   if (cur) taskEl.textContent = cur.title;
@@ -144,8 +153,119 @@ async function busy(btn, fn) {
 }
 startEl.addEventListener('click', () => busy(startEl, () => api.start()));
 doneEl.addEventListener('click', () =>
-  busy(doneEl, () => S.current && S.current.googleId && api.task('complete', S.current.googleId))
+  busy(doneEl, async () => {
+    const cur = S.current;
+    if (!cur || !cur.googleId) return;
+    const ms = S.tracked + (S.open && S.open.key === cur.key ? Date.now() - Date.parse(S.open.start) : 0);
+    openWrap(cur, ms);
+    await api.task('complete', cur.googleId);
+  })
 );
+
+// ---------- After Done: category + rating (both optional) ----------
+
+const wrapEl = $('wrap');
+const chipsEl = $('wrap-chips');
+const searchEl = $('wrap-search');
+const starEls = [...document.querySelectorAll('#wrap-stars button')];
+let wrap = null; // { key, title, ms, category, rating, timer }
+
+function openWrap(task, ms) {
+  const { askCategory, askRating } = S.settings;
+  if (!askCategory && !askRating) return;
+  wrap = { key: task.key, title: task.title, ms, category: null, rating: null, timer: null };
+  $('wrap-cats').hidden = !askCategory;
+  $('wrap-stars').hidden = !askRating;
+  searchEl.value = '';
+  renderChips();
+  paintStars(0);
+  wrapEl.hidden = false;
+  touchWrap();
+  renderNow();
+}
+
+function closeWrap() {
+  if (!wrap) return;
+  clearTimeout(wrap.timer);
+  wrap = null;
+  wrapEl.hidden = true;
+  renderNow();
+}
+
+// Closes on its own after 20s without input, or once everything asked is answered.
+function touchWrap() {
+  clearTimeout(wrap.timer);
+  const answered = (!S.settings.askCategory || wrap.category) && (!S.settings.askRating || wrap.rating);
+  wrap.timer = setTimeout(closeWrap, answered ? 700 : 20000);
+}
+
+function renderChips() {
+  const q = searchEl.value.trim().toLowerCase();
+  const all = S.categories || [];
+  const list = (q ? all.filter((c) => c.toLowerCase().includes(q)) : all).slice(0, 3);
+  chipsEl.replaceChildren(
+    ...list.map((name) => {
+      const b = el('button', 'chip' + (wrap && wrap.category === name ? ' is-on' : ''), name);
+      b.title = name;
+      b.addEventListener('click', () => pickCategory(name));
+      return b;
+    })
+  );
+}
+
+async function pickCategory(name) {
+  if (!wrap || !name) return;
+  wrap.category = name;
+  S = await api.setMeta(wrap.key, { category: name });
+  searchEl.value = '';
+  renderChips();
+  touchWrap();
+}
+
+searchEl.addEventListener('input', () => {
+  renderChips();
+  if (wrap) touchWrap();
+});
+searchEl.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') return closeWrap();
+  if (e.key !== 'Enter') return;
+  const q = searchEl.value.trim();
+  if (!q) return;
+  const hit = (S.categories || []).find((c) => c.toLowerCase() === q.toLowerCase())
+    || (S.categories || []).find((c) => c.toLowerCase().includes(q.toLowerCase()));
+  pickCategory(hit || q);
+});
+
+function paintStars(n) {
+  starEls.forEach((b, i) => b.classList.toggle('is-on', i < n));
+}
+starEls.forEach((b, i) => {
+  b.addEventListener('mouseenter', () => paintStars(i + 1));
+  b.addEventListener('mouseleave', () => paintStars(wrap ? wrap.rating || 0 : 0));
+  b.addEventListener('click', async () => {
+    if (!wrap) return;
+    wrap.rating = i + 1;
+    paintStars(wrap.rating);
+    S = await api.setMeta(wrap.key, { rating: wrap.rating });
+    touchWrap();
+  });
+});
+document.addEventListener('keydown', (e) => e.key === 'Escape' && wrap && view === 'now' && closeWrap());
+
+// ---------- Jolt ----------
+
+let lastJolt = Date.now();
+let joltEvery = null;
+function maybeJolt() {
+  const min = S && S.settings.joltMinutes;
+  if (min !== joltEvery) (joltEvery = min), (lastJolt = Date.now());
+  if (!min || Date.now() - lastJolt < min * 60000) return;
+  lastJolt = Date.now();
+  for (const e of [clockEl, taskEl]) e.classList.add('jolt');
+  setTimeout(() => {
+    for (const e of [clockEl, taskEl]) e.classList.remove('jolt');
+  }, 300);
+}
 
 // ---------- Log ----------
 
@@ -178,6 +298,28 @@ function renderLog() {
     if (b > a) (s.key === 'idle' ? idle : sessions).push({ ...s, a, b, ms: b - a, live: !s.end });
   }
   const total = sessions.reduce((n, s) => n + s.ms, 0);
+
+  // By category: time, and average rating of rated tasks in the period.
+  const meta = logData.taskMeta || {};
+  const cats = new Map();
+  for (const s of sessions) {
+    const c = meta[s.key] && meta[s.key].category;
+    if (!c) continue;
+    const g = cats.get(c) || { ms: 0, keys: new Set() };
+    g.ms += s.ms;
+    g.keys.add(s.key);
+    cats.set(c, g);
+  }
+  const catEl = $('log-cats');
+  catEl.replaceChildren();
+  for (const [name, g] of [...cats].sort((a, b) => b[1].ms - a[1].ms)) {
+    const rated = [...g.keys].map((k) => meta[k].rating).filter(Boolean);
+    const avg = rated.length ? '★ ' + (rated.reduce((a, b) => a + b, 0) / rated.length).toFixed(1) : '';
+    const li = el('li');
+    li.append(el('span', 't', name), el('span', 'r', avg), el('span', 'd', dur(g.ms)));
+    catEl.append(li);
+  }
+  $('log-cat-title').hidden = catEl.hidden = !cats.size;
   const idleTotal = idle.reduce((n, s) => n + s.ms, 0);
   const done = logData.completions.filter((c) => Date.parse(c.at) >= from).length;
 
@@ -337,7 +479,17 @@ $('today-add').addEventListener('keydown', async (e) => {
 // ---------- Settings ----------
 
 const fields = { 's-client-id': 'clientId', 's-client-secret': 'clientSecret', 's-list': 'listName' };
-const toggles = { 's-since': 'showSince', 's-elapsed': 'showElapsed', 's-top': 'alwaysOnTop' };
+const toggles = {
+  's-since': 'showSince',
+  's-elapsed': 'showElapsed',
+  's-ask-cat': 'askCategory',
+  's-ask-rating': 'askRating',
+  's-top': 'alwaysOnTop',
+  's-login': 'launchAtLogin',
+};
+document.querySelectorAll('#s-jolt .tab').forEach((t) =>
+  t.addEventListener('click', async () => (S = await api.updateSettings({ joltMinutes: +t.dataset.min })) && render())
+);
 
 for (const [id, key] of Object.entries(fields))
   $(id).addEventListener('change', async (e) => (S = await api.updateSettings({ [key]: e.target.value })) && render());
@@ -367,6 +519,7 @@ function renderSettings() {
   const s = S.settings;
   for (const [id, key] of Object.entries(fields)) if (document.activeElement !== $(id)) $(id).value = s[key] || '';
   for (const [id, key] of Object.entries(toggles)) $(id).checked = !!s[key];
+  document.querySelectorAll('#s-jolt .tab').forEach((t) => t.setAttribute('aria-selected', String(+t.dataset.min === (s.joltMinutes || 0))));
   $('g-setup').hidden = S.connected;
   $('g-connect').hidden = S.connected;
   $('g-disconnect').hidden = !S.connected;

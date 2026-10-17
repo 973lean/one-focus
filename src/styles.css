@@ -7,6 +7,7 @@
   --fg-tertiary: rgba(245, 245, 244, 0.32);
   --hairline: rgba(245, 245, 244, 0.10);
   --fill: rgba(245, 245, 244, 0.06);
+  --jolt: #5B8CFF; /* the one colour: used only for the jolt */
 
   --font: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
 
@@ -127,6 +128,7 @@ button:focus-visible, input:focus-visible { outline: 1px solid var(--fg-tertiary
 }
 
 .clock {
+  transition: color 240ms var(--ease);
   font-size: var(--size-time);
   font-weight: 500;
   letter-spacing: -0.04em;
@@ -352,6 +354,52 @@ input::placeholder { color: var(--fg-tertiary); }
 }
 .toggle input:checked { background: var(--fg-tertiary); }
 .toggle input:checked::after { transform: translateX(12px); background: var(--fg); }
+
+/* Jolt: a 0.3s flash of colour on the time and task. */
+.clock.jolt, .task__text.jolt { color: var(--jolt); transition: none; }
+
+/* After Done: category chips + search, then stars. Small and optional. */
+.task__text.is-finished { color: var(--fg-tertiary); text-decoration: line-through; text-decoration-color: var(--hairline); }
+.wrap {
+  position: absolute;
+  top: calc(100% + var(--space-2));
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--size-small);
+}
+.wrap__cats { display: flex; align-items: center; gap: var(--space-1); }
+.chips { display: flex; gap: var(--space-1); }
+.chip {
+  color: var(--fg-tertiary);
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  padding: 2px var(--space-2);
+  white-space: nowrap;
+  max-width: 11ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: color var(--dur) var(--ease), border-color var(--dur) var(--ease);
+}
+.chip:hover, .chip.is-on { color: var(--fg); border-color: var(--fg-tertiary); }
+.wrap__search {
+  width: 9ch !important;
+  font-size: var(--size-small) !important;
+  padding: 2px 0 !important;
+  text-align: center;
+}
+.stars { display: flex; gap: 2px; }
+.stars button { font-size: 13px; line-height: 1; color: var(--hairline); padding: 0 1px; transition: color 120ms var(--ease); }
+.stars button.is-on { color: var(--fg-secondary); }
+
+/* Log: by category */
+.cats { list-style: none; display: flex; flex-direction: column; }
+.cats li { display: grid; grid-template-columns: 1fr auto auto; gap: var(--space-3); padding: 6px 0; border-bottom: 1px solid var(--hairline); align-items: baseline; }
+.cats .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.cats .r, .cats .d { color: var(--fg-tertiary); font-variant-numeric: tabular-nums; }
 
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; }
