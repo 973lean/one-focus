@@ -48,7 +48,7 @@ html, body {
 
 .clock {
   font-size: var(--size-time);
-  font-weight: 200;
+  font-weight: 600;
   letter-spacing: -0.04em;
   line-height: 0.9;
   font-variant-numeric: tabular-nums;

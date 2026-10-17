@@ -31,7 +31,7 @@ One family: **Inter**, falling back to the system UI font. Numbers always use `t
 
 | Role | Size | Weight | Notes |
 |---|---|---|---|
-| Time | `clamp(56px, 22cqw, 140px)` | 200 | Tracking −0.04em, line-height 0.9 |
+| Time | `clamp(56px, 22cqw, 140px)` | 600 | Tracking −0.04em, line-height 0.9 |
 | Task | `clamp(14px, 4.2cqw, 20px)` | 400 | Secondary ink, single line, ellipsis |
 | Date | `clamp(12px, 3.2cqw, 15px)` | 400 | Above the time, format "Sat, Oct 17", tracking 0.04em, tertiary ink |
 | Task start time | `clamp(13px, 3.6cqw, 16px)` | 400 | Tertiary ink, same line as task, time only (no label), `--space-2` gap |
