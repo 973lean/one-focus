@@ -31,13 +31,13 @@ One family: **Inter**, falling back to the system UI font. Numbers always use `t
 
 | Role | Size | Weight | Notes |
 |---|---|---|---|
-| Time | `clamp(56px, 22vw, 140px)` | 200 | Tracking −0.04em, line-height 0.9 |
-| Task | `clamp(14px, 4.2vw, 20px)` | 400 | Secondary ink, single line, ellipsis |
-| Date | `clamp(12px, 3.2vw, 15px)` | 400 | Uppercase, tracking 0.08em, tertiary ink |
-| Since | `clamp(11px, 2.8vw, 13px)` | 400 | Tertiary ink, same line as task |
+| Time | `clamp(56px, 22cqw, 140px)` | 200 | Tracking −0.04em, line-height 0.9 |
+| Task | `clamp(14px, 4.2cqw, 20px)` | 400 | Secondary ink, single line, ellipsis |
+| Date | `clamp(12px, 3.2cqw, 15px)` | 400 | Uppercase, tracking 0.08em, tertiary ink |
+| Since | `clamp(11px, 2.8cqw, 13px)` | 400 | Tertiary ink, same line as task |
 | AM/PM | 0.28em of time | 400 | Tertiary ink, suffix to the time; never wraps |
 
-Sizes scale with window width so the hierarchy holds from a tiny corner window to half a screen.
+Sizes scale with the window width (container units, `cqw`) so the hierarchy holds from a tiny corner window to half a screen.
 
 ## Spacing
 

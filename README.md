@@ -16,6 +16,8 @@ npm install
 npm start
 ```
 
+For live editing, run `npm run dev`: the window reloads whenever you save `index.html`, `styles.css` or `renderer.js`. Changes to `main.js` or `preload.js` need a restart.
+
 ## Roadmap
 
 - [x] Clock and date

@@ -34,6 +34,16 @@ function createWindow() {
     },
   });
   win.loadFile(path.join(__dirname, 'index.html'));
+
+  // Dev mode: reload the window whenever a renderer file changes.
+  if (process.argv.includes('--dev')) {
+    let timer;
+    fs.watch(__dirname, (_event, file) => {
+      if (!file || file === 'main.js' || file === 'preload.js') return;
+      clearTimeout(timer);
+      timer = setTimeout(() => win.webContents.reloadIgnoringCache(), 80);
+    });
+  }
 }
 
 ipcMain.handle('tasks:current', () => {
