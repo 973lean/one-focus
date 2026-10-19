@@ -10,7 +10,7 @@ A small, quiet window for a secondary monitor that keeps you on one thing at a t
   - **Log:** time tracked, idle time, tasks done and sessions for Today / Week / Month / All, and every session grouped by day with each day's task and idle totals.
   - **Today:** your list, plus tasks done today. Add, rename (click the title), complete, reopen, delete, or **Start** any task. Changes go straight back to Google Tasks.
   - **Settings:** Google connection, show start time, show time on task, always on top.
-- **Time log:** while you're at the computer, time counts either toward the running task or as idle. Nothing counts while the screen is locked, the computer sleeps, the app is closed, or after 10 minutes with no input.
+- **Time log:** time counts either toward the running task or as idle. After 10 minutes with no input, task time stops and that time (from your last input) counts as idle; it switches back when you return. Nothing counts while the screen is locked, the computer sleeps, or the app is closed.
 
 - **After Done:** pick a category (3 recent, or search; Enter creates a new one) and rate focus and vibe 1–5. Both optional and can be turned off. The Log shows time per category with the average rating.
 - **Jolt:** every 30 / 60 / 90 / 120 minutes the time and task flash blue for a moment. Off by choice in Settings.

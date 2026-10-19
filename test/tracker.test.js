@@ -53,8 +53,25 @@ test('no task running logs idle time', () => {
   t.setCurrent(null);
   assert.equal(s.sessions[1].key, 'g:1');
   assert.equal(s.open.key, 'idle');
-  t.pause('away');
+  t.pause('lock');
   assert.equal(s.open, null);
+});
+
+test('away mid-task: task ends when input stopped, the rest is idle', () => {
+  const s = fresh();
+  const t = new Tracker(s, () => {});
+  t.setCurrent({ key: 'g:1', title: 'A', googleId: '1' });
+  s.open.start = ago(30 * 60e3);
+  const stopped = ago(12 * 60e3);
+  t.setAway(true, stopped);
+  assert.equal(s.sessions.at(-1).key, 'g:1');
+  assert.equal(s.sessions.at(-1).end, stopped);
+  assert.equal(s.open.key, 'idle');
+  assert.equal(s.open.start, stopped);
+  t.setAway(false);
+  assert.equal(s.sessions.at(-1).key, 'idle');
+  assert.equal(s.open.key, 'g:1');
+  assert.equal(s.current.key, 'g:1');
 });
 
 test('very short sessions are dropped', () => {

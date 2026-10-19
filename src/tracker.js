@@ -1,6 +1,7 @@
 // Time tracking. While you're at the computer, exactly one session runs:
 // a task session when a task is started, otherwise an idle session.
-// Locked, asleep, quit or away (10 min no input) = nothing runs.
+// Away (10 min no input) counts as idle, even mid-task.
+// Locked, asleep or quit = nothing runs.
 // Pure logic: no Electron imports.
 const MIN_SESSION_MS = 5000;
 const IDLE = { key: 'idle', title: 'Idle', googleId: null };
@@ -10,7 +11,8 @@ class Tracker {
   constructor(state, save) {
     this.s = state;
     this.save = save;
-    this.pauses = new Set(); // reasons timing is paused: lock, sleep, idle, quit
+    this.pauses = new Set(); // reasons nothing is timed: lock, sleep, quit
+    this.away = false; // no input for a while: time goes to idle
   }
 
   // On launch: close a session left open by a crash at the last heartbeat.
@@ -23,7 +25,7 @@ class Tracker {
 
   _open(at = iso()) {
     if (this.pauses.size || this.s.open) return;
-    const { key, title, googleId } = this.s.current || IDLE;
+    const { key, title, googleId } = (!this.away && this.s.current) || IDLE;
     this.s.open = { key, title, googleId, start: at };
   }
 
@@ -62,6 +64,17 @@ class Tracker {
   resume(reason) {
     this.pauses.delete(reason);
     this._open();
+    this.save();
+  }
+
+  // Away: end the task session at `at` (when input stopped) and count the
+  // time since as idle. Coming back resumes the task.
+  setAway(on, at) {
+    if (on === this.away) return;
+    this.away = on;
+    if (!this.s.current) return; // already idle: nothing to split
+    this._close(at);
+    this._open(at);
     this.save();
   }
 

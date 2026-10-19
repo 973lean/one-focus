@@ -363,12 +363,12 @@ app.whenReady().then(() => {
   setInterval(sync, SYNC_MS);
 
   // Heartbeat keeps crash recovery accurate. After 10 minutes with no
-  // input you're "away": the log stops, back-dated to when input stopped.
+  // input you're "away": task time stops and idle time runs instead,
+  // back-dated to when input stopped.
   setInterval(() => {
     const idle = powerMonitor.getSystemIdleTime();
-    if (idle >= IDLE_SECONDS && !tracker.isPaused('away'))
-      tracker.pause('away', new Date(Date.now() - idle * 1000).toISOString());
-    else if (idle < IDLE_SECONDS && tracker.isPaused('away')) tracker.resume('away');
+    if (idle >= IDLE_SECONDS && !tracker.away) tracker.setAway(true, new Date(Date.now() - idle * 1000).toISOString());
+    else if (idle < IDLE_SECONDS && tracker.away) tracker.setAway(false);
     tracker.heartbeat();
     push();
   }, HEARTBEAT_MS);
