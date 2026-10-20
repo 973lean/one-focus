@@ -58,8 +58,18 @@
 - [x] Install once; every push to `main` is built on GitHub and installed apps update themselves
 - [x] Settings → App: version, update status, Restart to update
 
+## v0.7 — derailments, checks, corrections
+- [x] **Hold:** pause the running task for a meeting, call, break, etc. (3 recent + search). Shows "Hold: Meeting · 12m" and **Back to: <task>**. Logged as its own time; the task isn't marked done
+- [x] **Switch:** in Today, start any task, or type a new one and start it straight away (added to the top of the list)
+- [x] **Still on this?** after a task runs 2h (on by default; Off / 1h / 2h / 3h): every monitor gets a soft blur with a slight dark tint, only One Focus stays sharp, Done becomes **Confirm**. Confirm clears it and restarts the 2h. Not during a Hold
+- [x] **End of day** (off until you set a time): same blur if a task is still running, with **Done** / **Tomorrow**
+- [x] **Edit sessions in the Log:** change start/end, split at a time into a Hold, or delete
+- [x] **Away after** setting: 5 / 10 / 20 / 30 minutes
+- [x] **Drag to reorder** tasks in Today (saved to Google)
+- Blur uses Windows 11 acrylic; Windows 10 falls back to a dark tint without blur
+
 ## Parked
-- [ ] Full-screen announcements: blur all monitors, one small clear modal on the primary monitor with a message to keep you on track. Minimal.
+- [x] ~~Full-screen announcements~~ → became the v0.7 blur for "Still on this?" and end of day
 
 ## Next
 - [x] Test sign-in and sync against a real Google account on Windows

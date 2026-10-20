@@ -110,3 +110,19 @@ test('completions dedupe and trackedSince sums current task', () => {
   s.sessions.push({ ...task, start: ago(900e3), end: ago(700e3) }); // before since: ignored
   assert.equal(Math.round(t.trackedSince(s.current) / 1000), 300);
 });
+
+test('log corrections: edit, split into a hold, delete', () => {
+  const s = fresh();
+  const t = new Tracker(s, () => {});
+  const a = { key: 'g:1', title: 'A', googleId: '1', start: '2026-10-20T09:00:00.000Z', end: '2026-10-20T11:00:00.000Z' };
+  s.sessions.push({ ...a });
+  assert.equal(t.editSession(a, { start: a.start, end: '2026-10-20T10:30:00.000Z' }), true);
+  assert.equal(s.sessions[0].end, '2026-10-20T10:30:00.000Z');
+  assert.equal(t.editSession(a, { start: a.end, end: a.start }), false); // end before start
+  assert.equal(t.splitSession(a, '2026-10-20T10:00:00.000Z', 'Meeting'), true);
+  assert.equal(s.sessions.length, 2);
+  assert.deepEqual([s.sessions[0].end, s.sessions[1].key, s.sessions[1].end], ['2026-10-20T10:00:00.000Z', 'hold:Meeting', '2026-10-20T10:30:00.000Z']);
+  assert.equal(t.splitSession(a, '2026-10-20T12:00:00.000Z', 'Call'), false); // outside the session
+  assert.equal(t.deleteSession(s.sessions[1]), true);
+  assert.equal(s.sessions.length, 1);
+});

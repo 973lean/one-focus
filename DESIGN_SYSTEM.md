@@ -75,7 +75,7 @@ Window padding is `--space-5`. Major groups (clock → task) are separated by `-
 - No OS title bar. The window is frameless and the top 36px strip drags it.
 - Top left: the menu (Now · Log · Today · Settings), 12px text. Top right: minimize, maximize, close as thin 10px line glyphs.
 - Both are hidden at rest. Each fades in over 400ms only when the pointer comes near it: the top 64px of the window, left half for the menu, right half for the controls. Inside a panel the menu stays visible so you can always get back.
-- On the Now screen, hairline pills appear on hover in a row under the task: **Start** when a task is queued, **Done** while one runs. There is no Stop: a task ends with Done or by starting another. They never shift the layout.
+- On the Now screen, hairline pills appear on hover in a row under the task: **Start** and **Hold** when a task is queued, **Done** and **Hold** while one runs. There is no Stop: a task ends with Done, a Hold, or by starting another. They never shift the layout.
 
 ## Panels (Log, Today, Settings)
 
@@ -97,6 +97,18 @@ Panels are for the occasional look, not the resting state, so they can be denser
 - When a task is finished from Now, its title stays briefly (struck through, tertiary) with "Done · 47m" under it.
 - Below: up to 3 category chips (most recent, or search matches) and a 9ch search field, then five 13px stars. All 12px, hairline, no labels.
 - Both are optional. The row closes on its own once everything asked is answered, after 20s without input, or on Esc.
+
+## Hold
+
+- Hover pill **Hold** (next to Start / Done) opens the same 3 chips + search as categories, defaulting to Meeting, Call, Break.
+- While on hold the task line reads "Hold: Meeting" in `--fg-date` ink, the time line shows time on hold, and one pill reads **Back to: <task>** (24ch max, ellipsis).
+- In the Log, holds are listed in tertiary ink and totalled separately from task time ("hold 1h 10m").
+
+## The blur (Still on this? / End of day)
+
+- Every monitor gets a full-screen window: Windows 11 acrylic blur plus a 28% `--bg` tint, or a 78% tint where blur isn't available. It fades in over 400ms. Nothing else is drawn on it.
+- One Focus stays above it, sharp. Its pills become loud (primary ink, visible without hover): **Confirm** for Still on this?, **Done** / **Tomorrow** for end of day.
+- The time line explains why: "Still on this? 2h 03m" or "End of day · wrap up? 6h 10m".
 
 ## Jolt (the one colour)
 

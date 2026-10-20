@@ -15,6 +15,9 @@ const DEFAULTS = {
     askCategory: true, // category chips after Done
     askRating: true, // 1–5 stars after Done
     joltMinutes: 60, // 0 = off
+    checkMinutes: 120, // "Still on this?" after a task runs this long; 0 = off
+    endOfDay: '', // "HH:MM" to check a still-running task; '' = off
+    awayMinutes: 10, // no input this long = away (counts as idle)
     launchAtLogin: false,
   },
   google: { refreshToken: null, listId: null, connectedAt: null },
@@ -26,6 +29,10 @@ const DEFAULTS = {
   categories: [], // { name, lastUsed }
   taskMeta: {}, // task key -> { category, rating }
   window: null, // last window bounds { x, y, width, height }
+  held: null, // the task paused by a Hold, restored by "Back to"
+  holdNames: [], // { name, lastUsed }
+  checkFrom: null, // last "Still on this?" confirm
+  eodDate: null, // day the end-of-day check last ran
 };
 
 const dir = () => app.getPath('userData');

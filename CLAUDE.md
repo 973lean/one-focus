@@ -6,7 +6,3 @@ Small Electron app for a secondary monitor: time, date, one task at a time from 
 - `npm test`, `npm run dev`, `npm run dist`.
 - Releases are automatic: pushing app changes to `main` runs `.github/workflows/publish.yml`, which builds the Windows installer and force-replaces the `builds` branch. Installed apps auto-update from there (electron-updater, generic provider on raw.githubusercontent). Don't push builds by hand. Bump the minor version in package.json for notable releases; the patch number is the workflow run number.
 - The user tests on Windows; this repo is usually edited from a Linux cloud session.
-
-## Remind the user at the start of the next session
-
-- **Parked idea: full-screen announcements.** Blur every monitor and show one small, clear modal on the primary monitor with an announcement to keep the user on track. Must stay minimal. Ask whether they want to pick it up (see ROADMAP "Parked").

@@ -1,0 +1,21 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'" />
+  <title>One Focus</title>
+  <style>
+    /* Soft blur comes from the window material (Windows 11). This adds the
+       slight dark tint, or a stronger dim where blur isn't available. */
+    html, body { margin: 0; height: 100%; cursor: default; }
+    body { background: rgba(11, 11, 12, 0.28); animation: in 400ms cubic-bezier(0.2, 0, 0, 1); }
+    body.no-blur { background: rgba(11, 11, 12, 0.78); }
+    @keyframes in { from { opacity: 0; } to { opacity: 1; } }
+  </style>
+</head>
+<body>
+  <script>
+    if (new URLSearchParams(location.search).get('blur') !== '1') document.body.classList.add('no-blur');
+  </script>
+</body>
+</html>

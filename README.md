@@ -13,6 +13,11 @@ A small, quiet window for a secondary monitor that keeps you on one thing at a t
 - **Time log:** time counts either toward the running task or as idle. After 10 minutes with no input, task time stops and that time (from your last input) counts as idle; it switches back when you return. Nothing counts while the screen is locked, the computer sleeps, or the app is closed.
 
 - **After Done:** pick a category (3 recent, or search; Enter creates a new one) and rate focus and vibe 1–5. Both optional and can be turned off. The Log shows time per category with the average rating.
+- **Hold:** pulled into a meeting or call? Hover, click **Hold**, pick Meeting / Call / Break (or search). The task pauses without being finished; **Back to: <task>** resumes it. Hold time is logged separately.
+- **Still on this?** After a task runs 2 hours (change or turn off in Settings), every screen softly blurs and only One Focus stays sharp until you click **Confirm**.
+- **End of day:** set a time in Settings; if a task is still running then, the same blur asks **Done** or **Tomorrow**.
+- **Fix the log:** click any session in the Log to change its times, split part of it off as a Hold ("from 10:40 it was a Meeting"), or delete it.
+- **Reorder:** drag tasks in Today. **Shift+Enter** in "Add a task" adds it to the top and starts it straight away.
 - **Jolt:** every 30 / 60 / 90 / 120 minutes the time and task flash blue for a moment. Off by choice in Settings.
 - Remembers where you put the window, and can open when you log in.
 

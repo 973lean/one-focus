@@ -106,6 +106,41 @@ class Tracker {
     return ms;
   }
 
+  // ----- corrections from the Log. A session is identified by key + start. -----
+
+  _find(id) {
+    return this.s.sessions.findIndex((x) => x.key === id.key && x.start === id.start);
+  }
+
+  editSession(id, { start, end }) {
+    const i = this._find(id);
+    if (i < 0 || !(Date.parse(start) < Date.parse(end))) return false;
+    Object.assign(this.s.sessions[i], { start, end });
+    this.save();
+    return true;
+  }
+
+  // Split at `at`: the part after becomes a Hold called `name` (e.g. "Meeting").
+  splitSession(id, at, name) {
+    const i = this._find(id);
+    if (i < 0 || !name) return false;
+    const x = this.s.sessions[i];
+    if (!(Date.parse(x.start) < Date.parse(at) && Date.parse(at) < Date.parse(x.end))) return false;
+    const after = { key: 'hold:' + name, title: name, googleId: null, start: at, end: x.end };
+    x.end = at;
+    this.s.sessions.splice(i + 1, 0, after);
+    this.save();
+    return true;
+  }
+
+  deleteSession(id) {
+    const i = this._find(id);
+    if (i < 0) return false;
+    this.s.sessions.splice(i, 1);
+    this.save();
+    return true;
+  }
+
   heartbeat() {
     this.s.heartbeat = iso();
     this.save();

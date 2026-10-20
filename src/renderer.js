@@ -64,6 +64,12 @@ const inputEl = $('task-input');
 const metaEl = $('meta');
 const startEl = $('start');
 const doneEl = $('done');
+const holdEl = $('hold');
+const backEl = $('back');
+const confirmEl = $('confirm');
+const eodDoneEl = $('eod-done');
+const eodTomorrowEl = $('eod-tomorrow');
+const isHold = (t) => !!(t && t.key && t.key.startsWith('hold:'));
 let editing = false;
 
 function tick() {
@@ -78,19 +84,25 @@ function tick() {
   maybeJolt();
 }
 
+const live = () => (S.open ? Date.now() - Date.parse(S.open.start) : 0);
+
 // Running: start time · time on task. Idle: how long nothing has run.
 function renderMeta() {
   if (!S) return;
   if (wrap) return (metaEl.textContent = 'Done · ' + dur(wrap.ms));
+  if (S.check && S.current) {
+    const on = dur(Date.now() - Date.parse(S.current.since));
+    return (metaEl.textContent = S.check === 'eod' ? 'End of day · wrap up? ' + on : 'Still on this? ' + on);
+  }
+  if (isHold(S.current)) return (metaEl.textContent = dur(S.open && S.open.key === S.current.key ? live() : 0));
   const cur = S.current;
-  const live = S.open ? Date.now() - Date.parse(S.open.start) : 0;
   if (!cur) {
-    metaEl.textContent = S.open && S.open.key === 'idle' ? 'Idle ' + dur(live) : '';
+    metaEl.textContent = S.open && S.open.key === 'idle' ? 'Idle ' + dur(live()) : '';
     return;
   }
   const parts = [];
   if (S.settings.showSince) parts.push(hm(cur.since));
-  if (S.settings.showElapsed) parts.push(dur(S.tracked + (S.open && S.open.key === cur.key ? live : 0)));
+  if (S.settings.showElapsed) parts.push(dur(S.tracked + (S.open && S.open.key === cur.key ? live() : 0)));
   metaEl.textContent = parts.join(' · ');
 }
 
@@ -98,28 +110,44 @@ function renderNow() {
   if (editing || !S) return;
   const cur = S.current;
   const next = S.connected ? S.next : null;
+  const hold = isHold(cur);
+  for (const p of [startEl, doneEl, holdEl, backEl, confirmEl, eodDoneEl, eodTomorrowEl]) p.hidden = true;
   taskEl.classList.toggle('is-finished', !!wrap);
+  taskEl.classList.toggle('is-hold', hold);
   if (wrap) {
     taskEl.textContent = wrap.title;
     taskEl.classList.remove('is-queued', 'is-empty');
-    startEl.hidden = doneEl.hidden = true;
     return renderMeta();
   }
   taskEl.classList.toggle('is-queued', !cur && !!next);
   taskEl.classList.toggle('is-empty', !cur && !next);
-  if (cur) taskEl.textContent = cur.title;
+  if (hold) taskEl.textContent = 'Hold: ' + cur.title;
+  else if (cur) taskEl.textContent = cur.title;
   else if (next) taskEl.textContent = next.title;
   else taskEl.textContent = S.connected ? (S.today.error ? 'Can’t reach Google Tasks' : 'Your list is empty') : 'What are you doing?';
   taskEl.title = S.connected ? 'Open today’s list' : 'Click to type what you’re doing';
-  startEl.hidden = !(!cur && next);
-  doneEl.hidden = !(cur && cur.googleId);
+  if (holdpick) return renderMeta();
+  if (S.check === 'still') confirmEl.hidden = false;
+  else if (S.check === 'eod') {
+    eodDoneEl.hidden = !(cur && cur.googleId);
+    eodTomorrowEl.hidden = false;
+  } else if (hold) {
+    backEl.hidden = false;
+    backEl.textContent = S.held ? 'Back to: ' + S.held.title : 'End hold';
+    backEl.title = backEl.textContent;
+    backEl.classList.add('is-back');
+  } else {
+    startEl.hidden = !(!cur && next);
+    doneEl.hidden = !(cur && cur.googleId);
+    holdEl.hidden = !(cur || next);
+  }
   renderMeta();
 }
 
 function startEditing() {
   editing = true;
   inputEl.value = S && S.current ? S.current.title : '';
-  taskEl.hidden = metaEl.hidden = startEl.hidden = doneEl.hidden = true;
+  taskEl.hidden = metaEl.hidden = startEl.hidden = doneEl.hidden = holdEl.hidden = true;
   inputEl.hidden = false;
   inputEl.focus();
   inputEl.select();
@@ -152,6 +180,60 @@ async function busy(btn, fn) {
   }
 }
 startEl.addEventListener('click', () => busy(startEl, () => api.start()));
+backEl.addEventListener('click', () => busy(backEl, async () => (S = await api.endHold()) && render()));
+confirmEl.addEventListener('click', () => busy(confirmEl, async () => (S = await api.answerCheck('confirm')) && render()));
+eodDoneEl.addEventListener('click', () => busy(eodDoneEl, async () => (S = await api.answerCheck('done')) && render()));
+eodTomorrowEl.addEventListener('click', () => busy(eodTomorrowEl, async () => (S = await api.answerCheck('tomorrow')) && render()));
+
+// ---------- Hold: pick what pulled you away (3 recent + search) ----------
+
+const holdpickEl = $('holdpick');
+const holdChipsEl = $('hold-chips');
+const holdSearchEl = $('hold-search');
+let holdpick = false;
+
+function openHoldpick() {
+  holdpick = true;
+  holdSearchEl.value = '';
+  renderHoldChips();
+  holdpickEl.hidden = false;
+  renderNow();
+  holdSearchEl.focus();
+}
+function closeHoldpick() {
+  holdpick = false;
+  holdpickEl.hidden = true;
+  renderNow();
+}
+function renderHoldChips() {
+  const q = holdSearchEl.value.trim().toLowerCase();
+  const all = S.holdNames || [];
+  const list = (q ? all.filter((c) => c.toLowerCase().includes(q)) : all).slice(0, 3);
+  holdChipsEl.replaceChildren(
+    ...list.map((name) => {
+      const b = el('button', 'chip', name);
+      b.addEventListener('mousedown', (e) => e.preventDefault()); // keep focus so the picker stays open
+      b.addEventListener('click', () => startHold(name));
+      return b;
+    })
+  );
+}
+async function startHold(name) {
+  closeHoldpick();
+  S = await api.hold(name);
+  render();
+}
+holdEl.addEventListener('click', openHoldpick);
+holdSearchEl.addEventListener('input', renderHoldChips);
+holdSearchEl.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') return closeHoldpick();
+  if (e.key !== 'Enter') return;
+  const q = holdSearchEl.value.trim();
+  if (!q) return;
+  const all = S.holdNames || [];
+  startHold(all.find((c) => c.toLowerCase() === q.toLowerCase()) || all.find((c) => c.toLowerCase().includes(q.toLowerCase())) || q);
+});
+holdSearchEl.addEventListener('blur', () => holdpick && closeHoldpick());
 doneEl.addEventListener('click', () =>
   busy(doneEl, async () => {
     const cur = S.current;
@@ -290,14 +372,18 @@ function renderLog() {
   const all = logData.sessions.slice();
   if (logData.open) all.push({ ...logData.open, end: null });
 
-  const sessions = [];
+  const sessions = []; // task sessions (counted as tracked)
   const idle = [];
+  const holds = [];
   for (const s of all) {
     const a = Math.max(Date.parse(s.start), from);
     const b = s.end ? Date.parse(s.end) : now;
-    if (b > a) (s.key === 'idle' ? idle : sessions).push({ ...s, a, b, ms: b - a, live: !s.end });
+    if (b <= a) continue;
+    const x = { ...s, a, b, ms: b - a, live: !s.end };
+    (s.key === 'idle' ? idle : s.key.startsWith('hold:') ? holds : sessions).push(x);
   }
   const total = sessions.reduce((n, s) => n + s.ms, 0);
+  const holdTotal = holds.reduce((n, s) => n + s.ms, 0);
 
   // By category: time, and average rating of rated tasks in the period.
   const meta = logData.taskMeta || {};
@@ -323,15 +409,15 @@ function renderLog() {
   const idleTotal = idle.reduce((n, s) => n + s.ms, 0);
   const done = logData.completions.filter((c) => Date.parse(c.at) >= from).length;
 
-  document.querySelectorAll('.tab').forEach((t) => t.setAttribute('aria-selected', String(t.dataset.range === logRange)));
+  document.querySelectorAll('#log-tabs .tab').forEach((t) => t.setAttribute('aria-selected', String(t.dataset.range === logRange)));
   $('log-total').textContent = dur(total);
   const n = sessions.length;
-  $('log-meta').textContent = `idle ${dur(idleTotal)} · ${done} done · ${n} session${n === 1 ? '' : 's'}`;
+  $('log-meta').textContent = `idle ${dur(idleTotal)} · hold ${dur(holdTotal)} · ${done} done · ${n} session${n === 1 ? '' : 's'}`;
 
   // Sessions, newest first, grouped by day.
   const list = $('log-sessions');
   list.replaceChildren();
-  if (!sessions.length) list.append(el('div', 'empty', 'No sessions in this period.'));
+  if (!sessions.length && !holds.length) list.append(el('div', 'empty', 'No sessions in this period.'));
   // Time tracked per day, shown on the right of each date.
   const perDay = new Map();
   const idleDay = new Map();
@@ -343,34 +429,98 @@ function renderLog() {
     const day = dayFmt.format(new Date(s.a));
     idleDay.set(day, (idleDay.get(day) || 0) + s.ms);
   }
+  const holdDay = new Map();
+  for (const s of holds) {
+    const day = dayFmt.format(new Date(s.a));
+    holdDay.set(day, (holdDay.get(day) || 0) + s.ms);
+  }
   let lastDay = '';
-  for (const s of sessions.sort((x, y) => y.a - x.a).slice(0, 300)) {
+  for (const s of [...sessions, ...holds].sort((x, y) => y.a - x.a).slice(0, 300)) {
     const day = dayFmt.format(new Date(s.a));
     if (day !== lastDay) {
       const head = el('div', 'day');
       const right = el('span');
       if (idleDay.get(day)) right.append(el('span', 'day__idle', 'idle ' + dur(idleDay.get(day))));
-      right.append(el('span', 'day__total', dur(perDay.get(day))));
+      if (holdDay.get(day)) right.append(el('span', 'day__idle', 'hold ' + dur(holdDay.get(day))));
+      right.append(el('span', 'day__total', dur(perDay.get(day) || 0)));
       head.append(el('span', null, day), right);
       list.append(head);
     }
     lastDay = day;
-    const row = el('div', 'sess' + (s.live ? ' is-live' : ''));
+    const hold = s.key.startsWith('hold:');
+    const row = el('div', 'sess' + (s.live ? ' is-live' : '') + (hold ? ' is-hold' : ''));
     row.append(
       el('span', 'w', `${hm(s.a)}–${s.live ? 'now' : hm(s.b)}`),
-      el('span', 't', s.title),
+      el('span', 't', hold ? 'Hold: ' + s.title : s.title),
       el('span', 'd', dur(s.ms))
     );
     list.append(row);
+    if (!s.live) row.addEventListener('click', () => toggleEditor(row, s));
   }
 }
 
-document.querySelectorAll('.tab').forEach((t) =>
+document.querySelectorAll('#log-tabs .tab').forEach((t) =>
   t.addEventListener('click', () => {
     logRange = t.dataset.range;
     renderLog();
   })
 );
+
+// ---------- Log: fix a session (times, split into a Hold, delete) ----------
+
+let editorEl = null;
+const hhmm = (iso) => {
+  const d = new Date(iso);
+  return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+};
+// Same calendar day as `iso`, at time "HH:MM".
+const atTime = (iso, t) => {
+  const d = new Date(iso);
+  const [h, m] = t.split(':').map(Number);
+  d.setHours(h, m, 0, 0);
+  return d.toISOString();
+};
+
+function toggleEditor(row, s) {
+  const wasThis = editorEl && editorEl.previousSibling === row;
+  if (editorEl) editorEl.remove();
+  editorEl = null;
+  if (wasThis) return;
+  const id = { key: s.key, start: s.start };
+  const timeInput = (iso) => {
+    const i = el('input');
+    i.type = 'time';
+    i.value = hhmm(iso);
+    return i;
+  };
+  const start = timeInput(s.start);
+  const end = timeInput(s.end);
+  const splitAt = timeInput(new Date((Date.parse(s.start) + Date.parse(s.end)) / 2).toISOString());
+  const splitName = el('input');
+  splitName.type = 'text';
+  splitName.placeholder = 'Meeting';
+  const save = el('button', 'act', 'Save');
+  const del = el('button', 'act', 'Delete');
+  const split = el('button', 'act', 'Split');
+  const msg = el('span', 'status');
+  const after = async (r) => {
+    if (r && r.ok) {
+      editorEl = null;
+      await loadLog();
+    } else msg.textContent = 'Check the times.';
+  };
+  save.addEventListener('click', async () =>
+    after(await api.editSession('edit', id, { start: atTime(s.start, start.value), end: atTime(s.end, end.value) }))
+  );
+  del.addEventListener('click', async () => after(await api.editSession('delete', id)));
+  split.addEventListener('click', async () =>
+    after(await api.editSession('split', id, { at: atTime(s.start, splitAt.value), name: splitName.value.trim() || 'Meeting' }))
+  );
+  const box = el('div', 'edit-sess');
+  box.append(start, el('span', null, '–'), end, save, del, el('span', 'gap'), el('span', null, 'From'), splitAt, el('span', null, 'it was'), splitName, split, msg);
+  row.after(box);
+  editorEl = box;
+}
 
 // ---------- Today ----------
 
@@ -454,6 +604,7 @@ function renderToday() {
   const nextId = S.next && S.next.id;
   openEl.replaceChildren(...open.map((t) => taskRow(t, { current: t.id === runningId, next: t.id === nextId })));
   if (!open.length) openEl.append(el('li', 'empty', 'Nothing left. Add a task below.'));
+  enableDrag(openEl, open);
   $('today-open-title').textContent = `Up next · ${open.length}`;
 
   const doneEl2 = $('today-done');
@@ -463,13 +614,55 @@ function renderToday() {
   $('today-status').textContent = error || (syncedAt ? `List “${S.settings.listName}” · synced ${hm(syncedAt)}` : 'Syncing…');
 }
 
+// Drag a row to reorder; the new order is saved to Google.
+function enableDrag(listEl, open) {
+  let dragId = null;
+  const rows = [...listEl.querySelectorAll('.row')];
+  rows.forEach((li, i) => {
+    li.draggable = true;
+    li.dataset.id = open[i].id;
+    li.addEventListener('dragstart', (e) => {
+      dragId = li.dataset.id;
+      li.classList.add('is-dragging');
+      e.dataTransfer.effectAllowed = 'move';
+    });
+    li.addEventListener('dragend', () => {
+      dragId = null;
+      li.classList.remove('is-dragging');
+      rows.forEach((r) => r.classList.remove('drop-before', 'drop-after'));
+    });
+    li.addEventListener('dragover', (e) => {
+      if (!dragId || dragId === li.dataset.id) return;
+      e.preventDefault();
+      const before = e.offsetY < li.offsetHeight / 2;
+      li.classList.toggle('drop-before', before);
+      li.classList.toggle('drop-after', !before);
+    });
+    li.addEventListener('dragleave', () => li.classList.remove('drop-before', 'drop-after'));
+    li.addEventListener('drop', async (e) => {
+      e.preventDefault();
+      const before = li.classList.contains('drop-before');
+      li.classList.remove('drop-before', 'drop-after');
+      const moving = dragId;
+      if (!moving || moving === li.dataset.id) return;
+      // Google wants the task it should come after (none = top).
+      const ids = open.map((t) => t.id).filter((x) => x !== moving);
+      const at = ids.indexOf(li.dataset.id) + (before ? 0 : 1);
+      const previous = at > 0 ? ids[at - 1] : null;
+      $('today-status').textContent = 'Saving order…';
+      const r = await api.task('move', moving, previous);
+      if (r && r.error) $('today-status').textContent = r.error;
+    });
+  });
+}
+
 $('today-add').addEventListener('keydown', async (e) => {
   if (e.key !== 'Enter') return;
   const input = e.target;
   const v = input.value.trim();
   if (!v) return;
   input.disabled = true;
-  const r = await api.task('add', null, v);
+  const r = await api.task(e.shiftKey ? 'addStart' : 'add', null, v);
   input.disabled = false;
   if (r && r.error) $('today-status').textContent = r.error;
   else input.value = '';
@@ -487,6 +680,12 @@ const toggles = {
   's-top': 'alwaysOnTop',
   's-login': 'launchAtLogin',
 };
+for (const [sel, key] of [['#s-check', 'checkMinutes'], ['#s-away', 'awayMinutes']])
+  document.querySelectorAll(sel + ' .tab').forEach((t) =>
+    t.addEventListener('click', async () => (S = await api.updateSettings({ [key]: +t.dataset.min })) && render())
+  );
+$('s-eod').addEventListener('change', async (e) => (S = await api.updateSettings({ endOfDay: e.target.value })) && render());
+$('s-eod-off').addEventListener('click', async () => (S = await api.updateSettings({ endOfDay: '' })) && render());
 document.querySelectorAll('#s-jolt .tab').forEach((t) =>
   t.addEventListener('click', async () => (S = await api.updateSettings({ joltMinutes: +t.dataset.min })) && render())
 );
@@ -522,6 +721,10 @@ function renderSettings() {
   for (const [id, key] of Object.entries(fields)) if (document.activeElement !== $(id)) $(id).value = s[key] || '';
   for (const [id, key] of Object.entries(toggles)) $(id).checked = !!s[key];
   document.querySelectorAll('#s-jolt .tab').forEach((t) => t.setAttribute('aria-selected', String(+t.dataset.min === (s.joltMinutes || 0))));
+  document.querySelectorAll('#s-check .tab').forEach((t) => t.setAttribute('aria-selected', String(+t.dataset.min === (s.checkMinutes ?? 120))));
+  document.querySelectorAll('#s-away .tab').forEach((t) => t.setAttribute('aria-selected', String(+t.dataset.min === (s.awayMinutes || 10))));
+  if (document.activeElement !== $('s-eod')) $('s-eod').value = s.endOfDay || '';
+  $('s-eod-off').hidden = !s.endOfDay;
   const u = (S.app && S.app.update) || {};
   const words = {
     dev: 'running from source',

@@ -1,13 +1,13 @@
 const { app, BrowserWindow, ipcMain, screen, powerMonitor, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 const store = require('./store');
 const Tracker = require('./tracker');
 const google = require('./google');
 
 const SYNC_MS = 60e3;
 const HEARTBEAT_MS = 30e3;
-const IDLE_SECONDS = 10 * 60;
 const PANEL_MIN = { width: 440, height: 480 };
 
 let win = null;
@@ -18,6 +18,12 @@ let today = { open: [], done: [], syncedAt: null, error: null };
 let restoreBounds = null;
 let updater = null;
 let update = { status: 'idle', version: null }; // idle | checking | current | downloading | ready | error | dev
+let check = null; // null | 'still' | 'eod': the blur is up and waiting for you
+let overlays = [];
+
+const isHold = (t) => !!(t && t.key.startsWith('hold:'));
+const nowIso = () => new Date().toISOString();
+const DEFAULT_HOLDS = ['Meeting', 'Call', 'Break'];
 
 // ---------- state shared with the page ----------
 
@@ -29,7 +35,8 @@ function makeClient() {
 
 function snapshot() {
   const cur = state.current;
-  const next = today.open.find((t) => !cur || t.id !== cur.googleId) || null;
+  const held = state.held;
+  const next = today.open.find((t) => (!cur || t.id !== cur.googleId) && (!held || t.id !== held.googleId)) || null;
   return {
     settings: state.settings,
     connected: !!client,
@@ -39,8 +46,16 @@ function snapshot() {
     tracked: cur ? tracker.trackedSince(cur) : 0,
     today,
     categories: recentCategories(),
+    holdNames: recentHolds(),
+    held,
+    check,
     app: { version: app.getVersion(), update },
   };
+}
+
+function recentHolds() {
+  const used = [...state.holdNames].sort((a, b) => b.lastUsed.localeCompare(a.lastUsed)).map((h) => h.name);
+  return [...used, ...DEFAULT_HOLDS.filter((d) => !used.some((u) => u.toLowerCase() === d.toLowerCase()))];
 }
 
 function recentCategories() {
@@ -58,7 +73,75 @@ function savedBounds() {
 }
 
 function push() {
+  // The blur only makes sense while a real task runs.
+  if (check && (!state.current || isHold(state.current))) closeCheck();
   if (win && !win.isDestroyed()) win.webContents.send('state', snapshot());
+}
+
+// ---------- "Still on this?" and end of day: blur every screen ----------
+// Each monitor gets a window that blurs (Windows 11 acrylic) or dims what's
+// behind it. One Focus sits above them, sharp, until you answer.
+
+const canBlur = process.platform === 'win32' && Number(os.release().split('.')[2] || 0) >= 22621;
+
+function openCheck(kind) {
+  if (check) return;
+  check = kind;
+  for (const d of screen.getAllDisplays()) {
+    const o = new BrowserWindow({
+      ...d.bounds,
+      frame: false,
+      show: false,
+      transparent: true,
+      backgroundColor: '#00000000',
+      ...(canBlur ? { backgroundMaterial: 'acrylic' } : {}),
+      skipTaskbar: true,
+      focusable: false,
+      resizable: false,
+      movable: false,
+      minimizable: false,
+      maximizable: false,
+      fullscreenable: false,
+      hasShadow: false,
+      webPreferences: { contextIsolation: true, nodeIntegration: false },
+    });
+    o.setAlwaysOnTop(true, 'pop-up-menu');
+    o.loadFile(path.join(__dirname, 'overlay.html'), { query: { blur: canBlur ? '1' : '0' } });
+    o.once('ready-to-show', () => o.showInactive());
+    overlays.push(o);
+  }
+  win.setAlwaysOnTop(true, 'screen-saver');
+  win.show();
+  win.focus();
+  push();
+}
+
+function closeCheck() {
+  if (!check) return;
+  check = null;
+  for (const o of overlays) if (!o.isDestroyed()) o.destroy();
+  overlays = [];
+  win.setAlwaysOnTop(!!state.settings.alwaysOnTop);
+}
+
+function checkDue() {
+  const cur = state.current;
+  if (check || !cur || isHold(cur) || tracker.away || tracker.pauses.size) return;
+  const eod = state.settings.endOfDay;
+  if (eod) {
+    const [h, m] = eod.split(':').map(Number);
+    const at = new Date();
+    at.setHours(h, m, 0, 0);
+    const day = new Date().toDateString();
+    if (Date.now() >= at.getTime() && state.eodDate !== day) {
+      state.eodDate = day;
+      store.save(state);
+      return openCheck('eod');
+    }
+  }
+  const n = state.settings.checkMinutes;
+  const from = Math.max(Date.parse(cur.since), Date.parse(state.checkFrom || 0) || 0);
+  if (n && Date.now() - from >= n * 60e3) openCheck('still');
 }
 
 // ---------- Google sync ----------
@@ -109,7 +192,7 @@ async function doSync() {
     // Tasks never start on their own. If the running task was finished or
     // deleted (here or in Google Tasks), stop it and go idle.
     const cur = state.current;
-    if (cur && cur.googleId) {
+    if (cur && cur.googleId && !isHold(cur)) {
       const live = today.open.find((t) => t.id === cur.googleId);
       tracker.setCurrent(live ? { key: cur.key, title: live.title, googleId: live.id } : null);
     }
@@ -292,6 +375,58 @@ ipcMain.handle('current:start', async (_e, id) => {
   return { ok: true };
 });
 
+// Hold: pause the running task for a meeting, call, break… and come back.
+ipcMain.handle('hold:start', (_e, raw) => {
+  const name = String(raw || '').trim().slice(0, 40);
+  if (!name) return snapshot();
+  const hit = state.holdNames.find((h) => h.name.toLowerCase() === name.toLowerCase());
+  if (hit) hit.lastUsed = nowIso();
+  else state.holdNames.push({ name, lastUsed: nowIso() });
+  if (!isHold(state.current)) state.held = state.current;
+  tracker.setCurrent({ key: 'hold:' + (hit ? hit.name : name), title: hit ? hit.name : name, googleId: null });
+  store.save(state);
+  push();
+  return snapshot();
+});
+
+ipcMain.handle('hold:end', () => {
+  const held = state.held;
+  state.held = null;
+  let back = null;
+  if (held && held.googleId) {
+    const live = today.open.find((t) => t.id === held.googleId);
+    if (live) back = { key: held.key, title: live.title, googleId: live.id };
+  } else if (held) back = { key: held.key, title: held.title, googleId: null };
+  tracker.setCurrent(back);
+  if (back) state.current.since = held.since; // time on task continues from before the hold
+  state.checkFrom = nowIso();
+  store.save(state);
+  push();
+  return snapshot();
+});
+
+ipcMain.handle('check:answer', async (_e, answer) => {
+  if (answer === 'confirm') state.checkFrom = nowIso();
+  if (answer === 'tomorrow') tracker.setCurrent(null); // stays first in the queue
+  if (answer === 'done' && state.current && state.current.googleId) {
+    await client.patch(state.google.listId, state.current.googleId, { status: 'completed' }).catch(() => {});
+    await resync();
+  }
+  store.save(state);
+  closeCheck();
+  push();
+  return snapshot();
+});
+
+ipcMain.handle('session:edit', (_e, op, id, payload = {}) => {
+  let ok = false;
+  if (op === 'edit') ok = tracker.editSession(id, payload);
+  else if (op === 'split') ok = tracker.splitSession(id, payload.at, String(payload.name || '').trim().slice(0, 40));
+  else if (op === 'delete') ok = tracker.deleteSession(id);
+  push();
+  return { ok };
+});
+
 ipcMain.handle('current:stop', () => {
   tracker.setCurrent(null);
   push();
@@ -313,6 +448,13 @@ ipcMain.handle('task:action', async (_e, action, id, value) => {
       await client.insert(listId, { title }, last && last.id);
     } else if (action === 'delete') await client.remove(listId, id);
     else if (action === 'focus') await client.move(listId, id);
+    else if (action === 'move') await client.move(listId, id, value || undefined);
+    else if (action === 'addStart' && title) {
+      // Switch to something unplanned: add it to the top and start it now.
+      const t = await client.insert(listId, { title });
+      if (isHold(state.current)) state.held = null;
+      tracker.setCurrent({ key: 'g:' + t.id, title: t.title.trim(), googleId: t.id });
+    }
     await resync();
     return { ok: true };
   } catch (e) {
@@ -342,6 +484,9 @@ ipcMain.handle('settings:update', async (_e, patch) => {
   const prev = { ...state.settings };
   for (const k of allowed) if (k in patch) state.settings[k] = typeof patch[k] === 'string' ? patch[k].trim() : !!patch[k];
   if ('joltMinutes' in patch) state.settings.joltMinutes = [0, 30, 60, 90, 120].includes(+patch.joltMinutes) ? +patch.joltMinutes : 0;
+  if ('checkMinutes' in patch) state.settings.checkMinutes = [0, 60, 120, 180].includes(+patch.checkMinutes) ? +patch.checkMinutes : 120;
+  if ('awayMinutes' in patch) state.settings.awayMinutes = [5, 10, 20, 30].includes(+patch.awayMinutes) ? +patch.awayMinutes : 10;
+  if ('endOfDay' in patch) state.settings.endOfDay = /^\d{2}:\d{2}$/.test(patch.endOfDay) ? patch.endOfDay : '';
   if (state.settings.launchAtLogin !== prev.launchAtLogin) app.setLoginItemSettings({ openAtLogin: state.settings.launchAtLogin });
   if (!state.settings.listName) state.settings.listName = 'One Focus';
   if (state.settings.alwaysOnTop !== prev.alwaysOnTop) win.setAlwaysOnTop(state.settings.alwaysOnTop);
@@ -399,15 +544,17 @@ app.whenReady().then(() => {
 
   setInterval(sync, SYNC_MS);
 
-  // Heartbeat keeps crash recovery accurate. After 10 minutes with no
+  // Heartbeat keeps crash recovery accurate. After N minutes (Settings) with no
   // input you're "away": task time stops and idle time runs instead,
   // back-dated to when input stopped.
   setInterval(() => {
     const idle = powerMonitor.getSystemIdleTime();
-    if (idle >= IDLE_SECONDS && !tracker.away) tracker.setAway(true, new Date(Date.now() - idle * 1000).toISOString());
-    else if (idle < IDLE_SECONDS && tracker.away) tracker.setAway(false);
+    const awayAfter = (state.settings.awayMinutes || 10) * 60;
+    if (idle >= awayAfter && !tracker.away) tracker.setAway(true, new Date(Date.now() - idle * 1000).toISOString());
+    else if (idle < awayAfter && tracker.away) tracker.setAway(false);
     tracker.heartbeat();
-    if (tracker.away && update.status === 'ready') installUpdate();
+    if (tracker.away && update.status === 'ready' && !check) installUpdate();
+    checkDue();
     push();
   }, HEARTBEAT_MS);
 

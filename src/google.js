@@ -184,9 +184,9 @@ class Client {
     return this.api('DELETE', `/lists/${enc(listId)}/tasks/${enc(id)}`);
   }
 
-  // No `previous` = move to the top of the list.
-  move(listId, id) {
-    return this.api('POST', `/lists/${enc(listId)}/tasks/${enc(id)}/move`);
+  // Place after `previous`; without it, move to the top of the list.
+  move(listId, id, previous) {
+    return this.api('POST', `/lists/${enc(listId)}/tasks/${enc(id)}/move${previous ? '?previous=' + enc(previous) : ''}`);
   }
 }
 
