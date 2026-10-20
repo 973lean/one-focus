@@ -1,0 +1,54 @@
+name: Publish build
+
+# Every push to main that touches the app builds the Windows installer on
+# GitHub's Windows machines and replaces the `builds` branch with it.
+# Installed copies of One Focus check that branch and update themselves.
+on:
+  push:
+    branches: [main]
+    paths: ['src/**', 'build/**', 'scripts/**', 'package.json', 'package-lock.json', '.github/workflows/publish.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-build
+  cancel-in-progress: true
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+
+      # Version = major.minor from package.json + this run's number, so every
+      # build is newer than the last and installed apps pick it up.
+      - name: Set version
+        shell: bash
+        run: |
+          BASE=$(node -p "require('./package.json').version.split('.').slice(0,2).join('.')")
+          npm version --no-git-tag-version "$BASE.${{ github.run_number }}"
+
+      - run: npx electron-builder --win nsis --x64 --publish never
+
+      - name: Replace the builds branch
+        shell: bash
+        run: |
+          V=$(node -p "require('./package.json').version")
+          mkdir out
+          cp dist/latest.yml "dist/One-Focus-Setup-$V.exe" "dist/One-Focus-Setup-$V.exe.blockmap" out/
+          cd out
+          printf '# One Focus builds\n\nInstall once: download [One-Focus-Setup-%s.exe](One-Focus-Setup-%s.exe) and run it.\nAfter that One Focus updates itself from this branch.\n' "$V" "$V" > README.md
+          git init -q -b builds
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "One Focus $V"
+          git push -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" builds
