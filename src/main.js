@@ -16,6 +16,8 @@ let tracker;
 let client = null;
 let today = { open: [], done: [], syncedAt: null, error: null };
 let restoreBounds = null;
+let updater = null;
+let update = { status: 'idle', version: null }; // idle | checking | current | downloading | ready | error | dev
 
 // ---------- state shared with the page ----------
 
@@ -37,6 +39,7 @@ function snapshot() {
     tracked: cur ? tracker.trackedSince(cur) : 0,
     today,
     categories: recentCategories(),
+    app: { version: app.getVersion(), update },
   };
 }
 
@@ -223,6 +226,39 @@ ipcMain.on('window:action', (e, action) => {
 ipcMain.on('view:set', (_e, name) => setView(name));
 
 ipcMain.handle('state:get', () => snapshot());
+ipcMain.handle('update:install', () => installUpdate());
+
+// ---------- auto-update ----------
+// Installed builds check the `builds` branch on GitHub every 30 minutes,
+// download new versions in the background, and install them on restart,
+// or by themselves once you've been away for 10 minutes.
+
+function setUpdate(patch) {
+  update = { ...update, ...patch };
+  push();
+}
+
+function setupUpdates() {
+  if (!app.isPackaged) return setUpdate({ status: 'dev' });
+  const { autoUpdater } = require('electron-updater');
+  updater = autoUpdater;
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.on('checking-for-update', () => update.status !== 'ready' && setUpdate({ status: 'checking' }));
+  autoUpdater.on('update-not-available', () => setUpdate({ status: 'current' }));
+  autoUpdater.on('update-available', (i) => setUpdate({ status: 'downloading', version: i.version }));
+  autoUpdater.on('update-downloaded', (i) => setUpdate({ status: 'ready', version: i.version }));
+  autoUpdater.on('error', () => update.status !== 'ready' && setUpdate({ status: 'error' }));
+  const check = () => autoUpdater.checkForUpdates().catch(() => {});
+  check();
+  setInterval(check, 30 * 60e3);
+}
+
+function installUpdate() {
+  if (!updater || update.status !== 'ready') return;
+  tracker.pause('quit');
+  updater.quitAndInstall(true, true); // silent install, then reopen
+}
 
 ipcMain.handle('log:get', () => ({
   taskMeta: state.taskMeta,
@@ -359,6 +395,7 @@ app.whenReady().then(() => {
   makeClient();
   createWindow();
   sync();
+  setupUpdates();
 
   setInterval(sync, SYNC_MS);
 
@@ -370,6 +407,7 @@ app.whenReady().then(() => {
     if (idle >= IDLE_SECONDS && !tracker.away) tracker.setAway(true, new Date(Date.now() - idle * 1000).toISOString());
     else if (idle < IDLE_SECONDS && tracker.away) tracker.setAway(false);
     tracker.heartbeat();
+    if (tracker.away && update.status === 'ready') installUpdate();
     push();
   }, HEARTBEAT_MS);
 

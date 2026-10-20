@@ -54,6 +54,10 @@
 - [x] Jolt: time and task flash blue for 0.3s every Off / 30 / 60 / 90 / 120 minutes
 - [x] App icon, remembers window position and size, open at login (Settings)
 
+## v0.6 — auto-update
+- [x] Install once; every push to `main` is built on GitHub and installed apps update themselves
+- [x] Settings → App: version, update status, Restart to update
+
 ## Parked
 - [ ] Full-screen announcements: blur all monitors, one small clear modal on the primary monitor with a message to keep you on track. Minimal.
 

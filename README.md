@@ -40,7 +40,7 @@ npm test         # tests
 npm run dist     # build an executable for this OS into dist/
 ```
 
-Windows builds are a single portable `.exe` (no install). The latest one is on the `builds` branch.
+**Install on Windows:** download the setup file from the [`builds` branch](https://github.com/973lean/one-focus/tree/builds) and run it once. After that One Focus updates itself: every push to `main` builds a new version on GitHub (see `.github/workflows/publish.yml`), and the app downloads it in the background and installs it on restart, or by itself once you've been away for 10 minutes. Settings → App shows the version and a **Restart to update** button when one is ready.
 
 Data lives in `state.json` in the app's user-data folder (e.g. `%APPDATA%/One Focus` on Windows). The Google token is encrypted with the OS keychain.
 

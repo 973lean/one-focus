@@ -508,6 +508,8 @@ $('g-connect').addEventListener('click', async () => {
   $('g-msg').textContent = r.error || 'Connected.';
 });
 
+$('app-update').addEventListener('click', () => api.installUpdate());
+
 $('g-disconnect').addEventListener('click', async () => {
   S = await api.disconnect();
   $('g-msg').textContent = 'Disconnected.';
@@ -520,6 +522,17 @@ function renderSettings() {
   for (const [id, key] of Object.entries(fields)) if (document.activeElement !== $(id)) $(id).value = s[key] || '';
   for (const [id, key] of Object.entries(toggles)) $(id).checked = !!s[key];
   document.querySelectorAll('#s-jolt .tab').forEach((t) => t.setAttribute('aria-selected', String(+t.dataset.min === (s.joltMinutes || 0))));
+  const u = (S.app && S.app.update) || {};
+  const words = {
+    dev: 'running from source',
+    checking: 'checking for updates…',
+    current: 'up to date',
+    downloading: `downloading ${u.version || 'update'}…`,
+    ready: `${u.version} ready, installs on restart`,
+    error: 'couldn’t check for updates',
+  };
+  $('app-version').textContent = `Version ${S.app ? S.app.version : ''}${words[u.status] ? ' · ' + words[u.status] : ''}`;
+  $('app-update').hidden = u.status !== 'ready';
   $('g-setup').hidden = S.connected;
   $('g-connect').hidden = S.connected;
   $('g-disconnect').hidden = !S.connected;

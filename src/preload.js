@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld('oneFocus', {
   setMeta: (key, patch) => ipcRenderer.invoke('task:meta', key, patch),
   task: (action, id, value) => ipcRenderer.invoke('task:action', action, id, value),
   updateSettings: (patch) => ipcRenderer.invoke('settings:update', patch),
+  installUpdate: () => ipcRenderer.invoke('update:install'),
   connect: () => ipcRenderer.invoke('google:connect'),
   disconnect: () => ipcRenderer.invoke('google:disconnect'),
   setView: (name) => ipcRenderer.send('view:set', name),

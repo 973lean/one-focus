@@ -1,6 +1,6 @@
 {
   "name": "one-focus",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "A small, quiet window that keeps you on one thing at a time.",
   "main": "src/main.js",
   "private": true,
@@ -30,7 +30,7 @@
     "win": {
       "target": [
         {
-          "target": "portable",
+          "target": "nsis",
           "arch": [
             "x64"
           ]
@@ -50,6 +50,21 @@
       ],
       "category": "Utility"
     },
-    "afterPack": "scripts/after-pack.js"
+    "afterPack": "scripts/after-pack.js",
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "artifactName": "One-Focus-Setup-${version}.${ext}",
+      "shortcutName": "One Focus"
+    },
+    "publish": [
+      {
+        "provider": "generic",
+        "url": "https://raw.githubusercontent.com/973lean/one-focus/builds"
+      }
+    ]
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.9"
   }
 }
