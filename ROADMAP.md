@@ -68,6 +68,11 @@
 - [x] **Drag to reorder** tasks in Today (saved to Google)
 - Blur uses Windows 11 acrylic; Windows 10 falls back to a dark tint without blur
 
+## v0.8 — Today means today
+- [x] Today shows only tasks scheduled for today (Google date) or overdue; only these queue on Now
+- [x] All tab shows the whole list; **Today** schedules a task, **Later** unschedules it
+- [x] Adding from Today schedules for today; from All it has no date
+
 ## Parked
 - [x] ~~Full-screen announcements~~ → became the v0.7 blur for "Still on this?" and end of day
 

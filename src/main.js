@@ -22,6 +22,10 @@ let check = null; // null | 'still' | 'eod': the blur is up and waiting for you
 let overlays = [];
 
 const isHold = (t) => !!(t && t.key.startsWith('hold:'));
+const localDate = (d = new Date()) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const isScheduled = (t) => !!(t.due && t.due <= localDate()); // today or overdue
+const todayDue = () => localDate() + 'T00:00:00.000Z';
 const nowIso = () => new Date().toISOString();
 const DEFAULT_HOLDS = ['Meeting', 'Call', 'Break'];
 
@@ -36,7 +40,8 @@ function makeClient() {
 function snapshot() {
   const cur = state.current;
   const held = state.held;
-  const next = today.open.find((t) => (!cur || t.id !== cur.googleId) && (!held || t.id !== held.googleId)) || null;
+  // Only tasks scheduled for today (or overdue) queue up on Now.
+  const next = today.open.find((t) => isScheduled(t) && (!cur || t.id !== cur.googleId) && (!held || t.id !== held.googleId)) || null;
   return {
     settings: state.settings,
     connected: !!client,
@@ -45,6 +50,7 @@ function snapshot() {
     open: state.open,
     tracked: cur ? tracker.trackedSince(cur) : 0,
     today,
+    todayDate: localDate(),
     categories: recentCategories(),
     holdNames: recentHolds(),
     held,
@@ -151,7 +157,8 @@ const startOfDay = () => {
   d.setHours(0, 0, 0, 0);
   return d;
 };
-const pick = (t) => ({ id: t.id, title: t.title.trim(), completed: t.completed || null });
+// Google stores a task's date as midnight UTC of that day: keep "YYYY-MM-DD".
+const pick = (t) => ({ id: t.id, title: t.title.trim(), completed: t.completed || null, due: t.due ? t.due.slice(0, 10) : null });
 const byPosition = (a, b) => (a.position < b.position ? -1 : a.position > b.position ? 1 : 0);
 
 let syncing = null;
@@ -444,14 +451,18 @@ ipcMain.handle('task:action', async (_e, action, id, value) => {
       tracker.removeCompletion('g:' + id);
     } else if (action === 'rename' && title) await client.patch(listId, id, { title });
     else if (action === 'add' && title) {
+      // Added from the Today tab: scheduled for today. From All: no date.
       const last = today.open[today.open.length - 1];
-      await client.insert(listId, { title }, last && last.id);
+      await client.insert(listId, { title, ...(id === 'today' ? { due: todayDue() } : {}) }, last && last.id);
+    } else if (action === 'schedule') await client.patch(listId, id, { due: todayDue() });
+    else if (action === 'unschedule') {
+      await client.patch(listId, id, { due: null });
     } else if (action === 'delete') await client.remove(listId, id);
     else if (action === 'focus') await client.move(listId, id);
     else if (action === 'move') await client.move(listId, id, value || undefined);
     else if (action === 'addStart' && title) {
       // Switch to something unplanned: add it to the top and start it now.
-      const t = await client.insert(listId, { title });
+      const t = await client.insert(listId, { title, due: todayDue() });
       if (isHold(state.current)) state.held = null;
       tracker.setCurrent({ key: 'g:' + t.id, title: t.title.trim(), googleId: t.id });
     }

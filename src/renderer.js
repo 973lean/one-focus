@@ -124,7 +124,14 @@ function renderNow() {
   if (hold) taskEl.textContent = 'Hold: ' + cur.title;
   else if (cur) taskEl.textContent = cur.title;
   else if (next) taskEl.textContent = next.title;
-  else taskEl.textContent = S.connected ? (S.today.error ? 'Can’t reach Google Tasks' : 'Your list is empty') : 'What are you doing?';
+  else
+    taskEl.textContent = !S.connected
+      ? 'What are you doing?'
+      : S.today.error
+      ? 'Can’t reach Google Tasks'
+      : S.today.open.length
+      ? 'Nothing scheduled today'
+      : 'Your list is empty';
   taskEl.title = S.connected ? 'Open today’s list' : 'Click to type what you’re doing';
   if (holdpick) return renderMeta();
   if (S.check === 'still') confirmEl.hidden = false;
@@ -526,7 +533,11 @@ function toggleEditor(row, s) {
 
 let renaming = false;
 
-function taskRow(t, { current, next, done }) {
+// Today = scheduled for today or overdue (Google's task date).
+const scheduled = (t) => !!(t.due && S && t.due <= S.todayDate);
+let todayTab = 'today';
+
+function taskRow(t, { current, next, done, allView }) {
   const li = el('li', 'row' + (current ? ' is-current' : '') + (done ? ' is-done' : ''));
   const check = el('button', 'check');
   check.setAttribute('aria-label', done ? 'Mark not done' : 'Mark done');
@@ -535,6 +546,8 @@ function taskRow(t, { current, next, done }) {
   li.append(check, title);
   if (current) li.append(el('span', 'tag', 'NOW'));
   else if (next) li.append(el('span', 'tag', 'NEXT'));
+  else if (!done && t.due && t.due < S.todayDate) li.append(el('span', 'tag', 'OVERDUE'));
+  else if (allView && scheduled(t)) li.append(el('span', 'tag', 'TODAY'));
 
   const run = async (action, value) => {
     li.classList.add('is-busy');
@@ -546,6 +559,18 @@ function taskRow(t, { current, next, done }) {
 
   if (!done) {
     const acts = el('div', 'acts');
+    if (allView && !scheduled(t)) {
+      const add = el('button', 'act', 'Today');
+      add.title = 'Schedule for today';
+      add.addEventListener('click', () => run('schedule'));
+      acts.append(add);
+    }
+    if (!allView && !current) {
+      const later = el('button', 'act', 'Later');
+      later.title = 'Take off today (stays in All)';
+      later.addEventListener('click', () => run('unschedule'));
+      acts.append(later);
+    }
     if (!current) {
       const start = el('button', 'act', 'Start');
       start.title = 'Start this task now';
@@ -597,22 +622,34 @@ function renderToday() {
   $('today-off').hidden = S.connected;
   $('today-on').hidden = !S.connected;
   if (!S.connected) return;
-  const { open, done, syncedAt, error } = S.today;
+  const { done, syncedAt, error } = S.today;
+  const allView = todayTab === 'all';
+  const open = allView ? S.today.open : S.today.open.filter(scheduled);
+  document.querySelectorAll('#today-tabs .tab').forEach((t) => t.setAttribute('aria-selected', String(t.dataset.list === todayTab)));
 
   const openEl = $('today-open');
   const runningId = S.current && S.current.googleId;
   const nextId = S.next && S.next.id;
-  openEl.replaceChildren(...open.map((t) => taskRow(t, { current: t.id === runningId, next: t.id === nextId })));
-  if (!open.length) openEl.append(el('li', 'empty', 'Nothing left. Add a task below.'));
+  openEl.replaceChildren(...open.map((t) => taskRow(t, { current: t.id === runningId, next: t.id === nextId, allView })));
+  if (!open.length)
+    openEl.append(el('li', 'empty', allView ? 'Your list is empty. Add a task below.' : 'Nothing scheduled today. Add one below, or pick from All.'));
   enableDrag(openEl, open);
-  $('today-open-title').textContent = `Up next · ${open.length}`;
+  $('today-open-title').textContent = allView ? `All tasks · ${open.length}` : `Up next · ${open.length}`;
+  $('today-add').placeholder = allView ? 'Add to the list (not today) · Shift+Enter to start now' : 'Add a task for today · Shift+Enter to start now';
 
   const doneEl2 = $('today-done');
   doneEl2.replaceChildren(...done.map((t) => taskRow(t, { done: true })));
-  $('today-done-title').hidden = !done.length;
+  $('today-done-title').hidden = doneEl2.hidden = allView || !done.length;
 
   $('today-status').textContent = error || (syncedAt ? `List “${S.settings.listName}” · synced ${hm(syncedAt)}` : 'Syncing…');
 }
+
+document.querySelectorAll('#today-tabs .tab').forEach((t) =>
+  t.addEventListener('click', () => {
+    todayTab = t.dataset.list;
+    renderToday();
+  })
+);
 
 // Drag a row to reorder; the new order is saved to Google.
 function enableDrag(listEl, open) {
@@ -662,7 +699,7 @@ $('today-add').addEventListener('keydown', async (e) => {
   const v = input.value.trim();
   if (!v) return;
   input.disabled = true;
-  const r = await api.task(e.shiftKey ? 'addStart' : 'add', null, v);
+  const r = await api.task(e.shiftKey ? 'addStart' : 'add', todayTab === 'today' ? 'today' : null, v);
   input.disabled = false;
   if (r && r.error) $('today-status').textContent = r.error;
   else input.value = '';

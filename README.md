@@ -8,7 +8,7 @@ A small, quiet window for a secondary monitor that keeps you on one thing at a t
 - **Google Tasks:** One Focus uses one list (default name "One Focus", created for you). The first unfinished task is next up. Finish it and the next one waits for you to start it.
 - **Menu** (top left, on hover):
   - **Log:** time tracked, idle time, tasks done and sessions for Today / Week / Month / All, and every session grouped by day with each day's task and idle totals.
-  - **Today:** your list, plus tasks done today. Add, rename (click the title), complete, reopen, delete, or **Start** any task. Changes go straight back to Google Tasks.
+  - **Today:** tasks scheduled for today (Google Tasks date = today, plus overdue) and tasks done today. Only these queue up on Now. Switch to **All** to see the whole list and click **Today** on any task to schedule it. **Later** takes a task off today. Add, rename (click the title), complete, reopen, delete, or **Start** any task. Changes go straight back to Google Tasks.
   - **Settings:** Google connection, show start time, show time on task, always on top.
 - **Time log:** time counts either toward the running task or as idle. After 10 minutes with no input, task time stops and that time (from your last input) counts as idle; it switches back when you return. Nothing counts while the screen is locked, the computer sleeps, or the app is closed.
 
