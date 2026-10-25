@@ -13,6 +13,7 @@ A small, quiet window for a secondary monitor that keeps you on one thing at a t
 - **Time log:** time counts either toward the running task or as idle. After 10 minutes with no input, task time stops and that time (from your last input) counts as idle; it switches back when you return. Nothing counts while the screen is locked, the computer sleeps, or the app is closed.
 
 - **After Done:** pick a category (3 recent, or search; Enter creates a new one) and rate focus and vibe 1–5. Both optional and can be turned off. The Log shows time per category with the average rating.
+- **Goal time:** hover, click the clock button, and a bar of the rest of your day appears. Hover it to see the time and how far away it is ("2:30 PM · in 4h 25m"); click to set it. The time line then shows "2h 10m left" (or "15m over"), and the time and task jolt once when you hit it. Works on the running task or the one queued next. Click the clock again to change or clear it.
 - **Hold:** pulled into a meeting or call? Hover, click **Hold**, pick Meeting / Call / Break (or search). The task pauses without being finished; **Back to: <task>** resumes it. Hold time is logged separately.
 - **Still on this?** After a task runs 2 hours (change or turn off in Settings), every screen softly blurs and only One Focus stays sharp until you click **Confirm**.
 - **End of day:** set a time in Settings; if a task is still running then, the same blur asks **Done** or **Tomorrow**.

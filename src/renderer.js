@@ -65,6 +65,7 @@ const metaEl = $('meta');
 const startEl = $('start');
 const doneEl = $('done');
 const holdEl = $('hold');
+const goalEl = $('goal');
 const backEl = $('back');
 const confirmEl = $('confirm');
 const eodDoneEl = $('eod-done');
@@ -82,6 +83,7 @@ function tick() {
   $('date').textContent = dateFmt.format(now);
   renderMeta();
   maybeJolt();
+  maybeGoalJolt();
 }
 
 const live = () => (S.open ? Date.now() - Date.parse(S.open.start) : 0);
@@ -97,13 +99,20 @@ function renderMeta() {
   if (isHold(S.current)) return (metaEl.textContent = dur(S.open && S.open.key === S.current.key ? live() : 0));
   const cur = S.current;
   if (!cur) {
-    metaEl.textContent = S.open && S.open.key === 'idle' ? 'Idle ' + dur(live()) : '';
+    const g = S.next && goalOf('g:' + S.next.id);
+    metaEl.textContent = [S.open && S.open.key === 'idle' ? 'Idle ' + dur(live()) : '', g ? 'by ' + hm(g) : ''].filter(Boolean).join(' · ');
     return;
   }
   const parts = [];
   if (S.settings.showSince) parts.push(hm(cur.since));
   if (S.settings.showElapsed) parts.push(dur(S.tracked + (S.open && S.open.key === cur.key ? live() : 0)));
+  const g = goalOf(cur.key);
+  if (g) {
+    const left = Date.parse(g) - Date.now();
+    parts.push(left >= 0 ? dur(left) + ' left' : dur(-left) + ' over');
+  }
   metaEl.textContent = parts.join(' · ');
+  metaEl.title = g ? 'Goal: ' + hm(g) : '';
 }
 
 function renderNow() {
@@ -111,7 +120,7 @@ function renderNow() {
   const cur = S.current;
   const next = S.connected ? S.next : null;
   const hold = isHold(cur);
-  for (const p of [startEl, doneEl, holdEl, backEl, confirmEl, eodDoneEl, eodTomorrowEl]) p.hidden = true;
+  for (const p of [startEl, doneEl, holdEl, goalEl, backEl, confirmEl, eodDoneEl, eodTomorrowEl]) p.hidden = true;
   taskEl.classList.toggle('is-finished', !!wrap);
   taskEl.classList.toggle('is-hold', hold);
   if (wrap) {
@@ -133,7 +142,7 @@ function renderNow() {
       ? 'Nothing scheduled today'
       : 'Your list is empty';
   taskEl.title = S.connected ? 'Open today’s list' : 'Click to type what you’re doing';
-  if (holdpick) return renderMeta();
+  if (holdpick || picking) return renderMeta();
   if (S.check === 'still') confirmEl.hidden = false;
   else if (S.check === 'eod') {
     eodDoneEl.hidden = !(cur && cur.googleId);
@@ -147,6 +156,8 @@ function renderNow() {
     startEl.hidden = !(!cur && next);
     doneEl.hidden = !(cur && cur.googleId);
     holdEl.hidden = !(cur || next);
+    goalEl.hidden = !(cur || next);
+    goalEl.classList.toggle('is-on', !!goalOf(goalKey()));
   }
   renderMeta();
 }
@@ -154,7 +165,7 @@ function renderNow() {
 function startEditing() {
   editing = true;
   inputEl.value = S && S.current ? S.current.title : '';
-  taskEl.hidden = metaEl.hidden = startEl.hidden = doneEl.hidden = holdEl.hidden = true;
+  taskEl.hidden = metaEl.hidden = startEl.hidden = doneEl.hidden = holdEl.hidden = goalEl.hidden = true;
   inputEl.hidden = false;
   inputEl.focus();
   inputEl.select();
@@ -341,6 +352,101 @@ starEls.forEach((b, i) => {
 });
 document.addEventListener('keydown', (e) => e.key === 'Escape' && wrap && view === 'now' && closeWrap());
 
+// ---------- Goal: finish this task by a time, picked on a day timeline ----------
+
+const goalOf = (key) => (S && S.goals && key && S.goals[key]) || null;
+// The running task, or the queued one if nothing runs.
+const goalKey = () => (S.current && !isHold(S.current) ? S.current.key : S.next ? 'g:' + S.next.id : null);
+
+const tlEl = $('timeline');
+const tlBar = $('tl-bar');
+const tlTip = $('tl-tip');
+const tlHover = $('tl-hover');
+const tlGoal = $('tl-goal');
+const STEP = 15 * 60e3;
+let picking = false;
+let range = null; // { from, to } in ms
+
+// From now (rounded down to 15 min) to midnight, or at least 4 hours.
+function tlRange() {
+  const from = Math.floor(Date.now() / STEP) * STEP;
+  const midnight = new Date();
+  midnight.setHours(24, 0, 0, 0);
+  return { from, to: Math.max(midnight.getTime(), from + 4 * 3600e3) };
+}
+const tlTimeAt = (x) => {
+  const w = tlBar.clientWidth;
+  const t = range.from + (Math.min(Math.max(x, 0), w) / w) * (range.to - range.from);
+  return Math.max(Math.round(t / STEP) * STEP, range.from + STEP);
+};
+const tlX = (t) => ((t - range.from) / (range.to - range.from)) * tlBar.clientWidth;
+
+function openTimeline() {
+  if (!goalKey()) return;
+  picking = true;
+  range = tlRange();
+  tlEl.hidden = false;
+  // Faint tick at each hour.
+  const ticks = $('tl-ticks');
+  ticks.replaceChildren();
+  const h = new Date(range.from);
+  h.setMinutes(60, 0, 0);
+  for (let t = h.getTime(); t < range.to; t += 3600e3) {
+    const s = el('span');
+    s.style.left = tlX(t) + 'px';
+    ticks.append(s);
+  }
+  $('tl-end').textContent = hm(range.to);
+  const g = goalOf(goalKey());
+  tlGoal.hidden = !g || Date.parse(g) < range.from || Date.parse(g) > range.to;
+  if (g) tlGoal.style.left = tlX(Date.parse(g)) + 'px';
+  $('tl-clear').hidden = !g;
+  renderNow();
+}
+function closeTimeline() {
+  picking = false;
+  tlEl.hidden = true;
+  tlTip.hidden = tlHover.hidden = true;
+  renderNow();
+}
+
+tlBar.addEventListener('mousemove', (e) => {
+  const t = tlTimeAt(e.clientX - tlBar.getBoundingClientRect().left);
+  const x = tlX(t);
+  tlHover.hidden = tlTip.hidden = false;
+  tlHover.style.left = x + 'px';
+  tlTip.style.left = x + 'px';
+  tlTip.textContent = `${hm(t)} · in ${dur(t - Date.now())}`;
+});
+tlBar.addEventListener('mouseleave', () => (tlHover.hidden = tlTip.hidden = true));
+tlBar.addEventListener('click', async (e) => {
+  const t = tlTimeAt(e.clientX - tlBar.getBoundingClientRect().left);
+  const key = goalKey();
+  closeTimeline();
+  if (key) S = await api.setMeta(key, { goal: new Date(t).toISOString() });
+  render();
+});
+$('tl-clear').addEventListener('click', async () => {
+  const key = goalKey();
+  closeTimeline();
+  if (key) S = await api.setMeta(key, { goal: null });
+  render();
+});
+goalEl.addEventListener('click', () => (picking ? closeTimeline() : openTimeline()));
+document.addEventListener('keydown', (e) => e.key === 'Escape' && picking && closeTimeline());
+document.addEventListener('mousedown', (e) => picking && !tlEl.contains(e.target) && e.target !== goalEl && !goalEl.contains(e.target) && closeTimeline());
+
+// One jolt when the running task reaches its goal time.
+let goalJolted = null;
+function maybeGoalJolt() {
+  const g = S && S.current && goalOf(S.current.key);
+  if (!g || Date.now() < Date.parse(g)) return;
+  const id = S.current.key + g;
+  if (goalJolted === id) return;
+  goalJolted = id;
+  if (Date.now() - Date.parse(g) < 60e3) jolt();
+}
+
 // ---------- Jolt ----------
 
 let lastJolt = Date.now();
@@ -350,6 +456,9 @@ function maybeJolt() {
   if (min !== joltEvery) (joltEvery = min), (lastJolt = Date.now());
   if (!min || Date.now() - lastJolt < min * 60000) return;
   lastJolt = Date.now();
+  jolt();
+}
+function jolt() {
   for (const e of [clockEl, taskEl]) e.classList.add('jolt');
   setTimeout(() => {
     for (const e of [clockEl, taskEl]) e.classList.remove('jolt');

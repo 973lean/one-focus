@@ -51,12 +51,19 @@ function snapshot() {
     tracked: cur ? tracker.trackedSince(cur) : 0,
     today,
     todayDate: localDate(),
+    goals: goalsFor([cur, held, next && { key: 'g:' + next.id }]),
     categories: recentCategories(),
     holdNames: recentHolds(),
     held,
     check,
     app: { version: app.getVersion(), update },
   };
+}
+
+function goalsFor(tasks) {
+  const out = {};
+  for (const t of tasks) if (t && state.taskMeta[t.key] && state.taskMeta[t.key].goal) out[t.key] = state.taskMeta[t.key].goal;
+  return out;
 }
 
 function recentHolds() {
@@ -485,6 +492,11 @@ ipcMain.handle('task:meta', (_e, key, patch) => {
     meta.category = hit ? hit.name : name;
   }
   if (Number.isInteger(patch.rating) && patch.rating >= 1 && patch.rating <= 5) meta.rating = patch.rating;
+  // Goal: the time you want this task finished by (ISO), or null to clear.
+  if ('goal' in patch) {
+    if (patch.goal && !Number.isNaN(Date.parse(patch.goal))) meta.goal = new Date(patch.goal).toISOString();
+    else delete meta.goal;
+  }
   store.save(state);
   push();
   return snapshot();

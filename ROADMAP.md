@@ -73,6 +73,10 @@
 - [x] All tab shows the whole list; **Today** schedules a task, **Later** unschedules it
 - [x] Adding from Today schedules for today; from All it has no date
 
+## v0.9 — goal time
+- [x] Set a goal time for the running or next task by hovering/clicking a timeline of the rest of the day
+- [x] "2h 10m left" / "15m over" on Now; one jolt at the goal
+
 ## Parked
 - [x] ~~Full-screen announcements~~ → became the v0.7 blur for "Still on this?" and end of day
 

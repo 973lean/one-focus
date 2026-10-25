@@ -98,6 +98,13 @@ Panels are for the occasional look, not the resting state, so they can be denser
 - Below: up to 3 category chips (most recent, or search matches) and a 9ch search field, then five 13px stars. All 12px, hairline, no labels.
 - Both are optional. The row closes on its own once everything asked is answered, after 20s without input, or on Esc.
 
+## Goal timeline
+
+- A third round icon (clock) sits left of Hold and Done; it reads brighter when a goal is set.
+- Clicking it swaps the buttons for one 6px bar in tertiary ink, `min(78cqw, 340px)` wide: the rest of the day, from now to midnight (at least 4 hours). Faint hour ticks under it, "now" and the end time at the ends in 11px.
+- Hover: a 2px marker and a tooltip above it, "2:30 PM · in 4h 25m". Times snap to 15 minutes. Click sets the goal. Esc or clicking elsewhere closes it.
+- With a goal, the time line adds "2h 10m left" or "15m over". One jolt when the goal is reached.
+
 ## Hold
 
 - Hover pill **Hold** (next to Start / Done) opens the same 3 chips + search as categories, defaulting to Meeting, Call, Break.

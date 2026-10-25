@@ -32,6 +32,7 @@
         <span id="meta" class="task__meta"></span>
         <span class="task__acts">
           <button id="start" class="pill" hidden>Start</button>
+          <button id="goal" class="pill pill--icon" hidden aria-label="Set a goal time" title="Set a goal time"><svg viewBox="0 0 12 12"><circle cx="6" cy="6" r="4.25"/><path d="M6 3.75V6l1.5 1"/></svg></button>
           <button id="hold" class="pill pill--icon" hidden aria-label="Hold" title="Hold"><svg viewBox="0 0 12 12"><path d="M4.25 3v6M7.75 3v6"/></svg></button>
           <button id="done" class="pill pill--icon" hidden aria-label="Done" title="Done"><svg viewBox="0 0 12 12"><path d="M2.75 6.25l2.25 2.25 4.25-4.75"/></svg></button>
           <button id="back" class="pill" hidden>Back</button>
@@ -39,6 +40,15 @@
           <button id="eod-done" class="pill is-loud" hidden>Done</button>
           <button id="eod-tomorrow" class="pill is-loud" hidden>Tomorrow</button>
         </span>
+        <div class="timeline" id="timeline" hidden>
+          <div class="timeline__tip" id="tl-tip" hidden></div>
+          <div class="timeline__bar" id="tl-bar">
+            <div class="timeline__ticks" id="tl-ticks"></div>
+            <div class="timeline__mark" id="tl-goal" hidden></div>
+            <div class="timeline__mark is-hover" id="tl-hover" hidden></div>
+          </div>
+          <div class="timeline__ends"><span>now</span><button class="act" id="tl-clear" hidden>Clear goal</button><span id="tl-end"></span></div>
+        </div>
         <div class="wrap" id="holdpick" hidden>
           <div class="wrap__cats">
             <div class="chips" id="hold-chips"></div>
