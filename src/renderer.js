@@ -62,6 +62,8 @@ const clockEl = $('clock');
 const taskEl = $('task');
 const inputEl = $('task-input');
 const metaEl = $('meta');
+const metaText = $('meta-text');
+const ringEl = $('ring');
 const startEl = $('start');
 const doneEl = $('done');
 const holdEl = $('hold');
@@ -91,28 +93,39 @@ const live = () => (S.open ? Date.now() - Date.parse(S.open.start) : 0);
 // Running: start time · time on task. Idle: how long nothing has run.
 function renderMeta() {
   if (!S) return;
-  if (wrap) return (metaEl.textContent = 'Done · ' + dur(wrap.ms));
+  ringEl.hidden = true;
+  $('ring-pct').textContent = '';
+  metaEl.title = '';
+  if (wrap) return (metaText.textContent = 'Done · ' + dur(wrap.ms));
   if (S.check && S.current) {
     const on = dur(Date.now() - Date.parse(S.current.since));
-    return (metaEl.textContent = S.check === 'eod' ? 'End of day · wrap up? ' + on : 'Still on this? ' + on);
+    return (metaText.textContent = S.check === 'eod' ? 'End of day · wrap up? ' + on : 'Still on this? ' + on);
   }
-  if (isHold(S.current)) return (metaEl.textContent = dur(S.open && S.open.key === S.current.key ? live() : 0));
+  if (isHold(S.current)) return (metaText.textContent = dur(S.open && S.open.key === S.current.key ? live() : 0));
   const cur = S.current;
   if (!cur) {
     const g = S.next && goalOf('g:' + S.next.id);
-    metaEl.textContent = [S.open && S.open.key === 'idle' ? 'Idle ' + dur(live()) : '', g ? 'by ' + hm(g) : ''].filter(Boolean).join(' · ');
+    metaText.textContent = [S.open && S.open.key === 'idle' ? 'Idle ' + dur(live()) : '', g ? 'by ' + hm(g) : ''].filter(Boolean).join(' · ');
     return;
   }
   const parts = [];
   if (S.settings.showSince) parts.push(hm(cur.since));
   if (S.settings.showElapsed) parts.push(dur(S.tracked + (S.open && S.open.key === cur.key ? live() : 0)));
   const g = goalOf(cur.key);
-  if (g) {
-    const left = Date.parse(g) - Date.now();
-    parts.push(left >= 0 ? dur(left) + ' left' : dur(-left) + ' over');
+  const mode = S.settings.goalDisplay || 'ring';
+  const left = g ? Date.parse(g) - Date.now() : 0;
+  if (g && mode === 'text') parts.push(left >= 0 ? dur(left) + ' left' : dur(-left) + ' over');
+  metaText.textContent = parts.join(' · ');
+  if (g) metaEl.title = `Goal ${hm(g)} · ${left >= 0 ? dur(left) + ' left' : dur(-left) + ' over'}`;
+  if (g && mode !== 'text') {
+    // Share of the time from starting the task to its goal that has passed.
+    const span = Date.parse(g) - Date.parse(cur.since);
+    const pct = span > 0 ? Math.round(((Date.now() - Date.parse(cur.since)) / span) * 100) : 100;
+    $('ring-fill').style.strokeDasharray = `${Math.min(Math.max(pct, 0), 100)} 100`;
+    ringEl.classList.toggle('is-over', pct >= 100);
+    $('ring-pct').textContent = mode === 'ringPct' ? `(${pct}%)` : '';
+    ringEl.hidden = false;
   }
-  metaEl.textContent = parts.join(' · ');
-  metaEl.title = g ? 'Goal: ' + hm(g) : '';
 }
 
 function renderNow() {
@@ -832,6 +845,9 @@ for (const [sel, key] of [['#s-check', 'checkMinutes'], ['#s-away', 'awayMinutes
   );
 $('s-eod').addEventListener('change', async (e) => (S = await api.updateSettings({ endOfDay: e.target.value })) && render());
 $('s-eod-off').addEventListener('click', async () => (S = await api.updateSettings({ endOfDay: '' })) && render());
+document.querySelectorAll('#s-goal-display .tab').forEach((t) =>
+  t.addEventListener('click', async () => (S = await api.updateSettings({ goalDisplay: t.dataset.v })) && render())
+);
 document.querySelectorAll('#s-jolt .tab').forEach((t) =>
   t.addEventListener('click', async () => (S = await api.updateSettings({ joltMinutes: +t.dataset.min })) && render())
 );
@@ -854,6 +870,7 @@ $('g-connect').addEventListener('click', async () => {
 });
 
 $('app-update').addEventListener('click', () => api.installUpdate());
+$('app-check').addEventListener('click', () => api.checkUpdate());
 
 $('g-disconnect').addEventListener('click', async () => {
   S = await api.disconnect();
@@ -867,6 +884,7 @@ function renderSettings() {
   for (const [id, key] of Object.entries(fields)) if (document.activeElement !== $(id)) $(id).value = s[key] || '';
   for (const [id, key] of Object.entries(toggles)) $(id).checked = !!s[key];
   document.querySelectorAll('#s-jolt .tab').forEach((t) => t.setAttribute('aria-selected', String(+t.dataset.min === (s.joltMinutes || 0))));
+  document.querySelectorAll('#s-goal-display .tab').forEach((t) => t.setAttribute('aria-selected', String(t.dataset.v === (s.goalDisplay || 'ring'))));
   document.querySelectorAll('#s-check .tab').forEach((t) => t.setAttribute('aria-selected', String(+t.dataset.min === (s.checkMinutes ?? 120))));
   document.querySelectorAll('#s-away .tab').forEach((t) => t.setAttribute('aria-selected', String(+t.dataset.min === (s.awayMinutes || 10))));
   if (document.activeElement !== $('s-eod')) $('s-eod').value = s.endOfDay || '';
@@ -882,6 +900,8 @@ function renderSettings() {
   };
   $('app-version').textContent = `Version ${S.app ? S.app.version : ''}${words[u.status] ? ' · ' + words[u.status] : ''}`;
   $('app-update').hidden = u.status !== 'ready';
+  $('app-check').hidden = u.status === 'dev' || u.status === 'ready';
+  $('app-check').classList.toggle('is-spinning', u.status === 'checking' || u.status === 'downloading');
   $('g-setup').hidden = S.connected;
   $('g-connect').hidden = S.connected;
   $('g-disconnect').hidden = !S.connected;

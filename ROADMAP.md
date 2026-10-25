@@ -77,6 +77,10 @@
 - [x] Set a goal time for the running or next task by hovering/clicking a timeline of the rest of the day
 - [x] "2h 10m left" / "15m over" on Now; one jolt at the goal
 
+## v0.10 — cleaner goal progress, check for updates
+- [x] Goal progress as a ring after the time on task (default), ring + %, or time left (Settings)
+- [x] Refresh button in Settings → App to check for updates now
+
 ## Parked
 - [x] ~~Full-screen announcements~~ → became the v0.7 blur for "Still on this?" and end of day
 

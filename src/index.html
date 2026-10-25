@@ -29,7 +29,7 @@
       <div class="task">
         <span id="task" class="task__text is-empty" tabindex="0">What are you doing?</span>
         <input id="task-input" class="task__input" type="text" placeholder="What are you doing?" maxlength="200" hidden />
-        <span id="meta" class="task__meta"></span>
+        <span id="meta" class="task__meta"><span id="meta-text"></span><span class="ring" id="ring" hidden><svg viewBox="0 0 16 16"><circle class="ring__track" cx="8" cy="8" r="6" /><circle class="ring__fill" id="ring-fill" cx="8" cy="8" r="6" pathLength="100" /></svg><span class="ring__pct" id="ring-pct"></span></span></span>
         <span class="task__acts">
           <button id="start" class="pill" hidden>Start</button>
           <button id="goal" class="pill pill--icon" hidden aria-label="Set a goal time" title="Set a goal time"><svg viewBox="0 0 12 12"><circle cx="6" cy="6" r="4.25"/><path d="M6 3.75V6l1.5 1"/></svg></button>
@@ -120,6 +120,12 @@
       <h2 class="eyebrow">Display</h2>
       <label class="toggle"><input type="checkbox" id="s-since" /><span>Show when the task started</span></label>
       <label class="toggle"><input type="checkbox" id="s-elapsed" /><span>Show time on task</span></label>
+      <div class="field"><span>Goal progress</span></div>
+      <div class="tabs" id="s-goal-display">
+        <button class="tab" data-v="ring">Ring</button>
+        <button class="tab" data-v="ringPct">Ring + %</button>
+        <button class="tab" data-v="text">Time left</button>
+      </div>
 
       <h2 class="eyebrow">After Done</h2>
       <label class="toggle"><input type="checkbox" id="s-ask-cat" /><span>Pick a category</span></label>
@@ -167,6 +173,7 @@
       <h2 class="eyebrow">App</h2>
       <div class="actions">
         <span class="status" id="app-version"></span>
+        <button class="icon-btn" id="app-check" aria-label="Check for updates" title="Check for updates"><svg viewBox="0 0 12 12"><path d="M10 6a4 4 0 1 1-1.2-2.85"/><path d="M9.2 1.6v2.1H7.1"/></svg></button>
         <button class="btn btn--quiet" id="app-update" hidden>Restart to update</button>
       </div>
     </section>

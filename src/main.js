@@ -324,6 +324,7 @@ ipcMain.on('view:set', (_e, name) => setView(name));
 
 ipcMain.handle('state:get', () => snapshot());
 ipcMain.handle('update:install', () => installUpdate());
+ipcMain.handle('update:check', () => updater && update.status !== 'ready' && updater.checkForUpdates().catch(() => {}));
 
 // ---------- auto-update ----------
 // Installed builds check the `builds` branch on GitHub every 30 minutes,
@@ -506,6 +507,7 @@ ipcMain.handle('settings:update', async (_e, patch) => {
   const allowed = ['showSince', 'showElapsed', 'alwaysOnTop', 'listName', 'clientId', 'clientSecret', 'askCategory', 'askRating', 'launchAtLogin'];
   const prev = { ...state.settings };
   for (const k of allowed) if (k in patch) state.settings[k] = typeof patch[k] === 'string' ? patch[k].trim() : !!patch[k];
+  if ('goalDisplay' in patch) state.settings.goalDisplay = ['ring', 'ringPct', 'text'].includes(patch.goalDisplay) ? patch.goalDisplay : 'ring';
   if ('joltMinutes' in patch) state.settings.joltMinutes = [0, 30, 60, 90, 120].includes(+patch.joltMinutes) ? +patch.joltMinutes : 0;
   if ('checkMinutes' in patch) state.settings.checkMinutes = [0, 60, 120, 180].includes(+patch.checkMinutes) ? +patch.checkMinutes : 120;
   if ('awayMinutes' in patch) state.settings.awayMinutes = [5, 10, 20, 30].includes(+patch.awayMinutes) ? +patch.awayMinutes : 10;

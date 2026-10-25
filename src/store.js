@@ -15,6 +15,7 @@ const DEFAULTS = {
     askCategory: true, // category chips after Done
     askRating: true, // 1–5 stars after Done
     joltMinutes: 60, // 0 = off
+    goalDisplay: 'ring', // ring | ringPct | text
     checkMinutes: 120, // "Still on this?" after a task runs this long; 0 = off
     endOfDay: '', // "HH:MM" to check a still-running task; '' = off
     awayMinutes: 10, // no input this long = away (counts as idle)

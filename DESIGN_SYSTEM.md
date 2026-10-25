@@ -103,7 +103,7 @@ Panels are for the occasional look, not the resting state, so they can be denser
 - A third round icon (clock) sits left of Hold and Done; it reads brighter when a goal is set.
 - Clicking it swaps the buttons for one 6px bar in tertiary ink, `min(78cqw, 340px)` wide: the rest of the day, from now to midnight (at least 4 hours). Faint hour ticks under it, "now" and the end time at the ends in 11px.
 - Hover: a 2px marker and a tooltip above it, "2:30 PM · in 4h 25m". Times snap to 15 minutes. Click sets the goal. Esc or clicking elsewhere closes it.
-- With a goal, the time line adds "2h 10m left" or "15m over". One jolt when the goal is reached.
+- With a goal, the time line shows progress (Settings → Goal progress): **Ring** (default) — a 0.85em ring right after the time on task, filling from task start to goal, primary ink once over; **Ring + %** — the same with "(54%)"; **Time left** — "2h 10m left" / "15m over". Hovering the time line always shows the goal time. One jolt when the goal is reached.
 
 ## Hold
 
