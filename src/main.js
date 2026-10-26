@@ -304,7 +304,16 @@ function createWindow() {
       inside = now;
       win.webContents.send('window:hover', inside);
     }
-    const z = now && p.y - b.y < NEAR_TOP ? (p.x - b.x < b.width / 2 ? 'menu' : 'controls') : null;
+    // Top strip: menu (left) / window controls (right). Bottom-right corner: settings gear.
+    const rx = p.x - b.x;
+    const ry = p.y - b.y;
+    const z = !now
+      ? null
+      : ry < NEAR_TOP
+      ? rx < b.width / 2 ? 'menu' : 'controls'
+      : b.height - ry < 72 && b.width - rx < 96
+      ? 'gear'
+      : null;
     if (z !== zone) {
       zone = z;
       win.webContents.send('window:zone', zone);

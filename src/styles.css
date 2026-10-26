@@ -469,6 +469,29 @@ input::placeholder { color: var(--fg-tertiary); }
 }
 .timeline__ends { display: flex; justify-content: space-between; align-items: baseline; font-size: 11px; color: var(--fg-tertiary); font-variant-numeric: tabular-nums; margin-top: 6px; }
 
+/* Settings gear: bottom-right corner, only when the pointer comes near. */
+.gear {
+  position: absolute;
+  right: max(10px, env(safe-area-inset-right, 0px));
+  bottom: 10px;
+  z-index: 3;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--fg-tertiary);
+  background: var(--bg);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 400ms var(--ease), color var(--dur) var(--ease);
+  -webkit-app-region: no-drag;
+}
+.gear svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.1; stroke-linejoin: round; }
+.near-gear .gear, .gear:focus-visible, .app[data-view="settings"] .gear { opacity: 1; pointer-events: auto; }
+.app[data-view="settings"] .gear, .gear:hover { color: var(--fg); }
+.today-map { display: flex; flex-direction: column; gap: var(--space-3); }
+
 /* Map: the day as one line. Past = blocks of what you did, future = goals. */
 .map-head { display: flex; justify-content: space-between; align-items: center; }
 .map { position: relative; padding-top: 34px; margin-top: var(--space-2); }

@@ -87,6 +87,10 @@
 - [x] Hop off when today's tasks are done; opens a review link from Settings
 - [x] Blur rebuilt: blurred snapshot per monitor, exact monitor bounds, works on Windows 10 and 11
 
+## v0.12 — tidier navigation
+- [x] Map moves into Today as a third tab (Today · All · Map)
+- [x] Settings becomes a gear in the bottom-right corner, shown only when the pointer is near
+
 ## Parked
 - [x] ~~Full-screen announcements~~ → became the v0.7 blur for "Still on this?" and end of day
 

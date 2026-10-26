@@ -12,10 +12,8 @@
     <header class="bar">
       <nav class="menu" aria-label="Menu">
         <button class="menu__item" data-view="now">Now</button>
-        <button class="menu__item" data-view="map">Map</button>
         <button class="menu__item" data-view="log">Log</button>
         <button class="menu__item" data-view="today">Today</button>
-        <button class="menu__item" data-view="settings">Settings</button>
       </nav>
       <div class="controls" aria-label="Window controls">
         <button class="controls__btn" data-action="minimize" aria-label="Minimize"><svg viewBox="0 0 10 10"><path d="M1 5h8"/></svg></button>
@@ -69,32 +67,6 @@
       </div>
     </main>
 
-    <section class="panel" id="view-map" hidden>
-      <div class="map-head">
-        <span class="status" id="map-sub"></span>
-        <label class="toggle"><input type="checkbox" id="map-goals-on" /><span>Goals</span></label>
-      </div>
-      <div class="map" id="map">
-        <div class="map__goals" id="map-goals"></div>
-        <div class="map__bar" id="map-bar"></div>
-        <div class="map__hours" id="map-hours"></div>
-        <div class="map__tip" id="map-tip" hidden></div>
-      </div>
-      <div class="wrap map-pick" id="map-pick" hidden>
-        <span class="status" id="map-pick-at"></span>
-        <div class="wrap__cats">
-          <div class="chips" id="map-chips"></div>
-          <input id="map-search" class="wrap__search" type="text" placeholder="Search" maxlength="60" spellcheck="false" />
-        </div>
-      </div>
-      <div class="actions map-push" id="map-push" hidden>
-        <span class="status" id="map-push-label"></span>
-        <button class="act" data-min="15">+15m</button>
-        <button class="act" data-min="30">+30m</button>
-        <button class="act" data-min="60">+1h</button>
-      </div>
-      <p class="hint">Click a later point on the line to set when a task should be done by.</p>
-    </section>
 
     <section class="panel" id="view-log" hidden>
       <div class="log-head">
@@ -121,14 +93,41 @@
     </section>
 
     <section class="panel" id="view-today" hidden>
+      <div class="tabs" id="today-tabs">
+        <button class="tab" data-list="today">Today</button>
+        <button class="tab" data-list="all">All</button>
+        <button class="tab" data-list="map">Map</button>
+      </div>
+      <div class="today-map" id="today-map" hidden>
+      <div class="map-head">
+          <span class="status" id="map-sub"></span>
+          <label class="toggle"><input type="checkbox" id="map-goals-on" /><span>Goals</span></label>
+        </div>
+        <div class="map" id="map">
+          <div class="map__goals" id="map-goals"></div>
+          <div class="map__bar" id="map-bar"></div>
+          <div class="map__hours" id="map-hours"></div>
+          <div class="map__tip" id="map-tip" hidden></div>
+        </div>
+        <div class="wrap map-pick" id="map-pick" hidden>
+          <span class="status" id="map-pick-at"></span>
+          <div class="wrap__cats">
+            <div class="chips" id="map-chips"></div>
+            <input id="map-search" class="wrap__search" type="text" placeholder="Search" maxlength="60" spellcheck="false" />
+          </div>
+        </div>
+        <div class="actions map-push" id="map-push" hidden>
+          <span class="status" id="map-push-label"></span>
+          <button class="act" data-min="15">+15m</button>
+          <button class="act" data-min="30">+30m</button>
+          <button class="act" data-min="60">+1h</button>
+        </div>
+        <p class="hint">Click a later point on the line to set when a task should be done by.</p>
+      </div>
       <div id="today-off" class="note" hidden>
         Connect Google Tasks in <button class="link" data-view="settings">Settings</button> to see your list here.
       </div>
       <div id="today-on">
-        <div class="tabs" id="today-tabs">
-          <button class="tab" data-list="today">Today</button>
-          <button class="tab" data-list="all">All</button>
-        </div>
         <h2 class="eyebrow" id="today-open-title">Up next</h2>
         <ul class="rows" id="today-open"></ul>
         <input id="today-add" class="add" type="text" placeholder="Add a task · Shift+Enter to start it now" maxlength="1024" />
@@ -217,6 +216,7 @@
         <button class="btn btn--quiet" id="app-update" hidden>Restart to update</button>
       </div>
     </section>
+    <button class="gear" id="gear" data-view="settings" aria-label="Settings" title="Settings"><svg viewBox="0 0 16 16"><path d="M12.88 6.93 L14.55 7.17 L14.55 8.83 L12.88 9.07 L12.21 10.70 L13.22 12.05 L12.05 13.22 L10.70 12.21 L9.07 12.88 L8.83 14.55 L7.17 14.55 L6.93 12.88 L5.30 12.21 L3.95 13.22 L2.78 12.05 L3.79 10.70 L3.12 9.07 L1.45 8.83 L1.45 7.17 L3.12 6.93 L3.79 5.30 L2.78 3.95 L3.95 2.78 L5.30 3.79 L6.93 3.12 L7.17 1.45 L8.83 1.45 L9.07 3.12 L10.70 3.79 L12.05 2.78 L13.22 3.95 L12.21 5.30 Z"/><circle cx="8" cy="8" r="2.1"/></svg></button>
   </div>
   <!-- app:end -->
   <script src="renderer.js"></script>

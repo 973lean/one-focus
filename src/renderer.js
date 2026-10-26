@@ -32,10 +32,10 @@ function el(tag, cls, text) {
 function setView(name) {
   view = name;
   appEl.dataset.view = name;
-  for (const id of ['now', 'map', 'log', 'today', 'settings']) $('view-' + id).hidden = id !== name;
+  for (const id of ['now', 'log', 'today', 'settings']) $('view-' + id).hidden = id !== name;
   document.querySelectorAll('.menu__item').forEach((b) => b.setAttribute('aria-current', String(b.dataset.view === name)));
   api.setView(name);
-  if (name === 'log' || name === 'map') loadLog();
+  if (name === 'log' || (name === 'today' && todayTab === 'map')) loadLog();
   render();
 }
 
@@ -51,6 +51,7 @@ api.onHover((inside) => document.body.classList.toggle('is-hover', inside));
 api.onZone((zone) => {
   document.body.classList.toggle('near-menu', zone === 'menu');
   document.body.classList.toggle('near-controls', zone === 'controls');
+  document.body.classList.toggle('near-gear', zone === 'gear');
 });
 document.querySelectorAll('.controls__btn').forEach((btn) =>
   btn.addEventListener('click', () => api.windowAction(btn.dataset.action))
@@ -505,7 +506,7 @@ function rangeStart(range) {
 async function loadLog() {
   logData = await api.getLog();
   renderLog();
-  if (view === 'map') renderMap();
+  if (view === 'today' && todayTab === 'map') renderMap();
 }
 
 function renderLog() {
@@ -985,6 +986,13 @@ function taskRow(t, { current, next, done, allView }) {
 
 function renderToday() {
   if (!S || renaming) return;
+  document.querySelectorAll('#today-tabs .tab').forEach((t) => t.setAttribute('aria-selected', String(t.dataset.list === todayTab)));
+  const mapTab = todayTab === 'map';
+  $('today-map').hidden = !mapTab;
+  if (mapTab) {
+    $('today-off').hidden = $('today-on').hidden = true;
+    return;
+  }
   $('today-off').hidden = S.connected;
   $('today-on').hidden = !S.connected;
   if (!S.connected) return;
@@ -1014,6 +1022,7 @@ document.querySelectorAll('#today-tabs .tab').forEach((t) =>
   t.addEventListener('click', () => {
     todayTab = t.dataset.list;
     renderToday();
+    if (todayTab === 'map') loadLog();
   })
 );
 
@@ -1165,7 +1174,7 @@ function render() {
 api.onState((s) => {
   S = s;
   render();
-  if (view === 'log' || view === 'map') loadLog();
+  if (view === 'log' || (view === 'today' && todayTab === 'map')) loadLog();
 });
 
 api.getState().then((s) => {

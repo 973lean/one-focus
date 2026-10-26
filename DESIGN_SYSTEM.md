@@ -73,8 +73,8 @@ Window padding is `--space-5`. Major groups (clock → task) are separated by `-
 ## Window chrome
 
 - No OS title bar. The window is frameless and the top 36px strip drags it.
-- Top left: the menu (Now · Log · Today · Settings), 12px text. Top right: minimize, maximize, close as thin 10px line glyphs.
-- Both are hidden at rest. Each fades in over 400ms only when the pointer comes near it: the top 64px of the window, left half for the menu, right half for the controls. Inside a panel the menu stays visible so you can always get back.
+- Top left: the menu (Now · Log · Today), 12px text. Top right: minimize, maximize, close as thin 10px line glyphs. Bottom right: a 15px line gear for Settings.
+- All are hidden at rest. Each fades in over 400ms only when the pointer comes near it: the top 64px of the window (left half for the menu, right half for the controls), or the bottom-right corner (72 × 96px) for the gear. The gear stays visible while Settings is open. Inside a panel the menu stays visible so you can always get back.
 - On the Now screen, hairline buttons appear on hover in a row under the task. Hold and Done are 30px circles with 12px line icons: pause on the left (Hold), tick on the right (Done). Start (when a task is queued) and Back to stay as text pills. There is no Stop: a task ends with Done, a Hold, or by starting another. They never shift the layout.
 
 ## Panels (Log, Today, Settings)
@@ -107,6 +107,7 @@ Panels are for the occasional look, not the resting state, so they can be denser
 
 ## Map
 
+- Lives as the third tab in Today (Today · All · Map).
 - One 34px rounded bar in `--fill`, from your first block (or 2h ago) to a few hours ahead, whole hours, labels every 1–3 hours in 10px tertiary.
 - Past: task blocks at 20% ink (live block 30%), holds at 9%, idle left empty; each block labelled inside at 11px, truncated. Future: a faint hairline texture. Now: a 2px primary-ink line.
 - Goals (toggle): a tick above the bar with the task name in 10px, two label rows, ticks only when crowded. Done goals struck through.
