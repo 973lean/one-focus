@@ -469,6 +469,52 @@ input::placeholder { color: var(--fg-tertiary); }
 }
 .timeline__ends { display: flex; justify-content: space-between; align-items: baseline; font-size: 11px; color: var(--fg-tertiary); font-variant-numeric: tabular-nums; margin-top: 6px; }
 
+/* Map: the day as one line. Past = blocks of what you did, future = goals. */
+.map-head { display: flex; justify-content: space-between; align-items: center; }
+.map { position: relative; padding-top: 34px; margin-top: var(--space-2); }
+.map__bar { position: relative; height: 34px; border-radius: 6px; background: var(--fill); overflow: hidden; cursor: crosshair; }
+.map__future { position: absolute; top: 0; bottom: 0; right: 0; background: repeating-linear-gradient(90deg, transparent 0 6px, rgba(245,245,244,0.025) 6px 7px); }
+.map__block {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  border-radius: 4px;
+  background: rgba(245, 245, 244, 0.20);
+  color: var(--fg);
+  font-size: 11px;
+  line-height: 28px;
+  padding: 0 6px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+.map__block + .map__block { box-shadow: -1px 0 0 var(--bg); }
+.map__block.is-hold { background: rgba(245, 245, 244, 0.09); color: var(--fg-secondary); }
+.map__block.is-live { background: rgba(245, 245, 244, 0.30); }
+.map__now { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--fg); pointer-events: none; }
+.map__cursor { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--fg-secondary); pointer-events: none; }
+.map__hours { position: relative; height: 18px; margin-top: 4px; }
+.map__hours span { position: absolute; transform: translateX(-50%); font-size: 10px; color: var(--fg-tertiary); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.map__hours span::before { content: ""; position: absolute; left: 50%; top: -4px; width: 1px; height: 3px; background: var(--hairline); }
+.map__goals { position: absolute; top: 0; left: 0; right: 0; height: 34px; pointer-events: none; }
+.map__goal { position: absolute; bottom: 0; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; max-width: 90px; }
+.map__goal span { font-size: 10px; color: var(--fg-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 90px; }
+.map__goal::after { content: ""; width: 1px; height: 8px; background: var(--fg-secondary); margin-top: 2px; }
+.map__goal.is-up::after { height: 20px; }
+.map__goal.is-done span { color: var(--fg-tertiary); text-decoration: line-through; }
+.map__goal.is-done::after { background: var(--fg-tertiary); }
+.map__tip { position: absolute; top: 4px; transform: translateX(-50%); white-space: nowrap; font-size: var(--size-small); color: var(--fg); background: var(--bg); padding: 2px 6px; border: 1px solid var(--hairline); border-radius: 4px; pointer-events: none; z-index: 2; font-variant-numeric: tabular-nums; }
+.map-pick { position: static; transform: none; align-items: flex-start; }
+.map-push { font-size: var(--size-small); }
+
+/* Log: summary view */
+.log-head { display: flex; justify-content: space-between; flex-wrap: wrap; gap: var(--space-2); }
+.daysum { padding: 10px 0; border-bottom: 1px solid var(--hairline); display: grid; grid-template-columns: 1fr auto; gap: 2px var(--space-3); align-items: baseline; }
+.daysum .d { color: var(--fg-secondary); }
+.daysum .t { color: var(--fg); font-variant-numeric: tabular-nums; }
+.daysum .m { grid-column: 1 / -1; font-size: var(--size-small); color: var(--fg-tertiary); font-variant-numeric: tabular-nums; }
+
 /* Log: holds and editing */
 .sess.is-hold .t { color: var(--fg-tertiary); }
 .sess:not(.is-live) { cursor: pointer; }

@@ -105,6 +105,18 @@ Panels are for the occasional look, not the resting state, so they can be denser
 - Hover: a 2px marker and a tooltip above it, "2:30 PM · in 4h 25m". Times snap to 15 minutes. Click sets the goal. Esc or clicking elsewhere closes it.
 - With a goal, the time line shows progress (Settings → Goal progress): **Ring** (default) — a 0.85em ring right after the time on task, filling from task start to goal, primary ink once over; **Ring + %** — the same with "(54%)"; **Time left** — "2h 10m left" / "15m over". Hovering the time line always shows the goal time. One jolt when the goal is reached.
 
+## Map
+
+- One 34px rounded bar in `--fill`, from your first block (or 2h ago) to a few hours ahead, whole hours, labels every 1–3 hours in 10px tertiary.
+- Past: task blocks at 20% ink (live block 30%), holds at 9%, idle left empty; each block labelled inside at 11px, truncated. Future: a faint hairline texture. Now: a 2px primary-ink line.
+- Goals (toggle): a tick above the bar with the task name in 10px, two label rows, ticks only when crowded. Done goals struck through.
+- Hover: a 1px cursor and a small bordered tooltip ("Write Q4 · 10:02–11:30 · 1h 28m" or "2:30 PM · in 4h 25m").
+- Push plan: text buttons +15m / +30m / +1h, shown when running over a goal or with goals ahead.
+
+## Log summary
+
+- One row per day: date and time focused on the first line, then "7 sessions · avg 44m · longest 1h 30m · 4 breaks · 52m" in 12px tertiary. Stretches under 2 minutes apart count as one session; gaps of 5 minutes or more count as breaks.
+
 ## Hold
 
 - Hover pill **Hold** (next to Start / Done) opens the same 3 chips + search as categories, defaulting to Meeting, Call, Break.
@@ -113,7 +125,7 @@ Panels are for the occasional look, not the resting state, so they can be denser
 
 ## The blur (Still on this? / End of day)
 
-- Every monitor gets a full-screen window: Windows 11 acrylic blur plus a 28% `--bg` tint, or a 78% tint where blur isn't available. It fades in over 400ms. Nothing else is drawn on it.
+- Every monitor gets a borderless window exactly its size (any orientation) showing a snapshot of that monitor, blurred 22px, with a 35% `--bg` tint. It fades in over 400ms. Nothing else is drawn on it. If a snapshot can't be taken, it's the tint over `--bg`.
 - One Focus stays above it, sharp. Its pills become loud (primary ink, visible without hover): **Confirm** for Still on this?, **Done** / **Tomorrow** for end of day.
 - The time line explains why: "Still on this? 2h 03m" or "End of day · wrap up? 6h 10m".
 

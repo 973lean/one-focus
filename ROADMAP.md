@@ -66,7 +66,7 @@
 - [x] **Edit sessions in the Log:** change start/end, split at a time into a Hold, or delete
 - [x] **Away after** setting: 5 / 10 / 20 / 30 minutes
 - [x] **Drag to reorder** tasks in Today (saved to Google)
-- Blur uses Windows 11 acrylic; Windows 10 falls back to a dark tint without blur
+- Blur: blurred snapshot of each monitor (v0.11)
 
 ## v0.8 — Today means today
 - [x] Today shows only tasks scheduled for today (Google date) or overdue; only these queue on Now
@@ -80,6 +80,12 @@
 ## v0.10 — cleaner goal progress, check for updates
 - [x] Goal progress as a ring after the time on task (default), ring + %, or time left (Settings)
 - [x] Refresh button in Settings → App to check for updates now
+
+## v0.11 — Map, cleaner log, hop off, blur fix
+- [x] Map: the day as one line with blocks of what you did, goal markers (toggle), set goals by clicking ahead, push plan when over
+- [x] Log Summary view (default): per day time, sessions, average/longest, breaks; Sessions view keeps the detail
+- [x] Hop off when today's tasks are done; opens a review link from Settings
+- [x] Blur rebuilt: blurred snapshot per monitor, exact monitor bounds, works on Windows 10 and 11
 
 ## Parked
 - [x] ~~Full-screen announcements~~ → became the v0.7 blur for "Still on this?" and end of day

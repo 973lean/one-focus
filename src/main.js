@@ -1,7 +1,6 @@
-const { app, BrowserWindow, ipcMain, screen, powerMonitor, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, screen, powerMonitor, shell, desktopCapturer } = require('electron');
 const path = require('path');
 const fs = require('fs');
-const os = require('os');
 const store = require('./store');
 const Tracker = require('./tracker');
 const google = require('./google');
@@ -95,19 +94,32 @@ function push() {
 // Each monitor gets a window that blurs (Windows 11 acrylic) or dims what's
 // behind it. One Focus sits above them, sharp, until you answer.
 
-const canBlur = process.platform === 'win32' && Number(os.release().split('.')[2] || 0) >= 22621;
-
-function openCheck(kind) {
+// Works on any Windows version: snapshot each monitor, show the snapshot
+// blurred in a borderless window that exactly covers that monitor (whatever
+// its size, position or orientation), then raise One Focus above them all.
+async function openCheck(kind) {
   if (check) return;
   check = kind;
-  for (const d of screen.getAllDisplays()) {
+  const displays = screen.getAllDisplays();
+  let shots = [];
+  try {
+    const maxW = Math.max(...displays.map((d) => d.size.width));
+    const maxH = Math.max(...displays.map((d) => d.size.height));
+    shots = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: maxW, height: maxH } });
+  } catch {
+    shots = []; // no snapshot: falls back to a dark tint
+  }
+  if (check !== kind) return; // answered while we were capturing
+  const shown = displays.map((d, i) => {
+    const shot = shots.find((x) => x.display_id === String(d.id)) || (shots.length === displays.length ? shots[i] : null);
     const o = new BrowserWindow({
-      ...d.bounds,
+      x: d.bounds.x,
+      y: d.bounds.y,
+      width: d.bounds.width,
+      height: d.bounds.height,
       frame: false,
       show: false,
-      transparent: true,
-      backgroundColor: '#00000000',
-      ...(canBlur ? { backgroundMaterial: 'acrylic' } : {}),
+      backgroundColor: '#0B0B0C',
       skipTaskbar: true,
       focusable: false,
       resizable: false,
@@ -116,15 +128,36 @@ function openCheck(kind) {
       maximizable: false,
       fullscreenable: false,
       hasShadow: false,
+      thickFrame: false,
+      roundedCorners: false,
+      enableLargerThanScreen: true,
       webPreferences: { contextIsolation: true, nodeIntegration: false },
     });
-    o.setAlwaysOnTop(true, 'pop-up-menu');
-    o.loadFile(path.join(__dirname, 'overlay.html'), { query: { blur: canBlur ? '1' : '0' } });
-    o.once('ready-to-show', () => o.showInactive());
+    // Set bounds again after creation: Windows can shrink a new window to the
+    // work area or rescale it on mixed-DPI setups.
+    o.setBounds(d.bounds);
+    o.setAlwaysOnTop(true, 'screen-saver');
     overlays.push(o);
-  }
-  win.setAlwaysOnTop(true, 'screen-saver');
+    return new Promise((resolve) => {
+      o.webContents.once('did-finish-load', async () => {
+        if (shot && !shot.thumbnail.isEmpty()) {
+          const url = 'data:image/jpeg;base64,' + shot.thumbnail.toJPEG(75).toString('base64');
+          await o.webContents.executeJavaScript(`window.setShot(${JSON.stringify(url)})`).catch(() => {});
+        }
+        if (!o.isDestroyed()) {
+          o.setBounds(d.bounds);
+          o.showInactive();
+        }
+        resolve();
+      });
+      o.loadFile(path.join(__dirname, 'overlay.html'));
+    });
+  });
+  await Promise.all(shown);
+  if (check !== kind) return;
+  win.setAlwaysOnTop(true, 'screen-saver', 1);
   win.show();
+  win.moveTop();
   win.focus();
   push();
 }
@@ -324,6 +357,31 @@ ipcMain.on('view:set', (_e, name) => setView(name));
 
 ipcMain.handle('state:get', () => snapshot());
 ipcMain.handle('update:install', () => installUpdate());
+
+// Done for the day: open the review link set in Settings.
+ipcMain.handle('review:open', () => {
+  const u = state.settings.reviewUrl;
+  if (u && /^https?:\/\//i.test(u)) shell.openExternal(u);
+  return !!u;
+});
+
+// Running over: push the current goal and every goal planned after it.
+ipcMain.handle('goals:shift', (_e, raw) => {
+  const ms = Number(raw);
+  if (!ms || Math.abs(ms) > 12 * 3600e3) return snapshot();
+  const cur = state.current && !isHold(state.current) ? state.current : null;
+  const curGoal = cur && state.taskMeta[cur.key] && state.taskMeta[cur.key].goal;
+  const base = curGoal ? Date.parse(curGoal) : Date.now();
+  const keys = new Set(today.open.map((t) => 'g:' + t.id));
+  if (cur) keys.add(cur.key);
+  for (const k of keys) {
+    const m = state.taskMeta[k];
+    if (m && m.goal && Date.parse(m.goal) >= base) m.goal = new Date(Date.parse(m.goal) + ms).toISOString();
+  }
+  store.save(state);
+  push();
+  return snapshot();
+});
 ipcMain.handle('update:check', () => updater && update.status !== 'ready' && updater.checkForUpdates().catch(() => {}));
 
 // ---------- auto-update ----------
@@ -507,6 +565,12 @@ ipcMain.handle('settings:update', async (_e, patch) => {
   const allowed = ['showSince', 'showElapsed', 'alwaysOnTop', 'listName', 'clientId', 'clientSecret', 'askCategory', 'askRating', 'launchAtLogin'];
   const prev = { ...state.settings };
   for (const k of allowed) if (k in patch) state.settings[k] = typeof patch[k] === 'string' ? patch[k].trim() : !!patch[k];
+  if ('logView' in patch) state.settings.logView = patch.logView === 'sessions' ? 'sessions' : 'summary';
+  if ('mapGoals' in patch) state.settings.mapGoals = !!patch.mapGoals;
+  if ('reviewUrl' in patch) {
+    const u = String(patch.reviewUrl || '').trim();
+    state.settings.reviewUrl = /^https?:\/\/\S+$/i.test(u) ? u : '';
+  }
   if ('goalDisplay' in patch) state.settings.goalDisplay = ['ring', 'ringPct', 'text'].includes(patch.goalDisplay) ? patch.goalDisplay : 'ring';
   if ('joltMinutes' in patch) state.settings.joltMinutes = [0, 30, 60, 90, 120].includes(+patch.joltMinutes) ? +patch.joltMinutes : 0;
   if ('checkMinutes' in patch) state.settings.checkMinutes = [0, 60, 120, 180].includes(+patch.checkMinutes) ? +patch.checkMinutes : 120;

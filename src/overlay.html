@@ -2,20 +2,31 @@
 <html>
 <head>
   <meta charset="utf-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'" />
   <title>One Focus</title>
   <style>
-    /* Soft blur comes from the window material (Windows 11). This adds the
-       slight dark tint, or a stronger dim where blur isn't available. */
-    html, body { margin: 0; height: 100%; cursor: default; }
-    body { background: rgba(11, 11, 12, 0.28); animation: in 400ms cubic-bezier(0.2, 0, 0, 1); }
-    body.no-blur { background: rgba(11, 11, 12, 0.78); }
+    /* A blurred snapshot of this monitor with a slight dark tint. Without a
+       snapshot it's just the tint over the app's background. */
+    html, body { margin: 0; height: 100%; overflow: hidden; background: #0B0B0C; cursor: default; }
+    .shot {
+      position: fixed;
+      inset: 0;
+      background-size: 100% 100%;
+      filter: blur(22px) saturate(0.9);
+      transform: scale(1.08); /* hides the soft edge blur leaves */
+    }
+    .tint { position: fixed; inset: 0; background: rgba(11, 11, 12, 0.35); }
+    body { animation: in 400ms cubic-bezier(0.2, 0, 0, 1); }
     @keyframes in { from { opacity: 0; } to { opacity: 1; } }
   </style>
 </head>
 <body>
+  <div class="shot" id="shot"></div>
+  <div class="tint"></div>
   <script>
-    if (new URLSearchParams(location.search).get('blur') !== '1') document.body.classList.add('no-blur');
+    window.setShot = (url) => {
+      document.getElementById('shot').style.backgroundImage = 'url("' + url + '")';
+    };
   </script>
 </body>
 </html>

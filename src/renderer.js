@@ -32,10 +32,10 @@ function el(tag, cls, text) {
 function setView(name) {
   view = name;
   appEl.dataset.view = name;
-  for (const id of ['now', 'log', 'today', 'settings']) $('view-' + id).hidden = id !== name;
+  for (const id of ['now', 'map', 'log', 'today', 'settings']) $('view-' + id).hidden = id !== name;
   document.querySelectorAll('.menu__item').forEach((b) => b.setAttribute('aria-current', String(b.dataset.view === name)));
   api.setView(name);
-  if (name === 'log') loadLog();
+  if (name === 'log' || name === 'map') loadLog();
   render();
 }
 
@@ -72,6 +72,7 @@ const backEl = $('back');
 const confirmEl = $('confirm');
 const eodDoneEl = $('eod-done');
 const eodTomorrowEl = $('eod-tomorrow');
+const hopEl = $('hop');
 const isHold = (t) => !!(t && t.key && t.key.startsWith('hold:'));
 let editing = false;
 
@@ -104,6 +105,8 @@ function renderMeta() {
   if (isHold(S.current)) return (metaText.textContent = dur(S.open && S.open.key === S.current.key ? live() : 0));
   const cur = S.current;
   if (!cur) {
+    if (S.connected && !S.next && S.today.done.length && !S.today.open.some(scheduled))
+      return (metaText.textContent = `${S.today.done.length} done today`);
     const g = S.next && goalOf('g:' + S.next.id);
     metaText.textContent = [S.open && S.open.key === 'idle' ? 'Idle ' + dur(live()) : '', g ? 'by ' + hm(g) : ''].filter(Boolean).join(' · ');
     return;
@@ -133,7 +136,9 @@ function renderNow() {
   const cur = S.current;
   const next = S.connected ? S.next : null;
   const hold = isHold(cur);
-  for (const p of [startEl, doneEl, holdEl, goalEl, backEl, confirmEl, eodDoneEl, eodTomorrowEl]) p.hidden = true;
+  for (const p of [startEl, doneEl, holdEl, goalEl, backEl, confirmEl, eodDoneEl, eodTomorrowEl, hopEl]) p.hidden = true;
+  // Everything scheduled for today is done: time to hop off.
+  const allDone = S.connected && !cur && !next && S.today.done.length > 0 && !S.today.open.some(scheduled) && !wrap;
   taskEl.classList.toggle('is-finished', !!wrap);
   taskEl.classList.toggle('is-hold', hold);
   if (wrap) {
@@ -142,10 +147,11 @@ function renderNow() {
     return renderMeta();
   }
   taskEl.classList.toggle('is-queued', !cur && !!next);
-  taskEl.classList.toggle('is-empty', !cur && !next);
+  taskEl.classList.toggle('is-empty', !cur && !next && !allDone);
   if (hold) taskEl.textContent = 'Hold: ' + cur.title;
   else if (cur) taskEl.textContent = cur.title;
   else if (next) taskEl.textContent = next.title;
+  else if (allDone) taskEl.textContent = 'All done for today';
   else
     taskEl.textContent = !S.connected
       ? 'What are you doing?'
@@ -165,6 +171,8 @@ function renderNow() {
     backEl.textContent = S.held ? 'Back to: ' + S.held.title : 'End hold';
     backEl.title = backEl.textContent;
     backEl.classList.add('is-back');
+  } else if (allDone) {
+    hopEl.hidden = false;
   } else {
     startEl.hidden = !(!cur && next);
     doneEl.hidden = !(cur && cur.googleId);
@@ -211,6 +219,11 @@ async function busy(btn, fn) {
   }
 }
 startEl.addEventListener('click', () => busy(startEl, () => api.start()));
+hopEl.addEventListener('click', async () => {
+  if (S.settings.reviewUrl) return api.openReview();
+  setView('settings');
+  setTimeout(() => $('s-review').focus(), 250);
+});
 backEl.addEventListener('click', () => busy(backEl, async () => (S = await api.endHold()) && render()));
 confirmEl.addEventListener('click', () => busy(confirmEl, async () => (S = await api.answerCheck('confirm')) && render()));
 eodDoneEl.addEventListener('click', () => busy(eodDoneEl, async () => (S = await api.answerCheck('done')) && render()));
@@ -492,6 +505,7 @@ function rangeStart(range) {
 async function loadLog() {
   logData = await api.getLog();
   renderLog();
+  if (view === 'map') renderMap();
 }
 
 function renderLog() {
@@ -543,6 +557,13 @@ function renderLog() {
   const n = sessions.length;
   $('log-meta').textContent = `idle ${dur(idleTotal)} · hold ${dur(holdTotal)} · ${done} done · ${n} session${n === 1 ? '' : 's'}`;
 
+  // Summary (default): per day, time focused, sessions and the breaks between them.
+  const mode = S.settings.logView || 'summary';
+  document.querySelectorAll('#log-mode .tab').forEach((t) => t.setAttribute('aria-selected', String(t.dataset.mode === mode)));
+  $('log-summary').hidden = mode !== 'summary';
+  $('log-sessions').hidden = $('log-sessions-title').hidden = mode !== 'sessions';
+  if (mode === 'summary') renderSummary(sessions);
+
   // Sessions, newest first, grouped by day.
   const list = $('log-sessions');
   list.replaceChildren();
@@ -592,6 +613,229 @@ document.querySelectorAll('#log-tabs .tab').forEach((t) =>
   t.addEventListener('click', () => {
     logRange = t.dataset.range;
     renderLog();
+  })
+);
+
+function renderSummary(sessions) {
+  const days = new Map();
+  for (const s of sessions) {
+    const day = dayFmt.format(new Date(s.a));
+    if (!days.has(day)) days.set(day, []);
+    days.get(day).push(s);
+  }
+  const out = $('log-summary');
+  out.replaceChildren();
+  if (!days.size) out.append(el('div', 'empty', 'Nothing logged in this period.'));
+  const ordered = [...days].sort((x, y) => y[1][0].a - x[1][0].a);
+  for (const [day, list] of ordered) {
+    // Stretches with less than 2 minutes between them count as one session.
+    const parts = [];
+    for (const s of list.sort((x, y) => x.a - y.a)) {
+      const last = parts[parts.length - 1];
+      if (last && s.a - last.b < 2 * 60e3) last.b = Math.max(last.b, s.b), (last.ms += s.ms);
+      else parts.push({ a: s.a, b: s.b, ms: s.ms });
+    }
+    const total = parts.reduce((n, p) => n + p.ms, 0);
+    const gaps = [];
+    for (let i = 1; i < parts.length; i++) {
+      const g = parts[i].a - parts[i - 1].b;
+      if (g >= 5 * 60e3) gaps.push(g);
+    }
+    const longest = Math.max(...parts.map((p) => p.ms));
+    const bits = [`${parts.length} session${parts.length === 1 ? '' : 's'}`, `avg ${dur(total / parts.length)}`, `longest ${dur(longest)}`];
+    if (gaps.length) bits.push(`${gaps.length} break${gaps.length === 1 ? '' : 's'} · ${dur(gaps.reduce((a, b) => a + b, 0))}`);
+    const row = el('div', 'daysum');
+    row.append(el('span', 'd', day), el('span', 't', dur(total)), el('span', 'm', bits.join(' · ')));
+    out.append(row);
+  }
+}
+
+document.querySelectorAll('#log-mode .tab').forEach((t) =>
+  t.addEventListener('click', async () => {
+    S = await api.updateSettings({ logView: t.dataset.mode });
+    renderLog();
+  })
+);
+
+// ---------- Map: the day as one line ----------
+
+const mapBar = $('map-bar');
+const mapTip = $('map-tip');
+const hourFmt = new Intl.DateTimeFormat(undefined, { hour: 'numeric' });
+let mapRange = null;
+let mapBlocks = [];
+let pickAt = null;
+
+function renderMap() {
+  if (!logData || !S) return;
+  const now = Date.now();
+  const H = 3600e3;
+  const sod = new Date();
+  sod.setHours(0, 0, 0, 0);
+  const day0 = sod.getTime();
+
+  const live = logData.open && logData.open.key !== 'idle' ? [{ ...logData.open, end: null }] : [];
+  mapBlocks = [...logData.sessions, ...live]
+    .filter((s) => s.key !== 'idle' && (s.end ? Date.parse(s.end) : now) > day0)
+    .map((s) => ({ ...s, a: Math.max(Date.parse(s.start), day0), b: s.end ? Date.parse(s.end) : now, live: !s.end }));
+
+  // Goals set for today.
+  const meta = logData.taskMeta || {};
+  const titles = new Map();
+  for (const t of [...S.today.open, ...S.today.done]) titles.set('g:' + t.id, t.title);
+  for (const b of mapBlocks) if (!titles.has(b.key)) titles.set(b.key, b.title);
+  const doneKeys = new Set(S.today.done.map((t) => 'g:' + t.id));
+  const goals = Object.entries(meta)
+    .filter(([, m]) => m.goal && Date.parse(m.goal) >= day0 && Date.parse(m.goal) < day0 + 30 * H)
+    .map(([k, m]) => ({ key: k, at: Date.parse(m.goal), title: titles.get(k) || 'Task', done: doneKeys.has(k) }));
+
+  // Range: from your first block (or 2h ago) to a few hours ahead, whole hours.
+  let from = Math.min(now - 2 * H, ...mapBlocks.map((b) => b.a));
+  from = Math.max(day0, Math.floor(from / H) * H);
+  let to = Math.max(now + 3 * H, ...goals.map((g) => g.at + H / 2));
+  to = Math.ceil(to / H) * H;
+  mapRange = { from, to };
+  const pct = (t) => ((t - from) / (to - from)) * 100;
+
+  mapBar.replaceChildren();
+  const fut = el('div', 'map__future');
+  fut.style.left = pct(now) + '%';
+  mapBar.append(fut);
+  for (const b of mapBlocks.sort((x, y) => x.a - y.a)) {
+    const d = el('div', 'map__block' + (b.key.startsWith('hold:') ? ' is-hold' : '') + (b.live ? ' is-live' : ''), b.title);
+    d.style.left = pct(Math.max(b.a, from)) + '%';
+    d.style.width = Math.max(pct(b.b) - pct(Math.max(b.a, from)), 0.3) + '%';
+    mapBar.append(d);
+  }
+  const nowEl = el('div', 'map__now');
+  nowEl.style.left = pct(now) + '%';
+  mapBar.append(nowEl);
+
+  // Hour labels, every 1–3 hours depending on how long the line is.
+  const hours = $('map-hours');
+  hours.replaceChildren();
+  const span = (to - from) / H;
+  const every = span > 16 ? 3 : span > 9 ? 2 : 1;
+  for (let t = from; t <= to; t += every * H) {
+    const s = el('span', null, hourFmt.format(new Date(t)).replace(' ', '').toLowerCase());
+    s.style.left = pct(t) + '%';
+    hours.append(s);
+  }
+
+  // Goal markers above the line.
+  const gEl = $('map-goals');
+  gEl.replaceChildren();
+  $('map-goals-on').checked = S.settings.mapGoals !== false;
+  if (S.settings.mapGoals !== false) {
+    // Two label rows; a goal too close to both shows just its tick.
+    const width = mapBar.clientWidth || 1;
+    const lastX = [-1e9, -1e9];
+    for (const g of goals.sort((a, b) => a.at - b.at)) {
+      const x = (pct(g.at) / 100) * width;
+      const lane = x - lastX[0] > 96 ? 0 : x - lastX[1] > 96 ? 1 : -1;
+      const m = el('div', 'map__goal' + (g.done ? ' is-done' : '') + (lane === 1 ? ' is-up' : ''));
+      if (lane >= 0) {
+        m.append(el('span', null, g.title));
+        lastX[lane] = x;
+      }
+      m.style.left = pct(g.at) + '%';
+      m.title = `${g.title} · by ${hm(g.at)}`;
+      gEl.append(m);
+    }
+  }
+
+  // Today at a glance.
+  const focused = mapBlocks.filter((b) => !b.key.startsWith('hold:')).reduce((n, b) => n + (b.b - b.a), 0);
+  $('map-sub').textContent = `${dur(focused)} focused today` + (goals.length ? ` · ${goals.length} goal${goals.length === 1 ? '' : 's'}` : '');
+
+  // Running over a goal (or goals ahead): offer to push the plan.
+  const cur = S.current && !isHold(S.current) ? S.current : null;
+  const curGoal = cur && goalOf(cur.key);
+  const over = curGoal ? now - Date.parse(curGoal) : 0;
+  const ahead = goals.some((g) => !g.done && g.at > now);
+  $('map-push').hidden = !(over > 0 || ahead);
+  $('map-push-label').textContent = over > 0 ? `${dur(over)} over on “${cur.title}” · push plan` : 'Push plan';
+}
+
+const mapTimeAt = (clientX) => {
+  const r = mapBar.getBoundingClientRect();
+  const f = Math.min(Math.max((clientX - r.left) / r.width, 0), 1);
+  return mapRange.from + f * (mapRange.to - mapRange.from);
+};
+
+mapBar.addEventListener('mousemove', (e) => {
+  if (!mapRange) return;
+  const t = mapTimeAt(e.clientX);
+  const hit = mapBlocks.find((b) => t >= b.a && t <= b.b);
+  const now = Date.now();
+  let text;
+  if (hit) text = `${hit.key.startsWith('hold:') ? 'Hold: ' : ''}${hit.title} · ${hm(hit.a)}–${hit.live ? 'now' : hm(hit.b)} · ${dur(hit.b - hit.a)}`;
+  else {
+    const snapped = Math.round(t / (15 * 60e3)) * 15 * 60e3;
+    text = t > now ? `${hm(snapped)} · in ${dur(snapped - now)}` : `${hm(t)} · ${dur(now - t)} ago`;
+  }
+  mapTip.textContent = text;
+  mapTip.hidden = false;
+  const r = mapBar.getBoundingClientRect();
+  const x = e.clientX - r.left;
+  mapTip.style.left = Math.min(Math.max(x, mapTip.offsetWidth / 2), r.width - mapTip.offsetWidth / 2) + 'px';
+  let c = mapBar.querySelector('.map__cursor');
+  if (!c) mapBar.append((c = el('div', 'map__cursor')));
+  c.style.left = x + 'px';
+});
+mapBar.addEventListener('mouseleave', () => {
+  mapTip.hidden = true;
+  const c = mapBar.querySelector('.map__cursor');
+  if (c) c.remove();
+});
+
+// Click a later point: pick a task to be done by then.
+mapBar.addEventListener('click', (e) => {
+  const t = mapTimeAt(e.clientX);
+  if (t <= Date.now() || !S.connected) return;
+  pickAt = Math.round(t / (15 * 60e3)) * 15 * 60e3;
+  $('map-pick-at').textContent = `Done by ${hm(pickAt)} (in ${dur(pickAt - Date.now())}):`;
+  $('map-search').value = '';
+  renderMapChips();
+  $('map-pick').hidden = false;
+  $('map-search').focus();
+});
+function renderMapChips() {
+  const q = $('map-search').value.trim().toLowerCase();
+  const pool = S.today.open.filter(scheduled).length ? S.today.open.filter(scheduled) : S.today.open;
+  const list = (q ? S.today.open.filter((t) => t.title.toLowerCase().includes(q)) : pool).slice(0, 3);
+  $('map-chips').replaceChildren(
+    ...list.map((t) => {
+      const b = el('button', 'chip', t.title);
+      b.title = t.title;
+      b.addEventListener('mousedown', (e) => e.preventDefault());
+      b.addEventListener('click', () => setGoalFromMap(t));
+      return b;
+    })
+  );
+}
+async function setGoalFromMap(t) {
+  $('map-pick').hidden = true;
+  S = await api.setMeta('g:' + t.id, { goal: new Date(pickAt).toISOString() });
+  await loadLog();
+}
+$('map-search').addEventListener('input', renderMapChips);
+$('map-search').addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') $('map-pick').hidden = true;
+  if (e.key !== 'Enter') return;
+  const q = $('map-search').value.trim().toLowerCase();
+  const t = q && S.today.open.find((x) => x.title.toLowerCase().includes(q));
+  if (t) setGoalFromMap(t);
+});
+$('map-search').addEventListener('blur', () => ($('map-pick').hidden = true));
+$('map-goals-on').addEventListener('change', async (e) => {
+  S = await api.updateSettings({ mapGoals: e.target.checked });
+  renderMap();
+});
+document.querySelectorAll('#map-push .act').forEach((b) =>
+  b.addEventListener('click', async () => {
+    S = await api.shiftGoals(+b.dataset.min * 60e3);
+    await loadLog();
   })
 );
 
@@ -830,7 +1074,7 @@ $('today-add').addEventListener('keydown', async (e) => {
 
 // ---------- Settings ----------
 
-const fields = { 's-client-id': 'clientId', 's-client-secret': 'clientSecret', 's-list': 'listName' };
+const fields = { 's-client-id': 'clientId', 's-client-secret': 'clientSecret', 's-list': 'listName', 's-review': 'reviewUrl' };
 const toggles = {
   's-since': 'showSince',
   's-elapsed': 'showElapsed',
@@ -921,7 +1165,7 @@ function render() {
 api.onState((s) => {
   S = s;
   render();
-  if (view === 'log') loadLog();
+  if (view === 'log' || view === 'map') loadLog();
 });
 
 api.getState().then((s) => {

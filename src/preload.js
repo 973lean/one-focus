@@ -16,6 +16,8 @@ contextBridge.exposeInMainWorld('oneFocus', {
   editSession: (op, id, payload) => ipcRenderer.invoke('session:edit', op, id, payload),
   installUpdate: () => ipcRenderer.invoke('update:install'),
   checkUpdate: () => ipcRenderer.invoke('update:check'),
+  openReview: () => ipcRenderer.invoke('review:open'),
+  shiftGoals: (ms) => ipcRenderer.invoke('goals:shift', ms),
   connect: () => ipcRenderer.invoke('google:connect'),
   disconnect: () => ipcRenderer.invoke('google:disconnect'),
   setView: (name) => ipcRenderer.send('view:set', name),

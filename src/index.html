@@ -12,6 +12,7 @@
     <header class="bar">
       <nav class="menu" aria-label="Menu">
         <button class="menu__item" data-view="now">Now</button>
+        <button class="menu__item" data-view="map">Map</button>
         <button class="menu__item" data-view="log">Log</button>
         <button class="menu__item" data-view="today">Today</button>
         <button class="menu__item" data-view="settings">Settings</button>
@@ -39,6 +40,7 @@
           <button id="confirm" class="pill is-loud" hidden>Confirm</button>
           <button id="eod-done" class="pill is-loud" hidden>Done</button>
           <button id="eod-tomorrow" class="pill is-loud" hidden>Tomorrow</button>
+          <button id="hop" class="pill is-loud" hidden>Hop off</button>
         </span>
         <div class="timeline" id="timeline" hidden>
           <div class="timeline__tip" id="tl-tip" hidden></div>
@@ -67,12 +69,45 @@
       </div>
     </main>
 
+    <section class="panel" id="view-map" hidden>
+      <div class="map-head">
+        <span class="status" id="map-sub"></span>
+        <label class="toggle"><input type="checkbox" id="map-goals-on" /><span>Goals</span></label>
+      </div>
+      <div class="map" id="map">
+        <div class="map__goals" id="map-goals"></div>
+        <div class="map__bar" id="map-bar"></div>
+        <div class="map__hours" id="map-hours"></div>
+        <div class="map__tip" id="map-tip" hidden></div>
+      </div>
+      <div class="wrap map-pick" id="map-pick" hidden>
+        <span class="status" id="map-pick-at"></span>
+        <div class="wrap__cats">
+          <div class="chips" id="map-chips"></div>
+          <input id="map-search" class="wrap__search" type="text" placeholder="Search" maxlength="60" spellcheck="false" />
+        </div>
+      </div>
+      <div class="actions map-push" id="map-push" hidden>
+        <span class="status" id="map-push-label"></span>
+        <button class="act" data-min="15">+15m</button>
+        <button class="act" data-min="30">+30m</button>
+        <button class="act" data-min="60">+1h</button>
+      </div>
+      <p class="hint">Click a later point on the line to set when a task should be done by.</p>
+    </section>
+
     <section class="panel" id="view-log" hidden>
-      <div class="tabs" role="tablist" id="log-tabs">
-        <button class="tab" data-range="today">Today</button>
-        <button class="tab" data-range="week">Week</button>
-        <button class="tab" data-range="month">Month</button>
-        <button class="tab" data-range="all">All</button>
+      <div class="log-head">
+        <div class="tabs" role="tablist" id="log-tabs">
+          <button class="tab" data-range="today">Today</button>
+          <button class="tab" data-range="week">Week</button>
+          <button class="tab" data-range="month">Month</button>
+          <button class="tab" data-range="all">All</button>
+        </div>
+        <div class="tabs" id="log-mode">
+          <button class="tab" data-mode="summary">Summary</button>
+          <button class="tab" data-mode="sessions">Sessions</button>
+        </div>
       </div>
       <div class="summary">
         <div class="summary__big" id="log-total">0m</div>
@@ -80,7 +115,8 @@
       </div>
       <h2 class="eyebrow" id="log-cat-title">By category</h2>
       <ul class="cats" id="log-cats"></ul>
-      <h2 class="eyebrow">Sessions</h2>
+      <div id="log-summary"></div>
+      <h2 class="eyebrow" id="log-sessions-title">Sessions</h2>
       <div id="log-sessions"></div>
     </section>
 
@@ -169,6 +205,10 @@
       <h2 class="eyebrow">Window</h2>
       <label class="toggle"><input type="checkbox" id="s-top" /><span>Always on top</span></label>
       <label class="toggle"><input type="checkbox" id="s-login" /><span>Open when I log in</span></label>
+
+      <h2 class="eyebrow">Done for the day</h2>
+      <label class="field"><span>Review link</span><input id="s-review" type="text" placeholder="https://…" spellcheck="false" /></label>
+      <p class="hint">When today’s tasks are all done, Now shows <b>Hop off</b>. It opens this link, e.g. your daily review doc or form.</p>
 
       <h2 class="eyebrow">App</h2>
       <div class="actions">

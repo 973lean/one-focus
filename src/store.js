@@ -16,6 +16,9 @@ const DEFAULTS = {
     askRating: true, // 1–5 stars after Done
     joltMinutes: 60, // 0 = off
     goalDisplay: 'ring', // ring | ringPct | text
+    mapGoals: true, // show goal markers on the Map
+    logView: 'summary', // summary | sessions
+    reviewUrl: '', // opened by "Hop off" when the day's tasks are done
     checkMinutes: 120, // "Still on this?" after a task runs this long; 0 = off
     endOfDay: '', // "HH:MM" to check a still-running task; '' = off
     awayMinutes: 10, // no input this long = away (counts as idle)
