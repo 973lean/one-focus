@@ -37,6 +37,7 @@ const DEFAULTS = {
   holdNames: [], // { name, lastUsed }
   checkFrom: null, // last "Still on this?" confirm
   eodDate: null, // day the end-of-day check last ran
+  web: { token: null, gistId: null, publishedAt: null, error: null }, // private web view (secret Gist)
 };
 
 const dir = () => app.getPath('userData');
@@ -55,6 +56,7 @@ function load() {
     ...saved,
     settings: { ...base.settings, ...(saved.settings || {}) },
     google: { ...base.google, ...(saved.google || {}) },
+    web: { ...base.web, ...(saved.web || {}) },
   };
 }
 
@@ -98,4 +100,21 @@ function setRefreshToken(state, token) {
   else state.google.refreshToken = 'plain:' + token;
 }
 
-module.exports = { load, save, getRefreshToken, setRefreshToken };
+// Same OS encryption for the GitHub token used by the web view.
+function getSecret(stored) {
+  if (!stored) return null;
+  if (stored.startsWith('enc:')) {
+    try {
+      return safeStorage.decryptString(Buffer.from(stored.slice(4), 'base64'));
+    } catch {
+      return null;
+    }
+  }
+  return stored.replace(/^plain:/, '');
+}
+function makeSecret(value) {
+  if (!value) return null;
+  return safeStorage.isEncryptionAvailable() ? 'enc:' + safeStorage.encryptString(value).toString('base64') : 'plain:' + value;
+}
+
+module.exports = { load, save, getRefreshToken, setRefreshToken, getSecret, makeSecret };

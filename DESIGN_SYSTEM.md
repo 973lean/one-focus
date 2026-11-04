@@ -118,6 +118,14 @@ Panels are for the occasional look, not the resting state, so they can be denser
 
 - One row per day: date and time focused on the first line, then "7 sessions · avg 44m · longest 1h 30m · 4 breaks · 52m" in 12px tertiary. Stretches under 2 minutes apart count as one session; gaps of 5 minutes or more count as breaks.
 
+## Small additions (v0.13)
+
+- **Count it?** After Start from 5+ minutes idle: one 12px line under the task, "Idle 25m before this. Count it as this task?" with **Count it** (primary ink) and **No** (tertiary). Gone after 20s.
+- **This was…** Idle and hold stretches use the same 3 chips + search picker as categories.
+- **Tray:** task chips under the Map line; tasks not scheduled for today are at 60% opacity. While dragging, the bar gets a hairline outline and the tooltip shows the drop time.
+- **Map popover:** one hairline-bottomed row under the line for goal (Remove) or idle (This was…) actions.
+- **Web view** (`docs/index.html`): the same tokens, 640px column, 56px between sections: date + big time + task, the day line, Tasks, Coming up, a tertiary "Updated" footer.
+
 ## Hold
 
 - Hover pill **Hold** (next to Start / Done) opens the same 3 chips + search as categories, defaulting to Meeting, Call, Break.

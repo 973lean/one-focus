@@ -91,6 +91,13 @@
 - [x] Map moves into Today as a third tab (Today · All · Map)
 - [x] Settings becomes a gear in the bottom-right corner, shown only when the pointer is near
 
+## v0.13 — corrections, ez fill, web view
+- [x] Count idle as the task when you forgot to press Start (on Start, and later via "This was…" on the Map and in the Log)
+- [x] Goals from each Today row; remove goals from the Map
+- [x] Day summary: work span, % focused, done count, goals hit
+- [x] Ez fill: drag tasks onto the Map line to plan them
+- [x] Private web view of today + coming days (secret Gist + GitHub Pages)
+
 ## Parked
 - [x] ~~Full-screen announcements~~ → became the v0.7 blur for "Still on this?" and end of day
 

@@ -4,6 +4,9 @@ const fs = require('fs');
 const store = require('./store');
 const Tracker = require('./tracker');
 const google = require('./google');
+const web = require('./web');
+
+const VIEW_BASE = 'https://973lean.github.io/one-focus/';
 
 const SYNC_MS = 60e3;
 const HEARTBEAT_MS = 30e3;
@@ -50,7 +53,13 @@ function snapshot() {
     tracked: cur ? tracker.trackedSince(cur) : 0,
     today,
     todayDate: localDate(),
-    goals: goalsFor([cur, held, next && { key: 'g:' + next.id }]),
+    goals: goalsFor([cur, held, ...today.open.map((t) => ({ key: 'g:' + t.id }))]),
+    web: {
+      on: !!state.web.token,
+      url: state.web.gistId ? VIEW_BASE + '#' + state.web.gistId : null,
+      publishedAt: state.web.publishedAt,
+      error: state.web.error,
+    },
     categories: recentCategories(),
     holdNames: recentHolds(),
     held,
@@ -84,7 +93,47 @@ function savedBounds() {
   return visible ? w : null;
 }
 
+// ---------- private web view ----------
+// Publishes at most every 2 minutes while something changes.
+let webTimer = null;
+let webBusy = false;
+let webLast = 0;
+function scheduleWeb() {
+  if (!state.web.token || webTimer) return;
+  const wait = Math.max(15e3, 120e3 - (Date.now() - webLast));
+  webTimer = setTimeout(() => {
+    webTimer = null;
+    publishWeb();
+  }, wait);
+}
+async function publishWeb() {
+  const token = store.getSecret(state.web.token);
+  if (!token || webBusy) return;
+  webBusy = true;
+  webLast = Date.now();
+  try {
+    const view = web.buildView({
+      current: state.current,
+      open: today.open,
+      done: today.done,
+      sessions: state.sessions,
+      live: state.open,
+      taskMeta: state.taskMeta,
+    });
+    state.web.gistId = await web.publish(token, state.web.gistId, view);
+    state.web.publishedAt = nowIso();
+    state.web.error = null;
+  } catch (e) {
+    state.web.error = e.message;
+  } finally {
+    webBusy = false;
+    store.save(state);
+    if (win && !win.isDestroyed()) win.webContents.send('state', snapshot());
+  }
+}
+
 function push() {
+  scheduleWeb();
   // The blur only makes sense while a real task runs.
   if (check && (!state.current || isHold(state.current))) closeCheck();
   if (win && !win.isDestroyed()) win.webContents.send('state', snapshot());
@@ -457,6 +506,35 @@ ipcMain.handle('current:start', async (_e, id) => {
   return { ok: true };
 });
 
+// Forgot to press Start: count the idle stretch just before it as this task.
+ipcMain.handle('idle:claim', () => {
+  const cur = state.current;
+  if (!cur || isHold(cur)) return snapshot();
+  const since = Date.parse(cur.since);
+  const idle = [...state.sessions].reverse().find((s) => s.key === 'idle' && Math.abs(Date.parse(s.end) - since) < 5000);
+  if (idle && tracker.convertSession(idle, cur)) state.current.since = idle.start;
+  store.save(state);
+  push();
+  return snapshot();
+});
+
+ipcMain.handle('web:setup', async (_e, raw) => {
+  const token = String(raw || '').trim();
+  if (token) state.web.token = store.makeSecret(token);
+  if (!state.web.token) return { error: 'Paste a GitHub token first.' };
+  await publishWeb();
+  return state.web.error ? { error: state.web.error } : { ok: true, url: VIEW_BASE + '#' + state.web.gistId };
+});
+
+ipcMain.handle('web:off', () => {
+  state.web = { token: null, gistId: null, publishedAt: null, error: null };
+  store.save(state);
+  push();
+  return snapshot();
+});
+
+ipcMain.handle('web:open', () => state.web.gistId && shell.openExternal(VIEW_BASE + '#' + state.web.gistId));
+
 // Hold: pause the running task for a meeting, call, break… and come back.
 ipcMain.handle('hold:start', (_e, raw) => {
   const name = String(raw || '').trim().slice(0, 40);
@@ -505,6 +583,7 @@ ipcMain.handle('session:edit', (_e, op, id, payload = {}) => {
   if (op === 'edit') ok = tracker.editSession(id, payload);
   else if (op === 'split') ok = tracker.splitSession(id, payload.at, String(payload.name || '').trim().slice(0, 40));
   else if (op === 'delete') ok = tracker.deleteSession(id);
+  else if (op === 'convert' && payload.key) ok = tracker.convertSession(id, payload);
   push();
   return { ok };
 });

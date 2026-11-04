@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="robots" content="noindex" />
+  <title>One Focus</title>
+  <link rel="icon" href="icon.png" />
+  <style>
+    /* Same tokens as the app (DESIGN_SYSTEM.md). Dark only, by design. */
+    :root {
+      --bg: #0B0B0C;
+      --fg: #F5F5F4;
+      --fg-secondary: rgba(245, 245, 244, 0.62);
+      --fg-date: rgba(245, 245, 244, 0.48);
+      --fg-tertiary: rgba(245, 245, 244, 0.32);
+      --hairline: rgba(245, 245, 244, 0.10);
+      --fill: rgba(245, 245, 244, 0.06);
+      --font: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+      color-scheme: dark;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { background: var(--bg); }
+    body {
+      background: var(--bg);
+      color: var(--fg);
+      font-family: var(--font);
+      -webkit-font-smoothing: antialiased;
+      min-height: 100vh;
+      padding-block: clamp(40px, 8vw, 96px);
+      padding-left: max(16px, env(safe-area-inset-left, 0px));
+      padding-right: max(16px, env(safe-area-inset-right, 0px));
+    }
+    main { max-width: 640px; margin: 0 auto; display: flex; flex-direction: column; gap: 56px; }
+    .eyebrow { font-size: 11px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: var(--fg-tertiary); margin-bottom: 16px; }
+    .muted { color: var(--fg-tertiary); }
+
+    /* Now */
+    .date { font-size: 15px; letter-spacing: 0.04em; color: var(--fg-date); }
+    .clock { font-size: clamp(64px, 16vw, 112px); font-weight: 500; letter-spacing: -0.04em; line-height: 0.95; font-variant-numeric: tabular-nums; margin-top: 8px; }
+    .clock small { font-size: 0.32em; font-weight: 400; letter-spacing: 0.04em; color: var(--fg-tertiary); margin-left: 0.15em; }
+    .task { margin-top: 28px; font-size: clamp(20px, 4.4vw, 26px); color: var(--fg-secondary); }
+    .task.idle { color: var(--fg-tertiary); }
+    .meta { margin-top: 6px; font-size: 16px; color: var(--fg-tertiary); font-variant-numeric: tabular-nums; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .ring { width: 14px; height: 14px; transform: rotate(-90deg); }
+    .ring circle { fill: none; stroke-width: 2; }
+    .ring .t { stroke: var(--hairline); }
+    .ring .f { stroke: var(--fg-secondary); stroke-linecap: round; }
+
+    /* Day line */
+    .line { position: relative; height: 34px; border-radius: 6px; background: var(--fill); overflow: hidden; }
+    .blk { position: absolute; top: 3px; bottom: 3px; border-radius: 4px; background: rgba(245, 245, 244, 0.2); font-size: 11px; line-height: 28px; padding: 0 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .blk.hold { background: rgba(245, 245, 244, 0.09); color: var(--fg-secondary); }
+    .nowline { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--fg); }
+    .goals { position: relative; height: 26px; }
+    .goal { position: absolute; bottom: 0; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; }
+    .goal span { font-size: 10px; color: var(--fg-secondary); white-space: nowrap; max-width: 96px; overflow: hidden; text-overflow: ellipsis; }
+    .goal::after { content: ""; width: 1px; height: 6px; background: var(--fg-secondary); margin-top: 2px; }
+    .hours { position: relative; height: 16px; margin-top: 6px; }
+    .hours span { position: absolute; transform: translateX(-50%); font-size: 10px; color: var(--fg-tertiary); white-space: nowrap; }
+    .hours span:first-child { transform: none; }
+    .hours span:last-child { transform: translateX(-100%); }
+    .total { margin-top: 14px; font-size: 13px; color: var(--fg-tertiary); }
+
+    /* Lists */
+    ul { list-style: none; }
+    li { display: flex; align-items: baseline; gap: 16px; padding: 12px 0; border-bottom: 1px solid var(--hairline); font-size: 15px; color: var(--fg-secondary); min-width: 0; }
+    li .t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    li .r { font-size: 12px; color: var(--fg-tertiary); white-space: nowrap; font-variant-numeric: tabular-nums; }
+    li.done .t { color: var(--fg-tertiary); text-decoration: line-through; text-decoration-color: var(--hairline); }
+    li.is-now .t { color: var(--fg); }
+    .day + .day { margin-top: 28px; }
+    .day h3 { font-size: 13px; font-weight: 400; color: var(--fg-date); margin-bottom: 4px; }
+
+    footer { font-size: 12px; color: var(--fg-tertiary); }
+    .empty { font-size: 15px; color: var(--fg-tertiary); line-height: 1.6; }
+  </style>
+</head>
+<body>
+  <main id="app">
+    <p class="empty">Loading…</p>
+  </main>
+  <script>
+    const $app = document.getElementById('app');
+    const id = (location.hash || '').slice(1).replace(/[^0-9a-f]/gi, '');
+    const timeFmt = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' });
+    const hourFmt = new Intl.DateTimeFormat(undefined, { hour: 'numeric' });
+    const dateFmt = new Intl.DateTimeFormat('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+    const hm = (t) => timeFmt.format(new Date(t));
+    const dur = (ms) => {
+      const m = Math.max(0, Math.floor(ms / 60000));
+      return m < 60 ? m + 'm' : Math.floor(m / 60) + 'h ' + String(m % 60).padStart(2, '0') + 'm';
+    };
+    const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+    let data = null;
+
+    async function load() {
+      if (!id) {
+        $app.innerHTML = '<p class="empty">Open this page from One Focus → Settings → Web view.</p>';
+        return;
+      }
+      try {
+        const r = await fetch('https://api.github.com/gists/' + id, { cache: 'no-store' });
+        if (!r.ok) throw new Error(r.status);
+        const g = await r.json();
+        const f = g.files && g.files['one-focus.json'];
+        if (!f) throw new Error('missing');
+        data = JSON.parse(f.truncated ? await (await fetch(f.raw_url)).text() : f.content);
+        render();
+      } catch {
+        if (!data) $app.innerHTML = '<p class="empty">Couldn’t load this day. Check the link, or try again in a minute.</p>';
+      }
+    }
+
+    function render() {
+      if (!data) return;
+      const now = Date.now();
+      const parts = timeFmt.formatToParts(new Date());
+      const period = parts.find((p) => p.type === 'dayPeriod');
+      const clock = parts.filter((p) => p.type !== 'dayPeriod').map((p) => p.value).join('').trim();
+      const c = data.current;
+
+      let meta = '';
+      if (c && !c.hold) {
+        const bits = [hm(c.since), dur(now - Date.parse(c.since))];
+        let ring = '';
+        if (c.goal) {
+          const span = Date.parse(c.goal) - Date.parse(c.since);
+          const pct = span > 0 ? Math.min(100, Math.max(0, ((now - Date.parse(c.since)) / span) * 100)) : 100;
+          ring = `<svg class="ring" viewBox="0 0 16 16"><circle class="t" cx="8" cy="8" r="6"/><circle class="f" cx="8" cy="8" r="6" pathLength="100" stroke-dasharray="${pct} 100"/></svg><span>by ${hm(c.goal)}</span>`;
+        }
+        meta = `<span>${bits.join(' · ')}</span>${ring}`;
+      } else if (c && c.hold) meta = `<span>Hold · ${dur(now - Date.parse(c.since))}</span>`;
+
+      // Day line: first block (or 2h ago) to a few hours ahead, whole hours.
+      const H = 3600e3;
+      const goals = data.today.filter((t) => t.goal && !t.done).map((t) => ({ title: t.title, at: Date.parse(t.goal) }));
+      let from = Math.min(now - 2 * H, ...data.blocks.map((b) => Date.parse(b.start)));
+      from = Math.floor(from / H) * H;
+      let to = Math.max(now + 3 * H, ...goals.map((g) => g.at + H / 2));
+      to = Math.ceil(to / H) * H;
+      const pct = (t) => ((t - from) / (to - from)) * 100;
+      const every = (to - from) / H > 12 ? 2 : 1;
+      let hours = '';
+      for (let t = from; t <= to; t += every * H) hours += `<span style="left:${pct(t)}%">${hourFmt.format(new Date(t)).replace(' ', '').toLowerCase()}</span>`;
+      const blocks = data.blocks
+        .map((b) => `<div class="blk${b.hold ? ' hold' : ''}" style="left:${pct(Date.parse(b.start))}%;width:${Math.max(pct(Date.parse(b.end)) - pct(Date.parse(b.start)), 0.3)}%" title="${esc(b.title)} · ${hm(b.start)}–${hm(b.end)}">${esc(b.title)}</div>`)
+        .join('');
+      // Labels only where they fit; crowded goals show just their tick.
+      const width = Math.min(640, document.body.clientWidth - 32);
+      let lastX = -1e9;
+      const goalMarks = goals
+        .sort((a, b) => a.at - b.at)
+        .map((g) => {
+          const x = (pct(g.at) / 100) * width;
+          const label = x - lastX > 104;
+          if (label) lastX = x;
+          return `<div class="goal" style="left:${pct(g.at)}%" title="${esc(g.title)} · by ${hm(g.at)}">${label ? `<span>${esc(g.title)}</span>` : ''}</div>`;
+        })
+        .join('');
+
+      const today = data.today
+        .map((t) => {
+          const isNow = c && !c.hold && t.title === c.title && !t.done;
+          const right = t.done ? 'done' : t.goal ? 'by ' + hm(t.goal) : t.overdue ? 'overdue' : '';
+          return `<li class="${t.done ? 'done' : ''}${isNow ? ' is-now' : ''}"><span class="t">${esc(t.title)}</span><span class="r">${isNow ? 'now' : right}</span></li>`;
+        })
+        .join('');
+      const upcoming = data.upcoming
+        .map((d) => `<div class="day"><h3>${dateFmt.format(new Date(d.date + 'T12:00:00'))}</h3><ul>${d.tasks.map((t) => `<li><span class="t">${esc(t)}</span></li>`).join('')}</ul></div>`)
+        .join('');
+
+      $app.innerHTML = `
+        <section>
+          <div class="date">${dateFmt.format(new Date())}</div>
+          <div class="clock">${clock}${period ? `<small>${period.value}</small>` : ''}</div>
+          <div class="task${c ? '' : ' idle'}">${c ? esc(c.title) : 'Nothing running'}</div>
+          ${meta ? `<div class="meta">${meta}</div>` : ''}
+        </section>
+        <section>
+          <h2 class="eyebrow">Today</h2>
+          <div class="goals">${goalMarks}</div>
+          <div class="line">${blocks}<div class="nowline" style="left:${pct(now)}%"></div></div>
+          <div class="hours">${hours}</div>
+          <p class="total">${dur(data.focusedMs)} focused</p>
+        </section>
+        <section>
+          <h2 class="eyebrow">Tasks</h2>
+          ${today ? `<ul>${today}</ul>` : '<p class="empty">Nothing scheduled today.</p>'}
+        </section>
+        ${upcoming ? `<section><h2 class="eyebrow">Coming up</h2>${upcoming}</section>` : ''}
+        <footer>Updated ${dur(now - Date.parse(data.updated))} ago · One Focus</footer>`;
+    }
+
+    load();
+    setInterval(load, 60e3);
+    setInterval(render, 15e3);
+    window.addEventListener('hashchange', () => location.reload());
+  </script>
+</body>
+</html>

@@ -16,6 +16,10 @@ A small, quiet window for a secondary monitor that keeps you on one thing at a t
 - **Goal time:** hover, click the clock button, and a bar of the rest of your day appears. Hover it to see the time and how far away it is ("2:30 PM · in 4h 25m"); click to set it. The time line then shows a small progress ring after your time on task (or ring + %, or "2h 10m left" — Settings → Goal progress), and the time and task jolt once when you hit it. Works on the running task or the one queued next. Click the clock again to change or clear it.
 - **Map** (Today → Map tab): your day as one line. Past = blocks of what you worked on (holds lighter), a line for now, and (toggle **Goals**) markers for the goal times you set. Hover anything for times and durations. Click a later point and pick a task to set when it should be done by. Running over? **Push plan +15m / +30m / +1h** moves your current goal and everything planned after it.
 - **Hop off:** when everything scheduled for today is done, Now says "All done for today" with **Hop off**, which opens your review link (Settings → Done for the day).
+- **Forgot to press Start?** Starting after 5+ minutes idle offers "Count it as this task?". Idle gaps on the Map and in Log → Sessions can be turned into time on a task afterwards ("This was…").
+- **Ez fill:** in Today → Map, drag a task chip onto the line to plan it there (it's scheduled for today with that goal time). Click a goal marker to remove it.
+- **Goals from Today:** each task row has **Goal**, which opens the same day timeline; the goal shows on the row.
+- **Web view:** today and the coming days at a private link in any browser (see below).
 - **Hold:** pulled into a meeting or call? Hover, click **Hold**, pick Meeting / Call / Break (or search). The task pauses without being finished; **Back to: <task>** resumes it. Hold time is logged separately.
 - **Still on this?** After a task runs 2 hours (change or turn off in Settings), every screen softly blurs and only One Focus stays sharp until you click **Confirm**.
 - **End of day:** set a time in Settings; if a task is still running then, the same blur asks **Done** or **Tomorrow**.
@@ -37,6 +41,14 @@ You create your own Google sign-in key, so your tasks only go between your compu
    - When you sign in, Google will warn that the app isn't verified. Click **Advanced → Go to One Focus**. That's expected for a personal app.
 4. **Credentials → Create credentials → OAuth client ID → Desktop app**. Copy the **Client ID** and **Client secret**.
 5. In One Focus, open **Settings**, paste both, and click **Connect**. Your browser opens once to sign in.
+
+## Web view (one time)
+
+1. GitHub → this repo → **Settings → Pages** → Source: **Deploy from a branch** → `main` / `/docs` → **Save**.
+2. github.com/settings/tokens → **Fine-grained token** → Account permissions → **Gists: Read and write** → generate and copy it.
+3. One Focus → gear → **Web view** → paste the token → **Create link**. Open or copy the link from there.
+
+Your day is stored in a secret Gist and updated about every 2 minutes. The page only knows the Gist id from the part of the link after `#`; anyone with the full link can see it.
 
 ## Run it
 

@@ -531,11 +531,36 @@ input::placeholder { color: var(--fg-tertiary); }
 .map-pick { position: static; transform: none; align-items: flex-start; }
 .map-push { font-size: var(--size-small); }
 
+/* Map extras: popover, task tray, clickable goals */
+.map__goals .map__goal { pointer-events: auto; cursor: pointer; padding: 0 4px; }
+.map__goal:hover span { color: var(--fg); }
+.map-pop { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); font-size: var(--size-small); color: var(--fg-secondary); padding: 8px 0; border-bottom: 1px solid var(--hairline); }
+.tray { display: flex; flex-wrap: wrap; gap: 6px; }
+.tray .chip { cursor: grab; max-width: 18ch; }
+.tray .chip.is-other { opacity: 0.6; }
+.tray .chip:active { cursor: grabbing; }
+.map__bar.is-drop { box-shadow: inset 0 0 0 1px var(--fg-tertiary); }
+
+/* Shared picker (chips + search) */
+.picker { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--space-1); }
+
+/* Inline day timeline (Today rows) */
+.timeline.timeline--inline { position: relative; top: auto; left: auto; transform: none; width: 100%; padding: 26px 0 4px; }
+.timeline--inline .timeline__tip { bottom: auto; top: 4px; }
+.goaltag { font-size: 11px; color: var(--fg-tertiary); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.row-goal { padding: 0 0 10px; border-bottom: 1px solid var(--hairline); }
+
+/* "Count it?" after starting from idle */
+.claim { position: absolute; top: calc(100% + var(--space-2)); left: 50%; transform: translateX(-50%); display: flex; gap: var(--space-2); align-items: baseline; white-space: nowrap; font-size: var(--size-small); color: var(--fg-secondary); }
+.claim .act { color: var(--fg); }
+.claim #claim-no { color: var(--fg-tertiary); }
+
 /* Log: summary view */
 .log-head { display: flex; justify-content: space-between; flex-wrap: wrap; gap: var(--space-2); }
 .daysum { padding: 10px 0; border-bottom: 1px solid var(--hairline); display: grid; grid-template-columns: 1fr auto; gap: 2px var(--space-3); align-items: baseline; }
 .daysum .d { color: var(--fg-secondary); }
 .daysum .t { color: var(--fg); font-variant-numeric: tabular-nums; }
+.daysum .m + .m { margin-top: 1px; }
 .daysum .m { grid-column: 1 / -1; font-size: var(--size-small); color: var(--fg-tertiary); font-variant-numeric: tabular-nums; }
 
 /* Log: holds and editing */

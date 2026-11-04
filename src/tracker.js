@@ -133,6 +133,15 @@ class Tracker {
     return true;
   }
 
+  // "This was <task>": turn a session (usually idle) into time on a task.
+  convertSession(id, task) {
+    const i = this._find(id);
+    if (i < 0 || !task || !task.key) return false;
+    Object.assign(this.s.sessions[i], { key: task.key, title: task.title, googleId: task.googleId || null });
+    this.save();
+    return true;
+  }
+
   deleteSession(id) {
     const i = this._find(id);
     if (i < 0) return false;

@@ -49,6 +49,7 @@
           </div>
           <div class="timeline__ends"><span>now</span><button class="act" id="tl-clear" hidden>Clear goal</button><span id="tl-end"></span></div>
         </div>
+        <div class="claim" id="claim" hidden><span id="claim-text"></span><button class="act" id="claim-yes">Count it</button><button class="act" id="claim-no">No</button></div>
         <div class="wrap" id="holdpick" hidden>
           <div class="wrap__cats">
             <div class="chips" id="hold-chips"></div>
@@ -109,6 +110,8 @@
           <div class="map__hours" id="map-hours"></div>
           <div class="map__tip" id="map-tip" hidden></div>
         </div>
+        <div class="map-pop" id="map-pop" hidden></div>
+        <div class="tray" id="map-tray"></div>
         <div class="wrap map-pick" id="map-pick" hidden>
           <span class="status" id="map-pick-at"></span>
           <div class="wrap__cats">
@@ -122,7 +125,7 @@
           <button class="act" data-min="30">+30m</button>
           <button class="act" data-min="60">+1h</button>
         </div>
-        <p class="hint">Click a later point on the line to set when a task should be done by.</p>
+        <p class="hint">Drag a task onto the line to plan it, or click a later point. Click an idle gap to say what it was.</p>
       </div>
       <div id="today-off" class="note" hidden>
         Connect Google Tasks in <button class="link" data-view="settings">Settings</button> to see your list here.
@@ -208,6 +211,19 @@
       <h2 class="eyebrow">Done for the day</h2>
       <label class="field"><span>Review link</span><input id="s-review" type="text" placeholder="https://…" spellcheck="false" /></label>
       <p class="hint">When today’s tasks are all done, Now shows <b>Hop off</b>. It opens this link, e.g. your daily review doc or form.</p>
+
+      <h2 class="eyebrow">Web view</h2>
+      <p class="note" id="web-status"></p>
+      <div id="web-setup">
+        <label class="field"><span>GitHub token</span><input id="s-web-token" type="password" spellcheck="false" autocomplete="off" placeholder="github_pat_…" /></label>
+        <p class="hint">Shows today and the coming days at a private link in any browser. Create a token at github.com/settings/tokens with the <b>Gists</b> permission (read and write). Your day is kept in a secret Gist: anyone with the link can see it.</p>
+      </div>
+      <div class="actions">
+        <button class="btn" id="web-on">Create link</button>
+        <button class="btn btn--quiet" id="web-open" hidden>Open</button>
+        <button class="btn btn--quiet" id="web-copy" hidden>Copy link</button>
+        <button class="btn btn--quiet" id="web-off" hidden>Turn off</button>
+      </div>
 
       <h2 class="eyebrow">App</h2>
       <div class="actions">

@@ -126,3 +126,13 @@ test('log corrections: edit, split into a hold, delete', () => {
   assert.equal(t.deleteSession(s.sessions[1]), true);
   assert.equal(s.sessions.length, 1);
 });
+
+test('convert an idle stretch into task time', () => {
+  const s = fresh();
+  const t = new Tracker(s, () => {});
+  const idle = { key: 'idle', title: 'Idle', googleId: null, start: '2026-11-04T09:00:00.000Z', end: '2026-11-04T09:25:00.000Z' };
+  s.sessions.push({ ...idle });
+  assert.equal(t.convertSession(idle, { key: 'g:7', title: 'Write brief', googleId: '7' }), true);
+  assert.deepEqual([s.sessions[0].key, s.sessions[0].title, s.sessions[0].googleId], ['g:7', 'Write brief', '7']);
+  assert.equal(t.convertSession(idle, { key: 'g:8', title: 'x' }), false); // no longer idle with that key
+});

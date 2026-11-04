@@ -162,7 +162,7 @@ function renderNow() {
       ? 'Nothing scheduled today'
       : 'Your list is empty';
   taskEl.title = S.connected ? 'Open today’s list' : 'Click to type what you’re doing';
-  if (holdpick || picking) return renderMeta();
+  if (holdpick || picking || claim) return renderMeta();
   if (S.check === 'still') confirmEl.hidden = false;
   else if (S.check === 'eod') {
     eodDoneEl.hidden = !(cur && cur.googleId);
@@ -219,7 +219,37 @@ async function busy(btn, fn) {
     btn.disabled = false;
   }
 }
-startEl.addEventListener('click', () => busy(startEl, () => api.start()));
+startEl.addEventListener('click', () => busy(startEl, () => startWithClaim()));
+
+// ---------- Forgot to press Start? Offer to count the idle stretch. ----------
+
+let claim = null; // { timer }
+async function startWithClaim(id) {
+  const idleMs = S.open && S.open.key === 'idle' ? live() : 0;
+  const r = await api.start(id);
+  if (r && r.error) return r;
+  if (idleMs >= 5 * 60e3) {
+    clearTimeout(claim && claim.timer);
+    claim = { timer: setTimeout(endClaim, 20000) };
+    $('claim-text').textContent = `Idle ${dur(idleMs)} before this. Count it as this task?`;
+    $('claim').hidden = false;
+    renderNow();
+  }
+  return r;
+}
+function endClaim() {
+  if (!claim) return;
+  clearTimeout(claim.timer);
+  claim = null;
+  $('claim').hidden = true;
+  renderNow();
+}
+$('claim-yes').addEventListener('click', async () => {
+  S = await api.claimIdle();
+  endClaim();
+  if (view === 'log' || view === 'today') loadLog();
+});
+$('claim-no').addEventListener('click', endClaim);
 hopEl.addEventListener('click', async () => {
   if (S.settings.reviewUrl) return api.openReview();
   setView('settings');
@@ -586,7 +616,8 @@ function renderLog() {
     holdDay.set(day, (holdDay.get(day) || 0) + s.ms);
   }
   let lastDay = '';
-  for (const s of [...sessions, ...holds].sort((x, y) => y.a - x.a).slice(0, 300)) {
+  const idleRows = idle.filter((s) => !s.live && s.ms >= 5 * 60e3);
+  for (const s of [...sessions, ...holds, ...idleRows].sort((x, y) => y.a - x.a).slice(0, 300)) {
     const day = dayFmt.format(new Date(s.a));
     if (day !== lastDay) {
       const head = el('div', 'day');
@@ -598,11 +629,11 @@ function renderLog() {
       list.append(head);
     }
     lastDay = day;
-    const hold = s.key.startsWith('hold:');
+    const hold = s.key.startsWith('hold:') || s.key === 'idle';
     const row = el('div', 'sess' + (s.live ? ' is-live' : '') + (hold ? ' is-hold' : ''));
     row.append(
       el('span', 'w', `${hm(s.a)}–${s.live ? 'now' : hm(s.b)}`),
-      el('span', 't', hold ? 'Hold: ' + s.title : s.title),
+      el('span', 't', s.key === 'idle' ? 'Idle' : hold ? 'Hold: ' + s.title : s.title),
       el('span', 'd', dur(s.ms))
     );
     list.append(row);
@@ -616,6 +647,19 @@ document.querySelectorAll('#log-tabs .tab').forEach((t) =>
     renderLog();
   })
 );
+
+// Goals set for a given day, and whether each was finished in time.
+function goalsOnDay(dayLabel) {
+  const meta = (logData && logData.taskMeta) || {};
+  const out = [];
+  for (const [key, m] of Object.entries(meta)) {
+    if (!m.goal || dayFmt.format(new Date(m.goal)) !== dayLabel) continue;
+    const doneAt = logData.completions.filter((c) => c.key === key).map((c) => Date.parse(c.at)).sort()[0];
+    const at = Date.parse(m.goal);
+    out.push({ key, hit: doneAt != null && doneAt <= at, missed: (doneAt == null && at < Date.now()) || (doneAt != null && doneAt > at) });
+  }
+  return out;
+}
 
 function renderSummary(sessions) {
   const days = new Map();
@@ -643,10 +687,19 @@ function renderSummary(sessions) {
       if (g >= 5 * 60e3) gaps.push(g);
     }
     const longest = Math.max(...parts.map((p) => p.ms));
-    const bits = [`${parts.length} session${parts.length === 1 ? '' : 's'}`, `avg ${dur(total / parts.length)}`, `longest ${dur(longest)}`];
-    if (gaps.length) bits.push(`${gaps.length} break${gaps.length === 1 ? '' : 's'} · ${dur(gaps.reduce((a, b) => a + b, 0))}`);
+    const first = parts[0].a;
+    const last = parts[parts.length - 1].b;
+    const spanMs = last - first;
+    // Line 1: when the day ran and how much of it was focused. Line 2: rhythm and outcomes.
+    const line1 = [`${hm(first)}–${hm(last)}`, spanMs > 0 ? `${Math.round((total / spanMs) * 100)}% focused` : null, `${parts.length} session${parts.length === 1 ? '' : 's'}`, `avg ${dur(total / parts.length)}`];
+    const line2 = [`longest ${dur(longest)}`];
+    if (gaps.length) line2.push(`${gaps.length} break${gaps.length === 1 ? '' : 's'} · ${dur(gaps.reduce((a, b) => a + b, 0))}`);
+    const doneCount = logData.completions.filter((c) => dayFmt.format(new Date(c.at)) === day).length;
+    if (doneCount) line2.push(`${doneCount} done`);
+    const goals = goalsOnDay(day);
+    if (goals.length) line2.push(`goals ${goals.filter((g) => g.hit).length}/${goals.length}`);
     const row = el('div', 'daysum');
-    row.append(el('span', 'd', day), el('span', 't', dur(total)), el('span', 'm', bits.join(' · ')));
+    row.append(el('span', 'd', day), el('span', 't', dur(total)), el('span', 'm', line1.filter(Boolean).join(' · ')), el('span', 'm', line2.join(' · ')));
     out.append(row);
   }
 }
@@ -665,6 +718,7 @@ const mapTip = $('map-tip');
 const hourFmt = new Intl.DateTimeFormat(undefined, { hour: 'numeric' });
 let mapRange = null;
 let mapBlocks = [];
+let mapIdle = [];
 let pickAt = null;
 
 function renderMap() {
@@ -676,6 +730,9 @@ function renderMap() {
   const day0 = sod.getTime();
 
   const live = logData.open && logData.open.key !== 'idle' ? [{ ...logData.open, end: null }] : [];
+  mapIdle = logData.sessions
+    .filter((s) => s.key === 'idle' && Date.parse(s.end) > day0)
+    .map((s) => ({ ...s, a: Math.max(Date.parse(s.start), day0), b: Date.parse(s.end) }));
   mapBlocks = [...logData.sessions, ...live]
     .filter((s) => s.key !== 'idle' && (s.end ? Date.parse(s.end) : now) > day0)
     .map((s) => ({ ...s, a: Math.max(Date.parse(s.start), day0), b: s.end ? Date.parse(s.end) : now, live: !s.end }));
@@ -740,10 +797,13 @@ function renderMap() {
         lastX[lane] = x;
       }
       m.style.left = pct(g.at) + '%';
-      m.title = `${g.title} · by ${hm(g.at)}`;
+      m.title = `${g.title} · by ${hm(g.at)} · click to edit`;
+      m.addEventListener('click', () => showGoalPop(g));
       gEl.append(m);
     }
   }
+
+  renderTray(goals);
 
   // Today at a glance.
   const focused = mapBlocks.filter((b) => !b.key.startsWith('hold:')).reduce((n, b) => n + (b.b - b.a), 0);
@@ -793,7 +853,13 @@ mapBar.addEventListener('mouseleave', () => {
 // Click a later point: pick a task to be done by then.
 mapBar.addEventListener('click', (e) => {
   const t = mapTimeAt(e.clientX);
-  if (t <= Date.now() || !S.connected) return;
+  if (t <= Date.now()) {
+    // An idle gap in the past: say what it was.
+    const gap = mapIdle.find((s) => t >= s.a && t <= s.b);
+    if (gap) showIdlePop(gap);
+    return;
+  }
+  if (!S.connected) return;
   pickAt = Math.round(t / (15 * 60e3)) * 15 * 60e3;
   $('map-pick-at').textContent = `Done by ${hm(pickAt)} (in ${dur(pickAt - Date.now())}):`;
   $('map-search').value = '';
@@ -839,6 +905,185 @@ document.querySelectorAll('#map-push .act').forEach((b) =>
     await loadLog();
   })
 );
+
+// Tasks you might mean: the running one, today's blocks (latest first), today's list.
+function recentTasks() {
+  const out = [];
+  const seen = new Set();
+  const add = (t) => t && t.key && !t.key.startsWith('hold:') && t.key !== 'idle' && !seen.has(t.key) && (seen.add(t.key), out.push({ key: t.key, title: t.title, googleId: t.googleId || null }));
+  add(S.current);
+  for (const s of [...((logData && logData.sessions) || [])].reverse()) add(s);
+  for (const t of S.today.open) add({ key: 'g:' + t.id, title: t.title, googleId: t.id });
+  return out;
+}
+
+// Three chips + search, like categories and holds.
+function taskPicker(onPick) {
+  const wrapEl = el('span', 'picker');
+  const chips = el('span', 'chips');
+  const search = el('input', 'wrap__search');
+  search.type = 'text';
+  search.placeholder = 'Search';
+  const paint = () => {
+    const q = search.value.trim().toLowerCase();
+    const all = recentTasks();
+    chips.replaceChildren(
+      ...(q ? all.filter((t) => t.title.toLowerCase().includes(q)) : all).slice(0, 3).map((t) => {
+        const b = el('button', 'chip', t.title);
+        b.title = t.title;
+        b.addEventListener('click', () => onPick(t));
+        return b;
+      })
+    );
+  };
+  search.addEventListener('input', paint);
+  search.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    const q = search.value.trim().toLowerCase();
+    const t = q && recentTasks().find((x) => x.title.toLowerCase().includes(q));
+    if (t) onPick(t);
+  });
+  paint();
+  wrapEl.append(chips, search);
+  return wrapEl;
+}
+
+const mapPop = $('map-pop');
+function showGoalPop(g) {
+  mapPop.replaceChildren(el('span', null, `${g.title} · by ${hm(g.at)}`));
+  const remove = el('button', 'act', 'Remove');
+  remove.addEventListener('click', async () => {
+    mapPop.hidden = true;
+    S = await api.setMeta(g.key, { goal: null });
+    await loadLog();
+  });
+  const close = el('button', 'act', 'Close');
+  close.addEventListener('click', () => (mapPop.hidden = true));
+  mapPop.append(remove, close);
+  mapPop.hidden = false;
+}
+function showIdlePop(gap) {
+  mapPop.replaceChildren(el('span', null, `Idle ${hm(gap.a)}–${hm(gap.b)} · ${dur(gap.b - gap.a)} · This was`));
+  mapPop.append(
+    taskPicker(async (task) => {
+      mapPop.hidden = true;
+      await api.editSession('convert', { key: gap.key, start: gap.start }, task);
+      await loadLog();
+    })
+  );
+  const close = el('button', 'act', 'Close');
+  close.addEventListener('click', () => (mapPop.hidden = true));
+  mapPop.append(close);
+  mapPop.hidden = false;
+}
+
+// Ez fill: drag a task chip onto the line to plan it there.
+function renderTray(goals) {
+  const tray = $('map-tray');
+  tray.replaceChildren();
+  if (!S.connected) return;
+  const planned = new Set(goals.filter((g) => !g.done).map((g) => g.key));
+  const todays = S.today.open.filter((t) => scheduled(t) && !planned.has('g:' + t.id));
+  const others = S.today.open.filter((t) => !scheduled(t) && !planned.has('g:' + t.id));
+  for (const t of [...todays, ...others].slice(0, 10)) {
+    const c = el('span', 'chip' + (scheduled(t) ? '' : ' is-other'), t.title);
+    c.title = scheduled(t) ? t.title : t.title + ' (not today yet)';
+    c.draggable = true;
+    c.addEventListener('dragstart', (e) => {
+      e.dataTransfer.setData('text/one-focus-task', t.id);
+      e.dataTransfer.effectAllowed = 'copy';
+    });
+    tray.append(c);
+  }
+}
+mapBar.addEventListener('dragover', (e) => {
+  if (!e.dataTransfer.types.includes('text/one-focus-task') || !mapRange) return;
+  const t = mapTimeAt(e.clientX);
+  if (t <= Date.now()) return mapBar.classList.remove('is-drop');
+  e.preventDefault();
+  mapBar.classList.add('is-drop');
+  const snapped = Math.round(t / (15 * 60e3)) * 15 * 60e3;
+  mapTip.textContent = `${hm(snapped)} · in ${dur(snapped - Date.now())}`;
+  mapTip.hidden = false;
+  const r = mapBar.getBoundingClientRect();
+  mapTip.style.left = Math.min(Math.max(e.clientX - r.left, mapTip.offsetWidth / 2), r.width - mapTip.offsetWidth / 2) + 'px';
+});
+mapBar.addEventListener('dragleave', () => {
+  mapBar.classList.remove('is-drop');
+  mapTip.hidden = true;
+});
+mapBar.addEventListener('drop', async (e) => {
+  e.preventDefault();
+  mapBar.classList.remove('is-drop');
+  mapTip.hidden = true;
+  const id = e.dataTransfer.getData('text/one-focus-task');
+  const t = S.today.open.find((x) => x.id === id);
+  const at = Math.round(mapTimeAt(e.clientX) / (15 * 60e3)) * 15 * 60e3;
+  if (!t || at <= Date.now()) return;
+  if (!scheduled(t)) await api.task('schedule', t.id);
+  S = await api.setMeta('g:' + t.id, { goal: new Date(at).toISOString() });
+  await loadLog();
+});
+
+// Today rows: set a goal on an inline day timeline.
+function dayPicker(currentGoal, onPick, onClear) {
+  const box = el('div', 'timeline timeline--inline');
+  const tip = el('div', 'timeline__tip');
+  tip.hidden = true;
+  const bar = el('div', 'timeline__bar');
+  const hover = el('div', 'timeline__mark is-hover');
+  hover.hidden = true;
+  const ends = el('div', 'timeline__ends');
+  const from = Math.floor(Date.now() / STEP) * STEP;
+  const midnight = new Date();
+  midnight.setHours(24, 0, 0, 0);
+  const to = Math.max(midnight.getTime(), from + 4 * 3600e3);
+  const at = (x) => {
+    const w = bar.clientWidth || 1;
+    const t = from + (Math.min(Math.max(x, 0), w) / w) * (to - from);
+    return Math.max(Math.round(t / STEP) * STEP, from + STEP);
+  };
+  const xOf = (t) => ((t - from) / (to - from)) * 100;
+  bar.append(hover);
+  if (currentGoal && Date.parse(currentGoal) > from && Date.parse(currentGoal) < to) {
+    const m = el('div', 'timeline__mark');
+    m.style.left = xOf(Date.parse(currentGoal)) + '%';
+    bar.append(m);
+  }
+  bar.addEventListener('mousemove', (e) => {
+    const t = at(e.clientX - bar.getBoundingClientRect().left);
+    hover.hidden = tip.hidden = false;
+    hover.style.left = tip.style.left = xOf(t) + '%';
+    tip.textContent = `${hm(t)} · in ${dur(t - Date.now())}`;
+  });
+  bar.addEventListener('mouseleave', () => (hover.hidden = tip.hidden = true));
+  bar.addEventListener('click', (e) => onPick(at(e.clientX - bar.getBoundingClientRect().left)));
+  ends.append(el('span', null, 'now'));
+  if (currentGoal) {
+    const clear = el('button', 'act', 'Clear goal');
+    clear.addEventListener('click', onClear);
+    ends.append(clear);
+  }
+  ends.append(el('span', null, hm(to)));
+  box.append(tip, bar, ends);
+  return box;
+}
+function toggleRowGoal(li, t) {
+  const open = li.nextSibling && li.nextSibling.classList && li.nextSibling.classList.contains('row-goal');
+  document.querySelectorAll('.row-goal').forEach((x) => x.remove());
+  if (open) return (renaming = false);
+  renaming = true; // pause list re-renders while picking
+  const holder = el('li', 'row-goal');
+  const done = async (patch) => {
+    renaming = false;
+    S = await api.setMeta('g:' + t.id, patch);
+    render();
+  };
+  holder.append(
+    dayPicker(goalOf('g:' + t.id), (at) => done({ goal: new Date(at).toISOString() }), () => done({ goal: null }))
+  );
+  li.after(holder);
+}
 
 // ---------- Log: fix a session (times, split into a Hold, delete) ----------
 
@@ -892,6 +1137,9 @@ function toggleEditor(row, s) {
   );
   const box = el('div', 'edit-sess');
   box.append(start, el('span', null, '–'), end, save, del, el('span', 'gap'), el('span', null, 'From'), splitAt, el('span', null, 'it was'), splitName, split, msg);
+  if (s.key === 'idle' || s.key.startsWith('hold:')) {
+    box.append(el('span', 'gap'), el('span', null, 'This was'), taskPicker(async (task) => after(await api.editSession('convert', id, task))));
+  }
   row.after(box);
   editorEl = box;
 }
@@ -915,6 +1163,8 @@ function taskRow(t, { current, next, done, allView }) {
   else if (next) li.append(el('span', 'tag', 'NEXT'));
   else if (!done && t.due && t.due < S.todayDate) li.append(el('span', 'tag', 'OVERDUE'));
   else if (allView && scheduled(t)) li.append(el('span', 'tag', 'TODAY'));
+  const g = !done && goalOf('g:' + t.id);
+  if (g) li.append(el('span', 'goaltag', 'by ' + hm(g)));
 
   const run = async (action, value) => {
     li.classList.add('is-busy');
@@ -943,12 +1193,16 @@ function taskRow(t, { current, next, done, allView }) {
       start.title = 'Start this task now';
       start.addEventListener('click', async () => {
         li.classList.add('is-busy');
-        const r = await api.start(t.id);
+        const r = await startWithClaim(t.id);
         li.classList.remove('is-busy');
         if (r && r.error) $('today-status').textContent = r.error;
       });
       acts.append(start);
     }
+    const goalBtn = el('button', 'act', 'Goal');
+    goalBtn.title = 'Set when this should be done by';
+    goalBtn.addEventListener('click', () => toggleRowGoal(li, t));
+    acts.append(goalBtn);
     const del = el('button', 'act', 'Delete');
     del.addEventListener('click', () => run('delete'));
     acts.append(del);
@@ -1123,6 +1377,28 @@ $('g-connect').addEventListener('click', async () => {
 });
 
 $('app-update').addEventListener('click', () => api.installUpdate());
+$('web-on').addEventListener('click', async () => {
+  $('web-on').disabled = true;
+  $('web-status').textContent = 'Publishing…';
+  const r = await api.webSetup($('s-web-token').value);
+  $('web-on').disabled = false;
+  $('s-web-token').value = '';
+  S = await api.getState();
+  renderSettings();
+  if (r.error) $('web-status').textContent = r.error;
+});
+$('web-open').addEventListener('click', () => api.webOpen());
+$('web-copy').addEventListener('click', async () => {
+  try {
+    await navigator.clipboard.writeText(S.web.url);
+    $('web-copy').textContent = 'Copied';
+    setTimeout(() => ($('web-copy').textContent = 'Copy link'), 1500);
+  } catch {}
+});
+$('web-off').addEventListener('click', async () => {
+  S = await api.webOff();
+  renderSettings();
+});
 $('app-check').addEventListener('click', () => api.checkUpdate());
 
 $('g-disconnect').addEventListener('click', async () => {
@@ -1153,6 +1429,16 @@ function renderSettings() {
   };
   $('app-version').textContent = `Version ${S.app ? S.app.version : ''}${words[u.status] ? ' · ' + words[u.status] : ''}`;
   $('app-update').hidden = u.status !== 'ready';
+  const w = S.web || {};
+  $('web-setup').hidden = w.on;
+  $('web-on').hidden = w.on;
+  $('web-open').hidden = $('web-copy').hidden = $('web-off').hidden = !(w.on && w.url);
+  if (document.activeElement !== $('web-on'))
+    $('web-status').textContent = w.error
+      ? w.error
+      : w.on && w.url
+      ? `Live at ${w.url.replace('https://', '')} · updated ${w.publishedAt ? hm(w.publishedAt) : '—'}`
+      : 'Off. See today and the coming days in any browser at a private link.';
   $('app-check').hidden = u.status === 'dev' || u.status === 'ready';
   $('app-check').classList.toggle('is-spinning', u.status === 'checking' || u.status === 'downloading');
   $('g-setup').hidden = S.connected;
