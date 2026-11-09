@@ -126,6 +126,12 @@ Panels are for the occasional look, not the resting state, so they can be denser
 - **Map popover:** one hairline-bottomed row under the line for goal (Remove) or idle (This was…) actions.
 - **Web view** (`docs/index.html`): the same tokens, 640px column, 56px between sections: date + big time + task, the day line, Tasks, Coming up, a tertiary "Updated" footer.
 
+## Water & walk
+
+- Two 16px line icons in the same 1.2px stroke as the window controls: a tapered glass with a water line, and a walking stick figure (round head, straight limbs, round caps). No fills, no colour.
+- The reminder is one row in the action slot under the task: icon · "Time for water" / "Time for a walk" in secondary ink · a loud 24px round ✓ · "Skip" in tertiary. It fades up 4px over 400ms and fires one jolt when it appears. The task's own buttons return once it's answered.
+- Intervals in Settings are dense text tabs: Off · 15m · 20m · 30m · 45m · 60m · 90m · 120m.
+
 ## Hold
 
 - Hover pill **Hold** (next to Start / Done) opens the same 3 chips + search as categories, defaulting to Meeting, Call, Break.

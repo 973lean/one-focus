@@ -250,6 +250,29 @@ button:focus-visible, input:focus-visible { outline: 1px solid var(--fg-tertiary
 .icon-btn.is-spinning svg { animation: spin 900ms linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* Water / walk reminder: one quiet line at the bottom of Now. */
+.nudge {
+  position: absolute;
+  top: calc(100% + var(--space-2));
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  white-space: nowrap;
+  font-size: var(--size-ui);
+  color: var(--fg-secondary);
+  animation: nudge-in 400ms var(--ease);
+}
+@keyframes nudge-in { from { opacity: 0; transform: translate(-50%, 4px); } }
+.nudge.is-under { top: calc(100% + 40px); } /* below the task's own action row (claim / pickers) */
+.nudge__icon svg, .line-icon { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.2; stroke-linecap: round; stroke-linejoin: round; display: block; }
+.nudge .pill--icon { width: 24px; height: 24px; }
+.nudge .pill--icon svg { width: 10px; height: 10px; }
+.nudge__skip { font-size: var(--size-small); color: var(--fg-tertiary); }
+.tabs--dense { gap: var(--space-2); flex-wrap: wrap; }
+.tabs--dense .tab { font-size: var(--size-small); }
+
 /* Goal progress ring: sits right after the time on task. */
 .ring { display: inline-flex; align-items: center; gap: 4px; margin-left: 0.4em; vertical-align: -0.12em; }
 .ring svg { width: 0.85em; height: 0.85em; transform: rotate(-90deg); }

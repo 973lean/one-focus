@@ -20,6 +20,7 @@ A small, quiet window for a secondary monitor that keeps you on one thing at a t
 - **Ez fill:** in Today → Map, drag a task chip onto the line to plan it there (it's scheduled for today with that goal time). Click a goal marker to remove it.
 - **Goals from Today:** each task row has **Goal**, which opens the same day timeline; the goal shows on the row.
 - **Web view:** today and the coming days at a private link in any browser (see below).
+- **Water & walk:** set each to remind you every 15 / 20 / 30 / 45 / 60 / 90 / 120 minutes, or Off (Settings → Water & walk). A quiet line with a small line icon (a glass, a stick figure) replaces the buttons under your task until you answer. ✓ logs it; for a walk it also pauses your task as a "Walk" hold until you're back. Skip just restarts the timer. The Log summary shows water and walks per day. Reminders only count while you're at the computer.
 - **Hold:** pulled into a meeting or call? Hover, click **Hold**, pick Meeting / Call / Break (or search). The task pauses without being finished; **Back to: <task>** resumes it. Hold time is logged separately.
 - **Still on this?** After a task runs 2 hours (change or turn off in Settings), every screen softly blurs and only One Focus stays sharp until you click **Confirm**.
 - **End of day:** set a time in Settings; if a task is still running then, the same blur asks **Done** or **Tomorrow**.

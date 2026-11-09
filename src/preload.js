@@ -18,6 +18,7 @@ contextBridge.exposeInMainWorld('oneFocus', {
   checkUpdate: () => ipcRenderer.invoke('update:check'),
   openReview: () => ipcRenderer.invoke('review:open'),
   shiftGoals: (ms) => ipcRenderer.invoke('goals:shift', ms),
+  answerCare: (answer) => ipcRenderer.invoke('care:answer', answer),
   claimIdle: () => ipcRenderer.invoke('idle:claim'),
   webSetup: (token) => ipcRenderer.invoke('web:setup', token),
   webOff: () => ipcRenderer.invoke('web:off'),

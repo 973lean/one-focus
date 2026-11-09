@@ -5,6 +5,7 @@ const store = require('./store');
 const Tracker = require('./tracker');
 const google = require('./google');
 const web = require('./web');
+const care = require('./care');
 
 const VIEW_BASE = 'https://973lean.github.io/one-focus/';
 
@@ -21,6 +22,7 @@ let restoreBounds = null;
 let updater = null;
 let update = { status: 'idle', version: null }; // idle | checking | current | downloading | ready | error | dev
 let check = null; // null | 'still' | 'eod': the blur is up and waiting for you
+let nudge = null; // null | 'water' | 'walk': a reminder is showing
 let overlays = [];
 
 const isHold = (t) => !!(t && t.key.startsWith('hold:'));
@@ -64,6 +66,7 @@ function snapshot() {
     holdNames: recentHolds(),
     held,
     check,
+    nudge,
     app: { version: app.getVersion(), update },
   };
 }
@@ -475,6 +478,7 @@ function installUpdate() {
 }
 
 ipcMain.handle('log:get', () => ({
+  care: state.care.log,
   taskMeta: state.taskMeta,
   sessions: state.sessions,
   open: state.open,
@@ -536,7 +540,35 @@ ipcMain.handle('web:off', () => {
 ipcMain.handle('web:open', () => state.web.gistId && shell.openExternal(VIEW_BASE + '#' + state.web.gistId));
 
 // Hold: pause the running task for a meeting, call, break… and come back.
-ipcMain.handle('hold:start', (_e, raw) => {
+ipcMain.handle('hold:start', (_e, raw) => startHold(raw));
+
+// Water / walk reminder answered. A walk you take starts a "Walk" hold, so
+// the task pauses and the walk is logged; Back resumes the task.
+ipcMain.handle('care:answer', (_e, answer) => {
+  const kind = nudge;
+  nudge = null;
+  if (kind) {
+    state.care.last[kind] = nowIso();
+    if (answer === 'done') {
+      state.care.log.push({ kind, at: nowIso() });
+      const cutoff = Date.now() - 120 * 86400e3;
+      state.care.log = state.care.log.filter((e) => Date.parse(e.at) > cutoff);
+      if (kind === 'walk') return startHold('Walk');
+    }
+  }
+  store.save(state);
+  push();
+  return snapshot();
+});
+
+function checkCare() {
+  if (nudge) return;
+  const present = !tracker.away && !tracker.pauses.size && !isHold(state.current) && !check;
+  const kind = care.dueReminder({ last: state.care.last, settings: state.settings, present });
+  if (kind) nudge = kind;
+}
+
+function startHold(raw) {
   const name = String(raw || '').trim().slice(0, 40);
   if (!name) return snapshot();
   const hit = state.holdNames.find((h) => h.name.toLowerCase() === name.toLowerCase());
@@ -547,7 +579,7 @@ ipcMain.handle('hold:start', (_e, raw) => {
   store.save(state);
   push();
   return snapshot();
-});
+}
 
 ipcMain.handle('hold:end', () => {
   const held = state.held;
@@ -659,6 +691,11 @@ ipcMain.handle('settings:update', async (_e, patch) => {
     const u = String(patch.reviewUrl || '').trim();
     state.settings.reviewUrl = /^https?:\/\/\S+$/i.test(u) ? u : '';
   }
+  for (const k of ['waterMinutes', 'walkMinutes'])
+    if (k in patch) {
+      state.settings[k] = care.INTERVALS.includes(+patch[k]) ? +patch[k] : 0;
+      state.care.last[k.replace('Minutes', '')] = nowIso(); // new interval counts from now
+    }
   if ('goalDisplay' in patch) state.settings.goalDisplay = ['ring', 'ringPct', 'text'].includes(patch.goalDisplay) ? patch.goalDisplay : 'ring';
   if ('joltMinutes' in patch) state.settings.joltMinutes = [0, 30, 60, 90, 120].includes(+patch.joltMinutes) ? +patch.joltMinutes : 0;
   if ('checkMinutes' in patch) state.settings.checkMinutes = [0, 60, 120, 180].includes(+patch.checkMinutes) ? +patch.checkMinutes : 120;
@@ -714,6 +751,8 @@ app.whenReady().then(() => {
   state = store.load();
   tracker = new Tracker(state, () => store.save(state));
   tracker.recover();
+  // Reminders count from when the app opens, not from yesterday.
+  state.care.last = { water: nowIso(), walk: nowIso() };
   makeClient();
   createWindow();
   sync();
@@ -732,6 +771,7 @@ app.whenReady().then(() => {
     tracker.heartbeat();
     if (tracker.away && update.status === 'ready' && !check) installUpdate();
     checkDue();
+    checkCare();
     push();
   }, HEARTBEAT_MS);
 

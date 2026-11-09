@@ -162,7 +162,8 @@ function renderNow() {
       ? 'Nothing scheduled today'
       : 'Your list is empty';
   taskEl.title = S.connected ? 'Open today’s list' : 'Click to type what you’re doing';
-  if (holdpick || picking || claim) return renderMeta();
+  // The water/walk reminder takes the buttons' place until it's answered.
+  if (holdpick || picking || claim || S.nudge) return renderMeta();
   if (S.check === 'still') confirmEl.hidden = false;
   else if (S.check === 'eod') {
     eodDoneEl.hidden = !(cur && cur.googleId);
@@ -220,6 +221,29 @@ async function busy(btn, fn) {
   }
 }
 startEl.addEventListener('click', () => busy(startEl, () => startWithClaim()));
+
+// ---------- Water & walk ----------
+// Line icons in the same 1.2px stroke as the rest of the app.
+const ICONS = {
+  water: '<svg viewBox="0 0 16 16"><path d="M4.5 3h7l-1.1 10.4H5.6z"/><path d="M5.1 7.6h5.8"/></svg>',
+  walk: '<svg viewBox="0 0 16 16"><circle cx="9" cy="2.6" r="1.4"/><path d="M8.6 4.4 7.6 9M8.4 5.5 6 7.5M8.4 5.5l2.2 1.8M7.6 9l-2 4.6M7.6 9l2.4 4.2"/></svg>',
+};
+const NUDGE_TEXT = { water: 'Time for water', walk: 'Time for a walk' };
+let shownNudge = null;
+function renderNudge() {
+  const kind = S && S.nudge;
+  $('nudge').hidden = !kind || view !== 'now';
+  if (!kind) return (shownNudge = null);
+  if (kind !== shownNudge) {
+    shownNudge = kind;
+    $('nudge-icon').innerHTML = ICONS[kind];
+    $('nudge-text').textContent = NUDGE_TEXT[kind];
+    $('nudge-yes').title = kind === 'walk' ? 'Going (pauses your task)' : 'Done';
+    jolt();
+  }
+}
+$('nudge-yes').addEventListener('click', async () => (S = await api.answerCare('done')) && render());
+$('nudge-skip').addEventListener('click', async () => (S = await api.answerCare('skip')) && render());
 
 // ---------- Forgot to press Start? Offer to count the idle stretch. ----------
 
@@ -696,6 +720,11 @@ function renderSummary(sessions) {
     if (gaps.length) line2.push(`${gaps.length} break${gaps.length === 1 ? '' : 's'} · ${dur(gaps.reduce((a, b) => a + b, 0))}`);
     const doneCount = logData.completions.filter((c) => dayFmt.format(new Date(c.at)) === day).length;
     if (doneCount) line2.push(`${doneCount} done`);
+    const careDay = (logData.care || []).filter((e) => dayFmt.format(new Date(e.at)) === day);
+    const water = careDay.filter((e) => e.kind === 'water').length;
+    const walks = careDay.filter((e) => e.kind === 'walk').length;
+    if (water) line2.push(`${water} water`);
+    if (walks) line2.push(`${walks} walk${walks === 1 ? '' : 's'}`);
     const goals = goalsOnDay(day);
     if (goals.length) line2.push(`goals ${goals.filter((g) => g.hit).length}/${goals.length}`);
     const row = el('div', 'daysum');
@@ -1346,6 +1375,16 @@ const toggles = {
   's-top': 'alwaysOnTop',
   's-login': 'launchAtLogin',
 };
+for (const [sel, key] of [['#s-water', 'waterMinutes'], ['#s-walk', 'walkMinutes']]) {
+  $(sel.slice(1)).append(
+    ...[0, 15, 20, 30, 45, 60, 90, 120].map((m) => {
+      const b = el('button', 'tab', m ? m + 'm' : 'Off');
+      b.dataset.min = m;
+      b.addEventListener('click', async () => (S = await api.updateSettings({ [key]: m })) && render());
+      return b;
+    })
+  );
+}
 for (const [sel, key] of [['#s-check', 'checkMinutes'], ['#s-away', 'awayMinutes']])
   document.querySelectorAll(sel + ' .tab').forEach((t) =>
     t.addEventListener('click', async () => (S = await api.updateSettings({ [key]: +t.dataset.min })) && render())
@@ -1414,6 +1453,8 @@ function renderSettings() {
   for (const [id, key] of Object.entries(toggles)) $(id).checked = !!s[key];
   document.querySelectorAll('#s-jolt .tab').forEach((t) => t.setAttribute('aria-selected', String(+t.dataset.min === (s.joltMinutes || 0))));
   document.querySelectorAll('#s-goal-display .tab').forEach((t) => t.setAttribute('aria-selected', String(t.dataset.v === (s.goalDisplay || 'ring'))));
+  for (const [sel, key] of [['#s-water', 'waterMinutes'], ['#s-walk', 'walkMinutes']])
+    document.querySelectorAll(sel + ' .tab').forEach((t) => t.setAttribute('aria-selected', String(+t.dataset.min === (s[key] || 0))));
   document.querySelectorAll('#s-check .tab').forEach((t) => t.setAttribute('aria-selected', String(+t.dataset.min === (s.checkMinutes ?? 120))));
   document.querySelectorAll('#s-away .tab').forEach((t) => t.setAttribute('aria-selected', String(+t.dataset.min === (s.awayMinutes || 10))));
   if (document.activeElement !== $('s-eod')) $('s-eod').value = s.endOfDay || '';
@@ -1453,6 +1494,7 @@ function renderSettings() {
 
 function render() {
   renderNow();
+  renderNudge();
   if (view === 'today') renderToday();
   if (view === 'settings') renderSettings();
 }
