@@ -16,8 +16,6 @@ const DEFAULTS = {
     askRating: true, // 1–5 stars after Done
     joltMinutes: 60, // 0 = off
     goalDisplay: 'ring', // ring | ringPct | text
-    waterMinutes: 45, // water reminder interval; 0 = off
-    walkMinutes: 90, // walk reminder interval; 0 = off
     mapGoals: true, // show goal markers on the Map
     logView: 'summary', // summary | sessions
     reviewUrl: '', // opened by "Hop off" when the day's tasks are done
@@ -38,7 +36,6 @@ const DEFAULTS = {
   held: null, // the task paused by a Hold, restored by "Back to"
   holdNames: [], // { name, lastUsed }
   checkFrom: null, // last "Still on this?" confirm
-  care: { last: {}, log: [] }, // water/walk: when each was last answered, and what you did
   eodDate: null, // day the end-of-day check last ran
   web: { token: null, gistId: null, publishedAt: null, error: null }, // private web view (secret Gist)
 };
@@ -60,7 +57,6 @@ function load() {
     settings: { ...base.settings, ...(saved.settings || {}) },
     google: { ...base.google, ...(saved.google || {}) },
     web: { ...base.web, ...(saved.web || {}) },
-    care: { ...base.care, ...(saved.care || {}) },
   };
 }
 

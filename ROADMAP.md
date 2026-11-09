@@ -98,11 +98,6 @@
 - [x] Ez fill: drag tasks onto the Map line to plan them
 - [x] Private web view of today + coming days (secret Gist + GitHub Pages)
 
-## v0.14 — water & walk
-- [x] Water and walk reminders with their own intervals (Off / 15 / 20 / 30 / 45 / 60 / 90 / 120 min)
-- [x] Line icons in the app's stroke style (glass, stick figure); a walk pauses the task as a Walk hold
-- [x] Water and walks per day in the Log summary
-
 ## Parked
 - [x] ~~Full-screen announcements~~ → became the v0.7 blur for "Still on this?" and end of day
 
