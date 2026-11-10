@@ -11,6 +11,7 @@ const VIEW_BASE = 'https://973lean.github.io/one-focus/';
 const SYNC_MS = 60e3;
 const HEARTBEAT_MS = 30e3;
 const PANEL_MIN = { width: 440, height: 480 };
+const SETUP_MIN = { width: 980, height: 660 }; // the week planner needs room
 
 let win = null;
 let state;
@@ -54,6 +55,7 @@ function snapshot() {
     today,
     todayDate: localDate(),
     goals: goalsFor([cur, held, ...today.open.map((t) => ({ key: 'g:' + t.id }))]),
+    plans: plansFor(today.open),
     web: {
       on: !!state.web.token,
       url: state.web.gistId ? VIEW_BASE + '#' + state.web.gistId : null,
@@ -66,6 +68,16 @@ function snapshot() {
     check,
     app: { version: app.getVersion(), update },
   };
+}
+
+// Setup: planned start + length and group (category) for each open task.
+function plansFor(open) {
+  const out = {};
+  for (const t of open) {
+    const m = state.taskMeta['g:' + t.id];
+    if (m && (m.plan || m.category)) out['g:' + t.id] = { plan: m.plan || null, group: m.category || null };
+  }
+  return out;
 }
 
 function goalsFor(tasks) {
@@ -389,13 +401,14 @@ function setView(name) {
     restoreBounds = null;
     return;
   }
-  if (restoreBounds) return;
+  const min = name === 'setup' ? SETUP_MIN : PANEL_MIN;
   const b = win.getBounds();
-  if (b.width >= PANEL_MIN.width && b.height >= PANEL_MIN.height) return;
-  restoreBounds = b;
+  if (b.width >= min.width && b.height >= min.height) return;
+  if (!restoreBounds) restoreBounds = b; // remember the clock-sized window, once
+  const PANEL = min;
   const wa = screen.getDisplayMatching(b).workArea;
-  const width = Math.min(Math.max(b.width, PANEL_MIN.width), wa.width);
-  const height = Math.min(Math.max(b.height, PANEL_MIN.height), wa.height);
+  const width = Math.min(Math.max(b.width, PANEL.width), wa.width);
+  const height = Math.min(Math.max(b.height, PANEL.height), wa.height);
   const x = Math.max(wa.x, Math.min(b.x, wa.x + wa.width - width));
   const y = Math.max(wa.y, Math.min(b.y, wa.y + wa.height - height));
   win.setBounds({ x, y, width, height }, true);
@@ -409,6 +422,7 @@ ipcMain.on('window:action', (e, action) => {
   if (action === 'minimize') w.minimize();
   else if (action === 'maximize') w.isMaximized() ? w.unmaximize() : w.maximize();
   else if (action === 'close') w.close();
+  else if (action === 'quit') app.quit(); // Hop off
 });
 
 ipcMain.on('view:set', (_e, name) => setView(name));
@@ -423,6 +437,30 @@ ipcMain.handle('review:open', () => {
   return !!u;
 });
 
+// Setup: place a task at a time on a day for a number of minutes. Its
+// Google date becomes that day and its goal the planned end, so Now, Map
+// and the web view all follow the plan. null = take it off the calendar.
+ipcMain.handle('plan:set', async (_e, id, plan) => {
+  const key = 'g:' + id;
+  const meta = (state.taskMeta[key] = { ...(state.taskMeta[key] || {}) });
+  if (plan && !Number.isNaN(Date.parse(plan.start))) {
+    const start = new Date(plan.start);
+    const mins = Math.min(Math.max(Math.round(+plan.mins / 15) * 15 || 30, 15), 12 * 60);
+    meta.plan = { start: start.toISOString(), mins };
+    meta.goal = new Date(start.getTime() + mins * 60e3).toISOString();
+    store.save(state);
+    push();
+    if (client && state.google.listId)
+      await client.patch(state.google.listId, id, { due: localDate(start) + 'T00:00:00.000Z' }).catch(() => {});
+  } else {
+    delete meta.plan;
+    delete meta.goal;
+    store.save(state);
+  }
+  await resync();
+  return snapshot();
+});
+
 // Running over: push the current goal and every goal planned after it.
 ipcMain.handle('goals:shift', (_e, raw) => {
   const ms = Number(raw);
@@ -434,7 +472,10 @@ ipcMain.handle('goals:shift', (_e, raw) => {
   if (cur) keys.add(cur.key);
   for (const k of keys) {
     const m = state.taskMeta[k];
-    if (m && m.goal && Date.parse(m.goal) >= base) m.goal = new Date(Date.parse(m.goal) + ms).toISOString();
+    if (m && m.goal && Date.parse(m.goal) >= base) {
+      m.goal = new Date(Date.parse(m.goal) + ms).toISOString();
+      if (m.plan) m.plan.start = new Date(Date.parse(m.plan.start) + ms).toISOString(); // planned blocks move too
+    }
   }
   store.save(state);
   push();

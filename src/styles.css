@@ -492,6 +492,78 @@ input::placeholder { color: var(--fg-tertiary); }
 .app[data-view="settings"] .gear, .gear:hover { color: var(--fg); }
 .today-map { display: flex; flex-direction: column; gap: var(--space-3); }
 
+/* ---------- Setup: plan the week by dragging ---------- */
+.panel.is-setup { overflow: hidden; padding-bottom: var(--space-3); }
+.setup { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: var(--space-3); }
+.su-head { display: flex; flex-direction: column; gap: var(--space-2); padding-bottom: var(--space-3); border-bottom: 1px solid var(--hairline); }
+.su-row { display: flex; align-items: center; gap: var(--space-4); flex-wrap: wrap; }
+.su-add { width: 240px !important; font-size: 15px !important; }
+.su-groups { display: flex; gap: var(--space-3); flex-wrap: wrap; align-items: baseline; }
+.su-group { font-size: var(--size-small); color: var(--fg-tertiary); padding: 4px 0; border-bottom: 1px solid transparent; }
+.su-group:hover { color: var(--fg-secondary); }
+.su-group[aria-selected="true"] { color: var(--fg); border-bottom-color: var(--fg-tertiary); }
+.su-group.is-drop { color: var(--fg); border-bottom-color: var(--fg); }
+.su-group-add { width: 10ch !important; font-size: var(--size-small) !important; padding: 4px 0 !important; }
+.su-tray { display: flex; flex-wrap: wrap; gap: 6px; min-height: 30px; padding: 4px 0; border-radius: 6px; transition: background var(--dur) var(--ease); }
+.su-tray.is-drop { background: var(--fill); }
+.su-chip { font-size: var(--size-small); color: var(--fg-secondary); border: 1px solid var(--hairline); border-radius: 999px; padding: 4px 10px; cursor: grab; user-select: none; touch-action: none; max-width: 24ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.su-chip:hover { color: var(--fg); border-color: var(--fg-tertiary); }
+.su-chip small { color: var(--fg-tertiary); margin-left: 6px; font-size: 10px; }
+.su-empty { font-size: var(--size-small); color: var(--fg-tertiary); padding: 4px 0; }
+
+.su-days { flex: 1; min-height: 0; display: flex; align-items: flex-start; gap: 12px; overflow: auto; scroll-snap-type: x proximity; padding-bottom: 6px; }
+.su-days::-webkit-scrollbar { width: 6px; height: 6px; }
+.su-days::-webkit-scrollbar-thumb { background: var(--hairline); border-radius: 3px; }
+.su-day { flex: 0 0 196px; scroll-snap-align: start; display: flex; flex-direction: column; border-radius: 10px; background: rgba(245, 245, 244, 0.025); }
+.su-day__head { position: sticky; top: 0; z-index: 2; display: flex; justify-content: space-between; align-items: baseline; padding: 10px 12px 8px; background: var(--bg); border-bottom: 1px solid var(--hairline); border-radius: 10px 10px 0 0; }
+.su-day__name { font-size: 13px; color: var(--fg-secondary); }
+.su-day.is-today .su-day__name { color: var(--fg); }
+.su-day__total { font-size: 11px; color: var(--fg-tertiary); font-variant-numeric: tabular-nums; }
+.su-col { position: relative; flex-shrink: 0; margin: 0 8px 8px 34px; }
+.su-hour { position: absolute; left: 0; right: 0; border-top: 1px solid var(--hairline); }
+.su-hour span { position: absolute; left: -32px; top: -7px; font-size: 10px; color: var(--fg-tertiary); font-variant-numeric: tabular-nums; }
+.su-now { position: absolute; left: -4px; right: 0; height: 2px; margin-top: -1px; background: var(--fg); z-index: 1; pointer-events: none; }
+.su-block {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-radius: 6px;
+  background: rgba(245, 245, 244, 0.16);
+  padding: 4px 8px;
+  font-size: 12px;
+  line-height: 1.3;
+  color: var(--fg);
+  overflow: hidden;
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+  box-shadow: inset 0 0 0 1px rgba(245, 245, 244, 0.06);
+}
+.su-block:hover { background: rgba(245, 245, 244, 0.22); }
+.su-block .t { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.su-block .w { display: block; font-size: 10px; color: var(--fg-secondary); font-variant-numeric: tabular-nums; }
+.su-block .h { position: absolute; left: 0; right: 0; bottom: 0; height: 8px; cursor: ns-resize; }
+.su-block.is-running { box-shadow: inset 2px 0 0 var(--fg); }
+.su-block.is-dragging { opacity: 0.3; }
+.su-preview { position: absolute; left: 0; right: 0; border-radius: 6px; border: 1px dashed var(--fg-tertiary); pointer-events: none; z-index: 1; }
+.su-preview span { position: absolute; top: 3px; left: 8px; font-size: 10px; color: var(--fg-secondary); }
+.su-ghost { position: fixed; z-index: 50; pointer-events: none; font-size: 12px; color: var(--fg); background: var(--bg); border: 1px solid var(--fg-tertiary); border-radius: 999px; padding: 4px 10px; white-space: nowrap; transform: translate(-50%, -120%); }
+
+/* Hop off: the two side borders close in, then the app quits. */
+body.closing::before, body.closing::after {
+  content: "";
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  z-index: 100;
+  background: var(--bg);
+  animation: close-in 720ms cubic-bezier(0.7, 0, 0.2, 1) forwards;
+}
+body.closing::before { left: 0; border-right: 1px solid var(--fg-secondary); }
+body.closing::after { right: 0; border-left: 1px solid var(--fg-secondary); }
+@keyframes close-in { 0% { width: 0; } 100% { width: 50%; border-color: transparent; } }
+
 /* Map: the day as one line. Past = blocks of what you did, future = goals. */
 .map-head { display: flex; justify-content: space-between; align-items: center; }
 .map { position: relative; padding-top: 34px; margin-top: var(--space-2); }

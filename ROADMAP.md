@@ -98,6 +98,11 @@
 - [x] Ez fill: drag tasks onto the Map line to plan them
 - [x] Private web view of today + coming days (secret Gist + GitHub Pages)
 
+## v0.16 — Setup and a proper goodbye
+- [x] Setup: week planner with a fat header (add, groups, unplanned tray) and draggable/resizable blocks on seven day cards
+- [x] Planned tasks set their Google date and goal (planned end); Push plan moves planned blocks too
+- [x] Hop off closes One Focus with the side borders closing in
+
 ## Parked
 - [x] ~~Full-screen announcements~~ → became the v0.7 blur for "Still on this?" and end of day
 

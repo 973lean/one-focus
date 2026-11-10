@@ -126,6 +126,18 @@ Panels are for the occasional look, not the resting state, so they can be denser
 - **Map popover:** one hairline-bottomed row under the line for goal (Remove) or idle (This was…) actions.
 - **Web view** (`docs/index.html`): the same tokens, 640px column, 56px between sections: date + big time + task, the day line, Tasks, Coming up, a tertiary "Updated" footer.
 
+## Setup (week planner)
+
+- The window grows to at least 980 × 660 while Setup is open.
+- Header ("fat header"): a 15px "New task" field, group tabs (All, each group, "+ Group"), the tray of unplanned task chips (12px hairline pills; a 10px tertiary tag for the day or group), one hint line, then a hairline.
+- Day cards: 196px wide, 10px radius, 2.5% fill, side by side and scrolling horizontally (snap), with a sticky header ("Today", "Tomorrow", "12 Thu" + planned total). Hours run down each card at 44px per hour, hairline rules, 10px labels; a 2px primary-ink now line on Today.
+- Blocks: 16% ink, 6px radius, title 12px + time range 10px secondary, an invisible 8px resize strip at the bottom. The running task gets a 2px primary-ink left edge.
+- Dragging: a small bordered ghost pill follows the pointer; a dashed preview shows where and how long it will land, labelled with the time. Times snap to 15 minutes.
+
+## Hop off
+
+- The left and right borders close in: two `--bg` panels grow from each side to the centre over 720ms (`cubic-bezier(0.7, 0, 0.2, 1)`), each with a 1px secondary-ink inner edge that fades as they meet. Then the app quits.
+
 ## Hold
 
 - Hover pill **Hold** (next to Start / Done) opens the same 3 chips + search as categories, defaulting to Meeting, Call, Break.

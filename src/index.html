@@ -98,6 +98,18 @@
         <button class="tab" data-list="today">Today</button>
         <button class="tab" data-list="all">All</button>
         <button class="tab" data-list="map">Map</button>
+        <button class="tab" data-list="setup">Setup</button>
+      </div>
+      <div class="setup" id="today-setup" hidden>
+        <header class="su-head">
+          <div class="su-row">
+            <input id="su-add" class="su-add" type="text" placeholder="New task" maxlength="300" />
+            <div class="su-groups" id="su-groups"></div>
+          </div>
+          <div class="su-tray" id="su-tray"></div>
+          <p class="hint">Drag a task onto a day to plan it. Drag a block to move it, or its bottom edge to change how long. Drop it back up here to unplan. Drop a task on a group to file it there.</p>
+        </header>
+        <div class="su-days" id="su-days"></div>
       </div>
       <div class="today-map" id="today-map" hidden>
       <div class="map-head">
