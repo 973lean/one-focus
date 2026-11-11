@@ -17,6 +17,15 @@ const DEFAULTS = {
     joltMinutes: 60, // 0 = off
     goalDisplay: 'ring', // ring | ringPct | text
     setupMode: 'modal', // modal = its own window on the main monitor; inline = inside One Focus
+    appMode: 'full', // full | light (just the Google Tasks wrapper, as before Setup)
+    plannerBlurClose: true, // clicking outside the Planner closes it
+    cornerToday: 'tl', // screen corner (main monitor) to triple-bump for Planner · Today; off | tl | tr | bl | br
+    cornerWeek: 'tr', // …and for Planner · Week
+    shortcuts: true, // Ctrl+Alt+T (Today), Ctrl+Alt+W (Week)
+    autoPlan: { mode: 'startEnd', every: 3, times: ['09:00', '13:30'] }, // off | startEnd | every | times
+    remindBlocks: true, // when a planned block starts
+    remindOver: true, // when the running task passes its planned end
+    colorTime: false, // green/red planned blocks by how long they really took
     dayStructure: null, // { start, end, work: [[from, to]], breaks: [[from, to]], weekends } or null
     mapGoals: true, // show goal markers on the Map
     logView: 'summary', // summary | sessions
@@ -41,6 +50,8 @@ const DEFAULTS = {
   eodDate: null, // day the end-of-day check last ran
   web: { token: null, gistId: null, publishedAt: null, error: null }, // private web view (secret Gist)
   breaks: [], // one-off breaks placed in Setup: { id, start, mins }
+  autoPlanFired: { date: null, at: [] }, // Planner auto-opens already done today
+  remindFired: { date: null, ids: [] }, // reminders already shown today
 };
 
 const dir = () => app.getPath('userData');

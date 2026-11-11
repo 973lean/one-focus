@@ -60,7 +60,8 @@ function setView(name) {
 document.querySelectorAll('button[data-view]').forEach((b) =>
   b.addEventListener('click', () => {
     // Setup opens as its own window on the main monitor unless set to inline.
-    if (b.dataset.view === 'setup' && S && S.settings.setupMode !== 'inline') return api.openSetup();
+    if (b.dataset.view === 'setup' && S && S.settings.setupMode !== 'inline') return api.openSetup('week');
+    if (b.dataset.view === 'setup') planTab = 'week';
     setView(view === b.dataset.view && b.dataset.view !== 'now' ? 'now' : b.dataset.view);
   })
 );
@@ -137,6 +138,8 @@ function renderMeta() {
   const parts = [];
   if (S.settings.showSince) parts.push(hm(cur.since));
   if (S.settings.showElapsed) parts.push(dur(S.tracked + (S.open && S.open.key === cur.key ? live() : 0)));
+  const ot = cur.googleId && S.today.open.find((x) => x.id === cur.googleId);
+  if (ot && ot.items && ot.items.length && S.settings.appMode !== 'light') parts.push(`${ot.items.filter((x) => x.done).length}/${ot.items.length} items`);
   const g = goalOf(cur.key);
   const mode = S.settings.goalDisplay || 'ring';
   const left = g ? Date.parse(g) - Date.now() : 0;
@@ -186,7 +189,9 @@ function renderNow() {
       ? 'Nothing scheduled today'
       : 'Your list is empty';
   taskEl.title = S.connected ? 'Open today’s list' : 'Click to type what you’re doing';
-  if (holdpick || picking || claim) return renderMeta();
+  // Reminder (block starting / running over) takes the buttons' place.
+  renderReminder();
+  if (holdpick || picking || claim || (S.reminder && S.settings.appMode !== 'light')) return renderMeta();
   if (S.check === 'still') confirmEl.hidden = false;
   else if (S.check === 'eod') {
     eodDoneEl.hidden = !(cur && cur.googleId);
@@ -1359,11 +1364,40 @@ function card(cls, title, meta) {
   return c;
 }
 
+// Planner tab: 'week' (plan the coming days) or 'today' (one big day + how it's going).
+let planTab = new URLSearchParams(location.search).get('tab') === 'today' ? 'today' : 'week';
+let logFetched = 0;
+
+// Logged time today on a task (finished sessions + the running one).
+function trackedOn(key) {
+  if (!logData) return 0;
+  const sod = new Date();
+  sod.setHours(0, 0, 0, 0);
+  let ms = 0;
+  for (const s of logData.sessions) if (s.key === key && Date.parse(s.end) > sod.getTime()) ms += Date.parse(s.end) - Math.max(Date.parse(s.start), sod.getTime());
+  if (logData.open && logData.open.key === key) ms += Date.now() - Date.parse(logData.open.start);
+  return ms;
+}
+
+// Green: finished well under the estimate. Red: over by more than 20%. White otherwise.
+function timeTone(t, p) {
+  if (!S.settings.colorTime || !p) return '';
+  const ratio = trackedOn('g:' + t.id) / (p.mins * 60e3);
+  if (t.done) return ratio < 0.8 ? ' is-under' : ratio > 1.2 ? ' is-over' : '';
+  return ratio > 1.2 ? ' is-over' : '';
+}
+
 function renderSetup() {
   if (!S || suDrag) return;
   const now = new Date();
   $('su-structure').setAttribute('aria-pressed', String(!!(suSheet && suSheet.type === 'structure')));
   $('view-setup').classList.toggle('is-modal', setupMode);
+  $('view-setup').dataset.tab = planTab;
+  document.querySelectorAll('.su-tab').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === planTab)));
+  if (Date.now() - logFetched > 30e3) {
+    logFetched = Date.now();
+    api.getLog().then((d) => ((logData = d), renderSetup()));
+  }
 
   // Header cards: a Break to drag in, then every task not yet on the calendar.
   const tray = $('su-tray');
@@ -1377,7 +1411,8 @@ function renderSetup() {
     for (const t of unplanned) {
       const m = metaOf('g:' + t.id);
       const tag = t.due ? (t.due === S.todayDate ? 'today' : t.due < S.todayDate ? 'overdue' : shortDay.format(new Date(t.due + 'T12:00:00'))) : null;
-      const bits = [lenLabel(m.mins || 30), m.repeat ? '↻ ' + repeatLabel(m.repeat, t.due || S.todayDate) : null, tag].filter(Boolean);
+      const items = t.items && t.items.length ? `${t.items.filter((x) => x.done).length}/${t.items.length} items` : null;
+      const bits = [lenLabel(m.mins || 30), m.repeat ? '↻ ' + repeatLabel(m.repeat, t.due || S.todayDate) : null, items, tag].filter(Boolean);
       const c = card('', t.title, bits.join(' · '));
       titleWithSeries(c.querySelector('.t'), t);
       c.addEventListener('pointerdown', (e) => beginDrag(e, { kind: 'task', task: t, mode: 'new', mins: m.mins || 30 }));
@@ -1386,12 +1421,31 @@ function renderSetup() {
     if (!unplanned.length) tray.append(el('span', 'su-note', 'Everything is planned. Add a task above.'));
   }
 
-  // Day columns.
   const [h0, h1] = suHours();
-  const ds = S.settings.dayStructure;
   const days = $('su-days');
   const keep = [days.scrollLeft, days.scrollTop];
   days.replaceChildren();
+  if (planTab === 'today') {
+    days.append(dayCard(0, now, h0, h1, { wide: true }), todaySummary());
+  } else {
+    // From Monday of this week (earlier days are view-only) to a month ahead.
+    const back = (now.getDay() + 6) % 7;
+    for (let i = -back; i <= SETUP_AHEAD; i++) days.append(dayCard(i, now, h0, h1, {}));
+  }
+  days.scrollLeft = keep[0];
+  days.scrollTop = keep[1];
+  updateSetupRange();
+  renderSheet();
+}
+
+// One day column: structure bands, hours, now line, repeat previews, breaks,
+// planned tasks (and, on Today, what you actually did beside them).
+function dayCard(i, now, h0, h1, { wide }) {
+  const ds = S.settings.dayStructure;
+  const d = new Date(now);
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() + i);
+  const key = ld(d);
   const px = (min) => (min - h0 * 60) * (HOUR / 60);
   const span = (cls, fromMin, toMinute, label) => {
     const b = el('div', cls);
@@ -1400,101 +1454,181 @@ function renderSetup() {
     if (label) b.append(el('span', null, label));
     return b;
   };
-  // From Monday of this week (earlier days are view-only) to a month ahead.
-  const first = new Date(now);
-  first.setHours(0, 0, 0, 0);
-  const back = (first.getDay() + 6) % 7;
-  first.setDate(first.getDate() - back);
-  for (let i = -back; i <= SETUP_AHEAD; i++) {
-    const d = new Date(now);
-    d.setHours(0, 0, 0, 0);
-    d.setDate(d.getDate() + i);
-    const key = ld(d);
-    const col = el('div', 'su-col');
-    col.dataset.day = key;
-    col.dataset.h0 = h0;
-    col.style.height = (h1 - h0) * HOUR + 'px';
+  const col = el('div', 'su-col');
+  col.dataset.day = key;
+  col.dataset.h0 = h0;
+  col.style.height = (h1 - h0) * HOUR + 'px';
 
-    // Day structure: off-hours shaded, work blocks and breaks as faint bands.
-    if (ds) {
-      const weekend = d.getDay() === 0 || d.getDay() === 6;
-      if (weekend && !ds.weekends) col.append(span('su-off', h0 * 60, h1 * 60));
-      else {
-        col.append(span('su-off', h0 * 60, toMin(ds.start)), span('su-off', toMin(ds.end), h1 * 60));
-        for (const [a, b] of ds.work) col.append(span('su-work', toMin(a), toMin(b)));
-        for (const [a, b] of ds.breaks) col.append(span('su-sbreak', toMin(a), toMin(b), 'break'));
-      }
+  if (ds) {
+    const weekend = d.getDay() === 0 || d.getDay() === 6;
+    if (weekend && !ds.weekends) col.append(span('su-off', h0 * 60, h1 * 60));
+    else {
+      col.append(span('su-off', h0 * 60, toMin(ds.start)), span('su-off', toMin(ds.end), h1 * 60));
+      for (const [a, b] of ds.work) col.append(span('su-work', toMin(a), toMin(b)));
+      for (const [a, b] of ds.breaks) col.append(span('su-sbreak', toMin(a), toMin(b), 'break'));
     }
-    for (let h = h0; h <= h1; h++) {
-      const line = el('div', 'su-hour');
-      line.style.top = (h - h0) * HOUR + 'px';
-      if (h > h0 && h < h1) line.append(el('span', null, hourFmt.format(new Date(2000, 0, 1, h)).replace(' ', '').toLowerCase()));
-      col.append(line);
-    }
-    if (i === 0 && now.getHours() >= h0 && now.getHours() < h1) {
-      const n = el('div', 'su-now');
-      n.style.top = px(now.getHours() * 60 + now.getMinutes()) + 'px';
-      col.append(n);
-    }
+  }
+  for (let h = h0; h <= h1; h++) {
+    const line = el('div', 'su-hour');
+    line.style.top = (h - h0) * HOUR + 'px';
+    if (h > h0 && h < h1) line.append(el('span', null, hourFmt.format(new Date(2000, 0, 1, h)).replace(' ', '').toLowerCase()));
+    col.append(line);
+  }
+  if (i === 0 && now.getHours() >= h0 && now.getHours() < h1) {
+    const n = el('div', 'su-now');
+    n.style.top = px(now.getHours() * 60 + now.getMinutes()) + 'px';
+    col.append(n);
+  }
 
-    let total = 0;
-    // Faint previews of repeating tasks on later days.
-    for (const t of S.today.open) {
-      const m = metaOf('g:' + t.id);
-      if (!m.repeat || !m.plan) continue;
-      const s = new Date(m.plan.start);
-      if (!window.Plan.repeatsOn(ld(s), m.repeat, key)) continue;
-      const g = el('div', 'su-block is-ghost');
-      g.style.top = px(s.getHours() * 60 + s.getMinutes()) + 'px';
-      g.style.height = Math.max(m.plan.mins * (HOUR / 60) - 2, 16) + 'px';
-      g.append(el('span', 't', t.title), el('span', 'w', '↻ ' + repeatLabel(m.repeat, ld(s))));
-      col.append(g);
+  // Today (wide): what you actually did, as a slim lane on the right.
+  if (wide && logData) {
+    const sod = d.getTime();
+    const lane = [...logData.sessions, ...(logData.open ? [{ ...logData.open, end: new Date().toISOString() }] : [])].filter(
+      (s) => s.key !== 'idle' && Date.parse(s.end) > sod && Date.parse(s.start) < sod + 86400e3
+    );
+    for (const s of lane) {
+      const a = new Date(Math.max(Date.parse(s.start), sod));
+      const mins = (Date.parse(s.end) - a.getTime()) / 60e3;
+      if (mins < 1) continue;
+      const b = el('div', 'su-actual' + (s.key.startsWith('hold:') ? ' is-hold' : ''));
+      b.style.top = px(a.getHours() * 60 + a.getMinutes()) + 'px';
+      b.style.height = Math.max(mins * (HOUR / 60), 2) + 'px';
+      b.title = `${s.key.startsWith('hold:') ? 'Hold: ' : ''}${s.title} · ${hm(a)}–${hm(s.end)} · ${dur(mins * 60e3)}`;
+      col.append(b);
     }
-    // One-off breaks.
-    for (const b of (S.breaks || []).filter((x) => ld(new Date(x.start)) === key)) {
-      const s = new Date(b.start);
-      const blk = el('div', 'su-block is-break' + (b.mins <= 20 ? ' is-short' : ''));
-      blk.style.top = px(s.getHours() * 60 + s.getMinutes()) + 'px';
-      blk.style.height = Math.max(b.mins * (HOUR / 60) - 2, 16) + 'px';
-      blk.append(el('span', 't', 'Break'), el('span', 'w', b.mins <= 20 ? hm(s) : `${hm(s)}–${hm(s.getTime() + b.mins * 60e3)}`), el('span', 'h'));
-      blk.addEventListener('pointerdown', (e) =>
-        beginDrag(e, { kind: 'break', id: b.id, mode: e.target.classList.contains('h') ? 'resize' : 'move', mins: b.mins, start: b.start, block: blk })
-      );
-      col.append(blk);
-    }
-    // Planned tasks.
-    for (const t of S.today.open) {
-      const p = planOf('g:' + t.id);
-      if (!p || ld(new Date(p.start)) !== key) continue;
-      total += p.mins;
-      const s = new Date(p.start);
-      const m = metaOf('g:' + t.id);
-      const blk = el('div', 'su-block' + (S.current && S.current.googleId === t.id ? ' is-running' : '') + (p.mins <= 20 ? ' is-short' : ''));
-      blk.style.top = px(s.getHours() * 60 + s.getMinutes()) + 'px';
-      blk.style.height = Math.max(p.mins * (HOUR / 60) - 2, 16) + 'px';
-      blk.append(titleWithSeries(el('span', 't', t.title), t), el('span', 'w', (p.mins <= 20 ? hm(s) : `${hm(s)}–${hm(s.getTime() + p.mins * 60e3)}`) + (m.repeat ? ' · ↻' : '')), el('span', 'h'));
-      blk.title = t.title;
+  }
+
+  let total = 0;
+  for (const t of S.today.open) {
+    const m = metaOf('g:' + t.id);
+    if (!m.repeat || !m.plan) continue;
+    const s = new Date(m.plan.start);
+    if (!window.Plan.repeatsOn(ld(s), m.repeat, key)) continue;
+    const g = el('div', 'su-block is-ghost');
+    g.style.top = px(s.getHours() * 60 + s.getMinutes()) + 'px';
+    g.style.height = Math.max(m.plan.mins * (HOUR / 60) - 2, 16) + 'px';
+    g.append(el('span', 't', t.title), el('span', 'w', '↻ ' + repeatLabel(m.repeat, ld(s))));
+    col.append(g);
+  }
+  for (const b of (S.breaks || []).filter((x) => ld(new Date(x.start)) === key)) {
+    const s = new Date(b.start);
+    const blk = el('div', 'su-block is-break' + (b.mins <= 20 ? ' is-short' : ''));
+    blk.style.top = px(s.getHours() * 60 + s.getMinutes()) + 'px';
+    blk.style.height = Math.max(b.mins * (HOUR / 60) - 2, 16) + 'px';
+    blk.append(el('span', 't', 'Break'), el('span', 'w', b.mins <= 20 ? hm(s) : `${hm(s)}–${hm(s.getTime() + b.mins * 60e3)}`), el('span', 'h'));
+    blk.addEventListener('pointerdown', (e) =>
+      beginDrag(e, { kind: 'break', id: b.id, mode: e.target.classList.contains('h') ? 'resize' : 'move', mins: b.mins, start: b.start, block: blk })
+    );
+    col.append(blk);
+  }
+  // Planned tasks: open ones are draggable; finished ones stay as a record.
+  for (const t of [...S.today.open, ...S.today.done.map((x) => ({ ...x, done: true }))]) {
+    const p = planOf('g:' + t.id);
+    if (!p || ld(new Date(p.start)) !== key) continue;
+    total += p.mins;
+    const s = new Date(p.start);
+    const m = metaOf('g:' + t.id);
+    const cls = 'su-block' + (S.current && S.current.googleId === t.id ? ' is-running' : '') + (p.mins <= 20 ? ' is-short' : '') + (t.done ? ' is-done' : '') + timeTone(t, p);
+    const blk = el('div', cls);
+    blk.style.top = px(s.getHours() * 60 + s.getMinutes()) + 'px';
+    blk.style.height = Math.max(p.mins * (HOUR / 60) - 2, 16) + 'px';
+    const took = t.done && S.settings.colorTime ? ` · took ${dur(trackedOn('g:' + t.id))}` : '';
+    blk.append(titleWithSeries(el('span', 't', t.title), t), el('span', 'w', (p.mins <= 20 ? hm(s) : `${hm(s)}–${hm(s.getTime() + p.mins * 60e3)}`) + (m.repeat ? ' · ↻' : '') + took));
+    blk.title = t.title + took;
+    if (!t.done) {
+      blk.append(el('span', 'h'));
       blk.addEventListener('pointerdown', (e) =>
         beginDrag(e, { kind: 'task', task: t, mode: e.target.classList.contains('h') ? 'resize' : 'move', mins: p.mins, start: p.start, block: blk })
       );
-      col.append(blk);
     }
-
-    const dayCard = el('section', 'su-day' + (i === 0 ? ' is-today' : '') + (i < 0 ? ' is-past' : ''));
-    dayCard.dataset.day = key;
-    const head = el('div', 'su-day__head');
-    head.append(el('span', 'su-day__name', i === 0 ? 'Today' : i === 1 ? 'Tomorrow' : i === -1 ? 'Yesterday' : shortDay.format(d)), el('span', 'su-day__total', total ? dur(total * 60e3) : ''));
-    dayCard.append(head, col);
-    days.append(dayCard);
+    col.append(blk);
   }
-  days.scrollLeft = keep[0];
-  days.scrollTop = keep[1];
-  updateSetupRange();
-  renderSheet();
+
+  const card = el('section', 'su-day' + (i === 0 ? ' is-today' : '') + (i < 0 ? ' is-past' : '') + (wide ? ' is-wide' : ''));
+  card.dataset.day = key;
+  const head = el('div', 'su-day__head');
+  const name = i === 0 ? (wide ? `Today · ${shortDay.format(d)}` : 'Today') : i === 1 ? 'Tomorrow' : i === -1 ? 'Yesterday' : shortDay.format(d);
+  head.append(el('span', 'su-day__name', name), el('span', 'su-day__total', wide ? 'plan · done' : total ? dur(total * 60e3) : ''));
+  card.append(head, col);
+  return card;
+}
+
+// Today tab: how the day's time has gone so far, and what's left.
+function todaySummary() {
+  const box = el('aside', 'su-summary');
+  const sod = new Date();
+  sod.setHours(0, 0, 0, 0);
+  const sessions = logData
+    ? [...logData.sessions, ...(logData.open ? [{ ...logData.open, end: new Date().toISOString() }] : [])]
+        .filter((s) => Date.parse(s.end) > sod.getTime())
+        .map((s) => ({ ...s, ms: Date.parse(s.end) - Math.max(Date.parse(s.start), sod.getTime()) }))
+    : [];
+  const sum = (f) => sessions.filter(f).reduce((n, s) => n + s.ms, 0);
+  const focused = sum((s) => s.key !== 'idle' && !s.key.startsWith('hold:'));
+  const idle = sum((s) => s.key === 'idle');
+  const hold = sum((s) => s.key.startsWith('hold:'));
+  const planned = [...S.today.open, ...S.today.done].filter((t) => {
+    const p = planOf('g:' + t.id);
+    return p && ld(new Date(p.start)) === S.todayDate;
+  });
+  const plannedDone = planned.filter((t) => S.today.done.some((x) => x.id === t.id)).length;
+
+  box.append(el('span', 'label', 'So far'), el('div', 'su-big', dur(focused) + ' focused'));
+  const stats = el('div', 'su-stats');
+  for (const [k, v] of [
+    ['Idle', dur(idle)],
+    ['Hold', dur(hold)],
+    ['Done', String(S.today.done.length)],
+    ['Planned', planned.length ? `${plannedDone}/${planned.length}` : '—'],
+  ]) {
+    const s = el('div', 'su-stat');
+    s.append(el('span', 'v', v), el('span', 'k', k));
+    stats.append(s);
+  }
+  box.append(stats);
+
+  // Where the time went: focused + hold + idle as one bar, then by task.
+  const total = focused + hold + idle || 1;
+  const bar = el('div', 'su-split');
+  for (const [cls, ms] of [['f', focused], ['h', hold], ['i', idle]]) {
+    const seg = el('span', cls);
+    seg.style.width = (ms / total) * 100 + '%';
+    bar.append(seg);
+  }
+  box.append(bar);
+  const byTask = new Map();
+  for (const s of sessions.filter((x) => x.key !== 'idle')) byTask.set(s.key, { title: s.title, ms: ((byTask.get(s.key) || {}).ms || 0) + s.ms, hold: s.key.startsWith('hold:') });
+  const top = [...byTask.values()].sort((a, b) => b.ms - a.ms).slice(0, 6);
+  if (top.length) {
+    const list = el('ul', 'su-by');
+    for (const g of top) {
+      const li = el('li');
+      li.append(el('span', 't', (g.hold ? 'Hold: ' : '') + g.title), el('span', 'd', dur(g.ms)));
+      list.append(li);
+    }
+    box.append(el('span', 'label', 'By task'), list);
+  }
+
+  // What's left today, in order.
+  const left = S.today.open.filter((t) => scheduled(t));
+  box.append(el('span', 'label', left.length ? `Left today · ${left.length}` : 'Left today'));
+  if (!left.length) box.append(el('p', 'hint', 'Nothing left for today.'));
+  const ul = el('ul', 'su-left');
+  for (const t of left.slice(0, 8)) {
+    const li = el('li');
+    const p = planOf('g:' + t.id);
+    const g = goalOf('g:' + t.id);
+    li.append(titleWithSeries(el('span', 't', t.title), t), el('span', 'd', p ? hm(p.start) : g ? 'by ' + hm(g) : ''));
+    li.addEventListener('click', () => ((suSheet = { type: 'task', id: t.id }), renderSetup()));
+    ul.append(li);
+  }
+  box.append(ul);
+  return box;
 }
 
 // Header date range follows what's on screen.
 function updateSetupRange() {
+  if (planTab === 'today') return ($('su-range').textContent = new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'long', day: 'numeric' }).format(new Date()));
   const days = $('su-days');
   const cards = [...days.querySelectorAll('.su-day')];
   const r = days.getBoundingClientRect();
@@ -1722,6 +1856,35 @@ function renderSheet() {
     acts.append(del);
     sheet.append(sheetTop(name), notes, el('span', 'label', 'When'), when, el('span', 'label', 'Length'), length, el('span', 'label', 'Repeat'), repeat);
     if (isCustom) sheet.append(custom);
+    // Items: Google subtasks, as a checklist.
+    const items = el('ul', 'su-items');
+    for (const it of t.items || []) {
+      const li = el('li', it.done ? 'is-done' : '');
+      const check = el('button', 'check');
+      check.setAttribute('aria-label', it.done ? 'Mark not done' : 'Mark done');
+      check.addEventListener('click', async () => ((S = await api.item(t.id, 'toggle', it.id)), render()));
+      const x = el('button', 'act x', '×');
+      x.title = 'Remove item';
+      x.addEventListener('click', async () => ((S = await api.item(t.id, 'delete', it.id)), render()));
+      li.append(check, el('span', 't', it.title), x);
+      items.append(li);
+    }
+    const addItem = el('input');
+    addItem.type = 'text';
+    addItem.placeholder = 'Add an item';
+    addItem.addEventListener('keydown', async (e) => {
+      if (e.key !== 'Enter' || !addItem.value.trim()) return;
+      const v = addItem.value.trim();
+      addItem.value = '';
+      S = await api.item(t.id, 'add', null, v);
+      render();
+      setTimeout(() => {
+        const again = document.querySelector('#su-sheet input[placeholder="Add an item"]');
+        if (again) again.focus();
+      }, 50);
+    });
+    const doneItems = (t.items || []).filter((x) => x.done).length;
+    sheet.append(el('span', 'label', t.items && t.items.length ? `Items · ${doneItems}/${t.items.length}` : 'Items'), items, addItem);
     if (m.repeat) sheet.append(el('p', 'hint', 'When you finish it, the next one is added with the same time of day.'));
     sheet.append(acts);
     return;
@@ -1935,6 +2098,38 @@ for (const [sel, key] of [['#s-check', 'checkMinutes'], ['#s-away', 'awayMinutes
   );
 $('s-eod').addEventListener('change', async (e) => (S = await api.updateSettings({ endOfDay: e.target.value })) && render());
 $('s-eod-off').addEventListener('click', async () => (S = await api.updateSettings({ endOfDay: '' })) && render());
+document.querySelectorAll('#s-app-mode .tab').forEach((t) =>
+  t.addEventListener('click', async () => (S = await api.updateSettings({ appMode: t.dataset.v })) && render())
+);
+for (const [id, key] of [['s-blur-close', 'plannerBlurClose'], ['s-shortcuts', 'shortcuts'], ['s-remind-blocks', 'remindBlocks'], ['s-remind-over', 'remindOver'], ['s-color-time', 'colorTime']])
+  $(id).addEventListener('change', async (e) => (S = await api.updateSettings({ [key]: e.target.checked })) && render());
+const CORNERS = [['off', 'Off'], ['tl', 'Top left'], ['tr', 'Top right'], ['bl', 'Bottom left'], ['br', 'Bottom right']];
+for (const [id, key] of [['s-corner-today', 'cornerToday'], ['s-corner-week', 'cornerWeek']])
+  $(id).append(
+    ...CORNERS.map(([v, label]) => {
+      const b = el('button', 'tab', label);
+      b.dataset.v = v;
+      b.addEventListener('click', async () => (S = await api.updateSettings({ [key]: v })) && render());
+      return b;
+    })
+  );
+const autoSave = async (patch) => (S = await api.updateSettings({ autoPlan: { ...S.settings.autoPlan, ...patch } })) && render();
+$('s-autoplan').append(
+  ...[['off', 'Off'], ['startEnd', 'Start & end of day'], ['every', 'Every few hours'], ['times', 'At set times']].map(([v, label]) => {
+    const b = el('button', 'tab', label);
+    b.dataset.v = v;
+    b.addEventListener('click', () => autoSave({ mode: v }));
+    return b;
+  })
+);
+$('s-autoplan-every').append(
+  ...[2, 3, 4].map((h) => {
+    const b = el('button', 'tab', `every ${h}h`);
+    b.dataset.v = h;
+    b.addEventListener('click', () => autoSave({ every: h }));
+    return b;
+  })
+);
 document.querySelectorAll('#s-setup-mode .tab').forEach((t) =>
   t.addEventListener('click', async () => (S = await api.updateSettings({ setupMode: t.dataset.v })) && render())
 );
@@ -2001,6 +2196,38 @@ function renderSettings() {
   document.querySelectorAll('#s-jolt .tab').forEach((t) => t.setAttribute('aria-selected', String(+t.dataset.min === (s.joltMinutes || 0))));
   document.querySelectorAll('#s-goal-display .tab').forEach((t) => t.setAttribute('aria-selected', String(t.dataset.v === (s.goalDisplay || 'ring'))));
   document.querySelectorAll('#s-setup-mode .tab').forEach((t) => t.setAttribute('aria-selected', String(t.dataset.v === (s.setupMode || 'modal'))));
+  document.querySelectorAll('#s-app-mode .tab').forEach((t) => t.setAttribute('aria-selected', String(t.dataset.v === (s.appMode || 'full'))));
+  $('s-blur-close').checked = s.plannerBlurClose !== false;
+  $('s-shortcuts').checked = s.shortcuts !== false;
+  $('s-remind-blocks').checked = s.remindBlocks !== false;
+  $('s-remind-over').checked = s.remindOver !== false;
+  $('s-color-time').checked = !!s.colorTime;
+  for (const [id, key] of [['s-corner-today', 'cornerToday'], ['s-corner-week', 'cornerWeek']])
+    document.querySelectorAll('#' + id + ' .tab').forEach((t) => t.setAttribute('aria-selected', String(t.dataset.v === (s[key] || 'off'))));
+  const ap = s.autoPlan || { mode: 'startEnd', every: 3, times: [] };
+  document.querySelectorAll('#s-autoplan .tab').forEach((t) => t.setAttribute('aria-selected', String(t.dataset.v === ap.mode)));
+  $('s-autoplan-every').hidden = ap.mode !== 'every';
+  document.querySelectorAll('#s-autoplan-every .tab').forEach((t) => t.setAttribute('aria-selected', String(+t.dataset.v === ap.every)));
+  const times = $('s-autoplan-times');
+  times.hidden = ap.mode !== 'times';
+  if (ap.mode === 'times' && !times.contains(document.activeElement)) {
+    times.replaceChildren();
+    (ap.times || []).forEach((v, i) => {
+      const inp = el('input');
+      inp.type = 'time';
+      inp.value = v;
+      inp.addEventListener('change', () => inp.value && autoSave({ times: ap.times.map((x, j) => (j === i ? inp.value : x)) }));
+      const rm = el('button', 'act', '×');
+      rm.addEventListener('click', () => autoSave({ times: ap.times.filter((_, j) => j !== i) }));
+      times.append(inp, rm);
+    });
+    const add = el('button', 'act', '+ Add time');
+    add.addEventListener('click', () => autoSave({ times: [...(ap.times || []), '13:00'] }));
+    times.append(add);
+  }
+  const ds = s.dayStructure;
+  $('s-autoplan-hint').textContent =
+    ap.mode === 'startEnd' ? `Today at ${ds ? ds.start : '09:00'}, Week at ${ds ? ds.end : '17:30'} (from your day structure).` : ap.mode === 'every' ? 'Today, during your workday.' : ap.mode === 'times' ? 'Today, at these times.' : '';
   document.querySelectorAll('#s-check .tab').forEach((t) => t.setAttribute('aria-selected', String(+t.dataset.min === (s.checkMinutes ?? 120))));
   document.querySelectorAll('#s-away .tab').forEach((t) => t.setAttribute('aria-selected', String(+t.dataset.min === (s.awayMinutes || 10))));
   if (document.activeElement !== $('s-eod')) $('s-eod').value = s.endOfDay || '';
@@ -2045,14 +2272,57 @@ function render() {
   if (view === 'settings') renderSettings();
 }
 
+// Planner tabs (Today / Week), also switched by shortcuts, corners and auto-open.
+document.querySelectorAll('.su-tab').forEach((b) =>
+  b.addEventListener('click', () => {
+    planTab = b.dataset.tab;
+    renderSetup();
+    setTimeout(scrollSetupToNow, 50);
+  })
+);
+api.onPlannerTab((tab) => {
+  planTab = tab === 'today' ? 'today' : 'week';
+  if (view !== 'setup') setView('setup');
+  else renderSetup();
+  setTimeout(scrollSetupToNow, 120);
+});
+
+// ---------- Reminders on Now: a planned block starts / running over ----------
+let shownReminder = null;
+function renderReminder() {
+  const r = S.settings.appMode !== 'light' && S.reminder;
+  $('remind').hidden = !r || view !== 'now';
+  if (!r) return (shownReminder = null);
+  if (shownReminder === r.id) return;
+  shownReminder = r.id;
+  jolt();
+  $('remind-text').textContent = r.kind === 'block' ? `Planned now · ${r.title}` : `${dur(r.overMs)} over · ${r.title}`;
+  const acts = $('remind-acts');
+  acts.replaceChildren();
+  const btn = (label, action, main) => {
+    const b = el('button', 'act' + (main ? ' is-main' : ''), label);
+    b.addEventListener('click', async () => ((S = await api.reminderAct(action)), render()));
+    acts.append(b);
+  };
+  if (r.kind === 'block') btn('Start', 'start', true);
+  else {
+    btn('Done', 'done', true);
+    btn('+15m', 'extend');
+  }
+  btn('Plan', 'plan');
+  btn('×', 'dismiss');
+}
+
 api.onState((s) => {
   S = s;
+  document.body.classList.toggle('is-light', s.settings.appMode === 'light');
   render();
   if (view === 'log' || (view === 'today' && todayTab === 'map')) loadLog();
 });
 
 api.getState().then((s) => {
   S = s;
+  document.body.classList.toggle('is-light', s.settings.appMode === 'light');
   setView(setupMode ? 'setup' : 'now');
   tick();
   setInterval(tick, 1000);

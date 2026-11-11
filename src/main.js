@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, screen, powerMonitor, shell, desktopCapturer } = require('electron');
+const { app, BrowserWindow, ipcMain, screen, powerMonitor, shell, desktopCapturer, globalShortcut } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const store = require('./store');
@@ -56,7 +56,7 @@ function snapshot() {
     today,
     todayDate: localDate(),
     goals: goalsFor([cur, held, ...today.open.map((t) => ({ key: 'g:' + t.id }))]),
-    plans: plansFor(today.open),
+    plans: plansFor([...today.open, ...today.done]),
     breaks: state.breaks,
     web: {
       on: !!state.web.token,
@@ -68,6 +68,7 @@ function snapshot() {
     holdNames: recentHolds(),
     held,
     check,
+    reminder,
     app: { version: app.getVersion(), update },
   };
 }
@@ -296,7 +297,12 @@ async function doSync() {
       state.google.listId = listId;
       store.save(state);
     }
-    const all = (await client.listTasks(listId)).filter((t) => !t.parent && (t.title || '').trim());
+    const raw = await client.listTasks(listId);
+    const all = raw.filter((t) => !t.parent && (t.title || '').trim());
+    // Subtasks are a task's "items" (a checklist), in list order.
+    const itemsOf = {};
+    for (const c of raw.filter((x) => x.parent && (x.title || '').trim()).sort(byPosition))
+      (itemsOf[c.parent] = itemsOf[c.parent] || []).push({ id: c.id, title: c.title.trim(), done: c.status === 'completed' });
     // List order, then anything with a planned or "by" time pulled to the
     // front in time order, so the next task is always the earliest one.
     const open = planning.orderTasks(all.filter((t) => t.status !== 'completed').sort(byPosition), state.taskMeta);
@@ -340,7 +346,8 @@ async function doSync() {
       setTimeout(() => resync(), 500);
     }
 
-    today = { open: open.map(pick), done: done.map(pick), syncedAt: new Date().toISOString(), error: null };
+    const withItems = (t) => ({ ...pick(t), items: itemsOf[t.id] || [] });
+    today = { open: open.map(withItems), done: done.map(withItems), syncedAt: new Date().toISOString(), error: null };
 
     // Tasks never start on their own. If the running task was finished or
     // deleted (here or in Google Tasks), stop it and go idle.
@@ -484,9 +491,20 @@ ipcMain.handle('review:open', () => {
 
 // ---------- Setup window (a large window on the main monitor) ----------
 
+// The Planner: one window, two tabs (Today, Week). Opens on the main monitor;
+// clicking anywhere outside it closes it (setting).
 let setupWin = null;
-function openSetupWindow() {
+const light = () => state.settings.appMode === 'light';
+function openSetupWindow(tab = 'week') {
+  if (light()) return;
+  if (state.settings.setupMode === 'inline') {
+    win.show();
+    win.focus();
+    win.webContents.send('planner:tab', tab);
+    return;
+  }
   if (setupWin && !setupWin.isDestroyed()) {
+    setupWin.webContents.send('planner:tab', tab);
     setupWin.show();
     setupWin.focus();
     return;
@@ -508,11 +526,164 @@ function openSetupWindow() {
     icon: path.join(__dirname, 'assets', 'icon.png'),
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false },
   });
-  setupWin.loadFile(path.join(__dirname, 'index.html'), { query: { mode: 'setup' } });
-  setupWin.once('ready-to-show', () => setupWin.show());
+  setupWin.loadFile(path.join(__dirname, 'index.html'), { query: { mode: 'setup', tab } });
+  setupWin.once('ready-to-show', () => {
+    setupWin.show();
+    setupWin.focus();
+  });
+  setupWin.on('blur', () =>
+    setTimeout(() => {
+      if (setupWin && !setupWin.isDestroyed() && !setupWin.isFocused() && state.settings.plannerBlurClose !== false) setupWin.close();
+    }, 200)
+  );
   setupWin.on('closed', () => (setupWin = null));
 }
-ipcMain.handle('setup:open', () => openSetupWindow());
+ipcMain.handle('setup:open', (_e, tab) => openSetupWindow(tab === 'today' ? 'today' : 'week'));
+
+// ---------- ways in: screen corners (triple bump) and keyboard shortcuts ----------
+
+function cornerAt(p) {
+  const b = screen.getPrimaryDisplay().bounds;
+  const e = 4;
+  const L = p.x <= b.x + e;
+  const R = p.x >= b.x + b.width - 1 - e;
+  const T = p.y <= b.y + e;
+  const B = p.y >= b.y + b.height - 1 - e;
+  return T && L ? 'tl' : T && R ? 'tr' : B && L ? 'bl' : B && R ? 'br' : null;
+}
+// Push the pointer into a corner 3 times within 1.5s.
+function watchCorners() {
+  let inside = null;
+  let hits = [];
+  setInterval(() => {
+    if (light()) return;
+    const c = cornerAt(screen.getCursorScreenPoint());
+    if (c === inside) return;
+    inside = c;
+    if (!c) return;
+    const now = Date.now();
+    hits = hits.filter((h) => h.c === c && now - h.t < 1500);
+    hits.push({ c, t: now });
+    if (hits.length < 3) return;
+    hits = [];
+    if (state.settings.cornerToday === c) openSetupWindow('today');
+    else if (state.settings.cornerWeek === c) openSetupWindow('week');
+  }, 40);
+}
+
+function applyShortcuts() {
+  globalShortcut.unregisterAll();
+  if (light() || state.settings.shortcuts === false) return;
+  globalShortcut.register('CommandOrControl+Alt+T', () => openSetupWindow('today'));
+  globalShortcut.register('CommandOrControl+Alt+W', () => openSetupWindow('week'));
+}
+
+// ---------- the Planner opens itself at chosen times ----------
+
+function autoPlanSlots(d = new Date()) {
+  const ap = state.settings.autoPlan;
+  if (light() || !ap || ap.mode === 'off') return [];
+  const ds = state.settings.dayStructure || { start: '09:00', end: '17:30', weekends: false };
+  if ((d.getDay() === 0 || d.getDay() === 6) && !ds.weekends) return [];
+  const hhmm = (min) => `${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`;
+  const toMin = (v) => +v.slice(0, 2) * 60 + +v.slice(3, 5);
+  if (ap.mode === 'startEnd') return [{ at: ds.start, tab: 'today' }, { at: ds.end, tab: 'week' }];
+  if (ap.mode === 'every') {
+    const out = [];
+    for (let m = toMin(ds.start); m < toMin(ds.end); m += (ap.every || 3) * 60) out.push({ at: hhmm(m), tab: 'today' });
+    return out;
+  }
+  return (ap.times || []).map((at) => ({ at, tab: 'today' }));
+}
+function checkAutoPlan() {
+  if (tracker.away || tracker.pauses.size || check) return;
+  const d = new Date();
+  const day = localDate(d);
+  if (state.autoPlanFired.date !== day) state.autoPlanFired = { date: day, at: [] };
+  const nowMin = d.getHours() * 60 + d.getMinutes();
+  for (const s of autoPlanSlots(d)) {
+    const m = +s.at.slice(0, 2) * 60 + +s.at.slice(3, 5);
+    if (nowMin >= m && nowMin < m + 30 && !state.autoPlanFired.at.includes(s.at)) {
+      state.autoPlanFired.at.push(s.at);
+      store.save(state);
+      openSetupWindow(s.tab);
+      return;
+    }
+  }
+}
+
+// ---------- reminders: a planned block starts / the running task runs over ----------
+
+let reminder = null; // { id, kind: 'block' | 'over', taskId, title, overMs }
+function remindFired(id) {
+  const day = localDate();
+  if (state.remindFired.date !== day) state.remindFired = { date: day, ids: [] };
+  return state.remindFired.ids.includes(id);
+}
+function checkReminders() {
+  if (light() || reminder || check || tracker.away || tracker.pauses.size) return;
+  const now = Date.now();
+  const cur = state.current && !isHold(state.current) ? state.current : null;
+  const cm = cur && state.taskMeta[cur.key];
+  if (state.settings.remindOver !== false && cm && cm.goal && now >= Date.parse(cm.goal)) {
+    const slot = Math.floor((now - Date.parse(cm.goal)) / (15 * 60e3)); // again every 15 minutes
+    const id = `over:${cur.key}:${cm.goal}:${slot}`;
+    if (!remindFired(id)) return (reminder = { id, kind: 'over', taskId: cur.googleId, title: cur.title, overMs: now - Date.parse(cm.goal) });
+  }
+  if (state.settings.remindBlocks !== false)
+    for (const t of today.open) {
+      const p = state.taskMeta['g:' + t.id] && state.taskMeta['g:' + t.id].plan;
+      if (!p || (cur && cur.googleId === t.id)) continue;
+      const start = Date.parse(p.start);
+      const id = `block:${t.id}:${p.start}`;
+      if (now >= start && now - start < 10 * 60e3 && !remindFired(id)) return (reminder = { id, kind: 'block', taskId: t.id, title: t.title });
+    }
+}
+
+ipcMain.handle('reminder:act', async (_e, action) => {
+  const r = reminder;
+  reminder = null;
+  if (!r) return snapshot();
+  remindFired(r.id);
+  state.remindFired.ids.push(r.id);
+  store.save(state);
+  if (action === 'plan') openSetupWindow('today');
+  else if (action === 'start' && client) {
+    const t = today.open.find((x) => x.id === r.taskId);
+    if (t) tracker.setCurrent({ key: 'g:' + t.id, title: t.title, googleId: t.id });
+  } else if (action === 'done' && client && state.google.listId) {
+    await client.patch(state.google.listId, r.taskId, { status: 'completed' }).catch(() => {});
+    await resync();
+  } else if (action === 'extend') {
+    const m = state.taskMeta['g:' + r.taskId];
+    if (m && m.goal) {
+      m.goal = new Date(Math.max(Date.parse(m.goal), Date.now()) + 15 * 60e3).toISOString();
+      if (m.plan) m.plan.mins = Math.round((Date.parse(m.goal) - Date.parse(m.plan.start)) / 60e3);
+      store.save(state);
+    }
+  }
+  push();
+  return snapshot();
+});
+
+// Items (Google subtasks) on a task: add, tick, rename, delete.
+ipcMain.handle('item:action', async (_e, parentId, action, itemId, value) => {
+  if (!client || !state.google.listId) return snapshot();
+  const listId = state.google.listId;
+  const t = today.open.find((x) => x.id === parentId) || today.done.find((x) => x.id === parentId);
+  try {
+    if (action === 'add' && String(value || '').trim()) {
+      const last = t && t.items.length ? t.items[t.items.length - 1].id : undefined;
+      await client.insert(listId, { title: String(value).trim().slice(0, 1024) }, last, parentId);
+    } else if (action === 'toggle') {
+      const it = t && t.items.find((x) => x.id === itemId);
+      await client.patch(listId, itemId, it && it.done ? { status: 'needsAction', completed: null } : { status: 'completed' });
+    } else if (action === 'rename' && String(value || '').trim()) await client.patch(listId, itemId, { title: String(value).trim() });
+    else if (action === 'delete') await client.remove(listId, itemId);
+  } catch {}
+  await resync();
+  return snapshot();
+});
 
 // Day structure: times as "HH:MM", ranges kept only if they make sense.
 function cleanStructure(d) {
@@ -850,6 +1021,20 @@ ipcMain.handle('settings:update', async (_e, patch) => {
   const allowed = ['showSince', 'showElapsed', 'alwaysOnTop', 'listName', 'clientId', 'clientSecret', 'askCategory', 'askRating', 'launchAtLogin'];
   const prev = { ...state.settings };
   for (const k of allowed) if (k in patch) state.settings[k] = typeof patch[k] === 'string' ? patch[k].trim() : !!patch[k];
+  for (const k of ['plannerBlurClose', 'shortcuts', 'remindBlocks', 'remindOver', 'colorTime'])
+    if (k in patch) state.settings[k] = !!patch[k];
+  if ('appMode' in patch) state.settings.appMode = patch.appMode === 'light' ? 'light' : 'full';
+  for (const k of ['cornerToday', 'cornerWeek'])
+    if (k in patch) state.settings[k] = ['tl', 'tr', 'bl', 'br'].includes(patch[k]) ? patch[k] : 'off';
+  if ('autoPlan' in patch) {
+    const a = patch.autoPlan || {};
+    state.settings.autoPlan = {
+      mode: ['off', 'startEnd', 'every', 'times'].includes(a.mode) ? a.mode : 'startEnd',
+      every: [2, 3, 4].includes(+a.every) ? +a.every : 3,
+      times: (Array.isArray(a.times) ? a.times : []).filter((x) => /^\d{2}:\d{2}$/.test(x)).slice(0, 6),
+    };
+  }
+  if ('appMode' in patch || 'shortcuts' in patch) applyShortcuts();
   if ('setupMode' in patch) state.settings.setupMode = patch.setupMode === 'inline' ? 'inline' : 'modal';
   if ('dayStructure' in patch) state.settings.dayStructure = cleanStructure(patch.dayStructure);
   if ('logView' in patch) state.settings.logView = patch.logView === 'sessions' ? 'sessions' : 'summary';
@@ -918,6 +1103,9 @@ app.whenReady().then(() => {
   createWindow();
   sync();
   setupUpdates();
+  watchCorners();
+  applyShortcuts();
+  app.on('will-quit', () => globalShortcut.unregisterAll());
 
   setInterval(sync, SYNC_MS);
 
@@ -933,6 +1121,8 @@ app.whenReady().then(() => {
     tracker.heartbeat();
     if (tracker.away && update.status === 'ready' && !check) installUpdate();
     checkDue();
+    checkReminders();
+    checkAutoPlan();
     push();
   }, HEARTBEAT_MS);
 

@@ -14,7 +14,7 @@
         <button class="menu__item" data-view="now">Now</button>
         <button class="menu__item" data-view="log">Log</button>
         <button class="menu__item" data-view="today">Today</button>
-        <button class="menu__item" data-view="setup">Setup</button>
+        <button class="menu__item" data-view="setup">Plan</button>
       </nav>
       <div class="controls" aria-label="Window controls">
         <button class="controls__btn" data-action="minimize" aria-label="Minimize"><svg viewBox="0 0 10 10"><path d="M1 5h8"/></svg></button>
@@ -50,6 +50,7 @@
           </div>
           <div class="timeline__ends"><span>now</span><button class="act" id="tl-clear" hidden>Clear goal</button><span id="tl-end"></span></div>
         </div>
+        <div class="remind" id="remind" hidden><span id="remind-text"></span><span class="remind__acts" id="remind-acts"></span></div>
         <div class="claim" id="claim" hidden><span id="claim-text"></span><button class="act" id="claim-yes">Count it</button><button class="act" id="claim-no">No</button></div>
         <div class="wrap" id="holdpick" hidden>
           <div class="wrap__cats">
@@ -74,7 +75,13 @@
       <div class="setup">
         <header class="su-head">
           <div class="su-top">
-            <div class="su-titles"><h1 class="su-title">Set up</h1><span class="su-range" id="su-range"></span></div>
+            <div class="su-titles">
+              <div class="su-tabs" role="tablist">
+                <button class="su-tab" data-tab="today">Today</button>
+                <button class="su-tab" data-tab="week">Week</button>
+              </div>
+              <span class="su-range" id="su-range"></span>
+            </div>
             <div class="su-tools">
               <div class="su-nav">
                 <button class="su-tool su-arrow" id="su-prev" aria-label="Previous week" title="Previous week"><svg viewBox="0 0 10 10"><path d="M6.5 1.5 3 5l3.5 3.5"/></svg></button>
@@ -190,10 +197,35 @@
         <button class="tab" data-v="text">Time left</button>
       </div>
 
-      <h2 class="eyebrow">Setup</h2>
+      <h2 class="eyebrow">Mode</h2>
+      <div class="tabs" id="s-app-mode">
+        <button class="tab" data-v="full">Full</button>
+        <button class="tab" data-v="light">Light</button>
+      </div>
+      <p class="hint">Light keeps One Focus to a Google Tasks wrapper: time, your task, Today and All, the log. No Planner, reminders or shortcuts.</p>
+
+      <div class="full-only">
+      <h2 class="eyebrow">Planner</h2>
       <div class="tabs" id="s-setup-mode">
         <button class="tab" data-v="modal">On main monitor</button>
         <button class="tab" data-v="inline">In One Focus</button>
+      </div>
+      <label class="toggle"><input type="checkbox" id="s-blur-close" /><span>Close when I click outside it</span></label>
+      <div class="field"><span>Today · triple-bump a corner of the main monitor</span></div>
+      <div class="tabs tabs--dense" id="s-corner-today"></div>
+      <div class="field"><span>Week · triple-bump a corner</span></div>
+      <div class="tabs tabs--dense" id="s-corner-week"></div>
+      <label class="toggle"><input type="checkbox" id="s-shortcuts" /><span>Keyboard: Ctrl+Alt+T (Today), Ctrl+Alt+W (Week)</span></label>
+      <div class="field"><span>Open by itself</span></div>
+      <div class="tabs tabs--dense" id="s-autoplan"></div>
+      <div class="tabs tabs--dense" id="s-autoplan-every" hidden></div>
+      <div class="su-range-row" id="s-autoplan-times" hidden></div>
+      <p class="hint" id="s-autoplan-hint"></p>
+
+      <h2 class="eyebrow">Reminders</h2>
+      <label class="toggle"><input type="checkbox" id="s-remind-blocks" /><span>When a planned block starts</span></label>
+      <label class="toggle"><input type="checkbox" id="s-remind-over" /><span>When I run over a task's planned time</span></label>
+      <label class="toggle"><input type="checkbox" id="s-color-time" /><span>Colour finished blocks: green under time, red over (±20% stays white)</span></label>
       </div>
 
       <h2 class="eyebrow">After Done</h2>

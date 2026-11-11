@@ -176,8 +176,13 @@ class Client {
     return this.api('PATCH', `/lists/${enc(listId)}/tasks/${enc(id)}`, body);
   }
 
-  insert(listId, body, previous) {
-    return this.api('POST', `/lists/${enc(listId)}/tasks${previous ? '?previous=' + enc(previous) : ''}`, body);
+  // `parent` makes it a subtask (an "item" in One Focus).
+  insert(listId, body, previous, parent) {
+    const q = new URLSearchParams();
+    if (previous) q.set('previous', previous);
+    if (parent) q.set('parent', parent);
+    const qs = q.toString();
+    return this.api('POST', `/lists/${enc(listId)}/tasks${qs ? '?' + qs : ''}`, body);
   }
 
   remove(listId, id) {

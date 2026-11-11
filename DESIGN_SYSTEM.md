@@ -138,6 +138,18 @@ Panels are for the occasional look, not the resting state, so they can be denser
 - Same-name tasks: a 0.75em tertiary "2/5" after the title.
 - Details sheet: a 320px panel sliding in from the right over the columns: title field, notes, When, Length tabs, Repeat tabs, then actions at the bottom.
 
+## Planner (Today / Week)
+
+- One window; the title is two 26px tabs, "Today" and "Week" (tertiary when not selected). Week nav hides on Today.
+- Today: one wide day card (up to 560px) with a 6px secondary-ink "actual" lane on its right edge (holds tertiary); a summary column: "So far" label, 30px "4h 39m focused", four small stats (Idle, Hold, Done, Planned), one 6px split bar (focused / hold / idle), "By task" and "Left today" lists with hairline rows.
+- Finished blocks stay on the card at 55% with the title struck through. Optional colouring (Settings): green 26% tint + 40% edge when under, red likewise when over; within ±20% stays the normal ink. These are the only colours besides the jolt.
+- Items: a checklist in the details sheet, 14px circles like Today rows, "Items · 2/4".
+- Reminder line on Now: 12px, takes the buttons' place under the task, text truncates; actions as text buttons, the main one in primary ink.
+
+## Light mode
+
+- Hides the Plan menu item, Planner settings, items counts and reminders. Everything else looks the same.
+
 ## Hop off
 
 - The left and right borders close in: two `--bg` panels grow from each side to the centre over 720ms (`cubic-bezier(0.7, 0, 0.2, 1)`), each with a 1px secondary-ink inner edge that fades as they meet. Then the app quits.

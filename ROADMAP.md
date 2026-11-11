@@ -117,6 +117,16 @@
 - [x] Duplicate with a copies count; same-name tasks count up (2/5)
 - [x] No idle time before the workday starts (or on days off)
 
+## v0.19 — Planner, items, reminders, Light mode
+- [x] Setup + Today merged into one Planner window (Today / Week tabs); closes on outside click
+- [x] Today tab: one big day with plan vs. what you did, time split, by task, what's left
+- [x] Items = Google subtasks (checklist in details; "2/5 items" on Now)
+- [x] Reminders: planned block starts; running over (repeats every 15m); with Start/Done/+15m/Plan
+- [x] Planner opens itself: start & end of day (default), every few hours, or set times
+- [x] Ways in: triple-bump a screen corner (per tab), Ctrl+Alt+T / Ctrl+Alt+W
+- [x] Optional green/red colouring of finished blocks (±20%)
+- [x] Light mode: the Google Tasks wrapper only
+
 ## Parked
 - [x] ~~Full-screen announcements~~ → became the v0.7 blur for "Still on this?" and end of day
 

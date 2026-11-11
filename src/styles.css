@@ -596,6 +596,65 @@ input::placeholder { color: var(--fg-tertiary); }
 .su-modal__box { width: min(360px, 90%); background: var(--bg); border: 1px solid var(--hairline); border-radius: 14px; padding: 22px; display: flex; flex-direction: column; gap: 14px; box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5); }
 .su-modal__acts { display: flex; justify-content: flex-end; gap: var(--space-2); margin-top: 4px; }
 
+/* Light mode: the Google Tasks wrapper, as before the Planner */
+.is-light .menu__item[data-view="setup"], .is-light .full-only, .is-light .items-count { display: none !important; }
+
+/* Planner tabs (Today / Week) as the title */
+.su-tabs { display: flex; gap: 18px; align-items: baseline; }
+.su-tab { font-size: 26px; font-weight: 500; letter-spacing: -0.02em; color: var(--fg-tertiary); transition: color var(--dur) var(--ease); -webkit-app-region: no-drag; }
+.su-tab:hover { color: var(--fg-secondary); }
+.su-tab[aria-selected="true"] { color: var(--fg); }
+#view-setup[data-tab="today"] .su-nav { display: none; }
+
+/* Today tab: one wide day + a summary */
+.su-day.is-wide { flex: 0 1 520px; max-width: 560px; }
+.su-actual { position: absolute; right: 0; width: 6px; border-radius: 3px; background: var(--fg-secondary); z-index: 2; }
+.su-actual.is-hold { background: var(--fg-tertiary); }
+.su-day.is-wide .su-block { right: 14px; }
+.su-summary { flex: 1 1 280px; max-width: 380px; align-self: flex-start; position: sticky; top: 0; display: flex; flex-direction: column; gap: 14px; padding: 6px 4px 24px 16px; }
+.su-summary .label { font-size: 11px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: var(--fg-tertiary); margin-top: 8px; }
+.su-big { font-size: 30px; font-weight: 500; letter-spacing: -0.02em; color: var(--fg); font-variant-numeric: tabular-nums; }
+.su-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.su-stat { display: flex; flex-direction: column; gap: 2px; }
+.su-stat .v { font-size: 15px; color: var(--fg); font-variant-numeric: tabular-nums; }
+.su-stat .k { font-size: 11px; color: var(--fg-tertiary); }
+.su-split { display: flex; height: 6px; border-radius: 3px; overflow: hidden; background: var(--fill); }
+.su-split .f { background: var(--fg-secondary); }
+.su-split .h { background: var(--fg-tertiary); }
+.su-split .i { background: var(--hairline); }
+.su-by, .su-left { list-style: none; display: flex; flex-direction: column; }
+.su-by li, .su-left li { display: flex; justify-content: space-between; gap: 12px; padding: 7px 0; border-bottom: 1px solid var(--hairline); font-size: 13px; color: var(--fg-secondary); }
+.su-by .t, .su-left .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.su-by .d, .su-left .d { color: var(--fg-tertiary); font-variant-numeric: tabular-nums; flex-shrink: 0; }
+.su-left li { cursor: pointer; }
+.su-left li:hover .t { color: var(--fg); }
+
+/* Finished blocks, and the optional over/under colouring */
+.su-block.is-done { opacity: 0.55; cursor: default; }
+.su-block.is-done .t { text-decoration: line-through; text-decoration-color: var(--fg-tertiary); }
+.su-block.is-under { background: rgba(110, 196, 140, 0.26); box-shadow: inset 0 0 0 1px rgba(110, 196, 140, 0.4); opacity: 0.9; }
+.su-block.is-over { background: rgba(228, 104, 96, 0.26); box-shadow: inset 0 0 0 1px rgba(228, 104, 96, 0.45); }
+
+/* Items (subtasks) in the details sheet */
+.su-items { list-style: none; display: flex; flex-direction: column; }
+.su-items li { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--hairline); font-size: 13px; color: var(--fg-secondary); }
+.su-items .check { flex-shrink: 0; width: 14px; height: 14px; border-radius: 50%; border: 1px solid var(--fg-tertiary); }
+.su-items li.is-done .check { background: var(--fg-tertiary); border-color: transparent; }
+.su-items li.is-done .t { color: var(--fg-tertiary); text-decoration: line-through; }
+.su-items .t { flex: 1; min-width: 0; }
+.su-items .x { color: var(--fg-tertiary); opacity: 0; }
+.su-items li:hover .x { opacity: 1; }
+
+/* Reminder line under the task: block starting / running over */
+.remind { position: absolute; top: calc(100% + var(--space-2)); left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 12px; white-space: nowrap; font-size: var(--size-small); color: var(--fg); max-width: min(92cqw, 520px); animation: nudge-in 400ms var(--ease); }
+#remind-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.remind__acts { flex-shrink: 0; }
+@keyframes nudge-in { from { opacity: 0; transform: translate(-50%, 4px); } }
+.remind__acts { display: flex; gap: 10px; }
+.remind__acts .act { font-size: var(--size-small); color: var(--fg-secondary); }
+.remind__acts .act.is-main { color: var(--fg); }
+.remind__acts .act:hover { color: var(--fg); }
+
 /* Week navigation */
 .su-nav { display: flex; align-items: center; gap: 6px; }
 .su-arrow { width: 32px; height: 32px; padding: 0; display: grid; place-items: center; }
