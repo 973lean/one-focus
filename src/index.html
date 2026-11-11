@@ -14,6 +14,7 @@
         <button class="menu__item" data-view="now">Now</button>
         <button class="menu__item" data-view="log">Log</button>
         <button class="menu__item" data-view="today">Today</button>
+        <button class="menu__item" data-view="setup">Setup</button>
       </nav>
       <div class="controls" aria-label="Window controls">
         <button class="controls__btn" data-action="minimize" aria-label="Minimize"><svg viewBox="0 0 10 10"><path d="M1 5h8"/></svg></button>
@@ -69,6 +70,26 @@
     </main>
 
 
+    <section class="panel panel--setup" id="view-setup" hidden>
+      <div class="setup">
+        <header class="su-head">
+          <div class="su-top">
+            <div class="su-titles"><h1 class="su-title">Set up</h1><span class="su-range" id="su-range"></span></div>
+            <div class="su-tools">
+              <button class="su-tool" id="su-structure">Day structure</button>
+              <button class="su-tool su-close" id="su-close" aria-label="Close" title="Close"><svg viewBox="0 0 10 10"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7"/></svg></button>
+            </div>
+          </div>
+          <input id="su-add" class="su-add" type="text" placeholder="Add a task" maxlength="300" />
+          <div class="su-tray" id="su-tray"></div>
+        </header>
+        <div class="su-body">
+          <div class="su-days" id="su-days"></div>
+          <aside class="su-sheet" id="su-sheet" hidden></aside>
+        </div>
+      </div>
+    </section>
+
     <section class="panel" id="view-log" hidden>
       <div class="log-head">
         <div class="tabs" role="tablist" id="log-tabs">
@@ -97,19 +118,6 @@
       <div class="tabs" id="today-tabs">
         <button class="tab" data-list="today">Today</button>
         <button class="tab" data-list="all">All</button>
-        <button class="tab" data-list="map">Map</button>
-        <button class="tab" data-list="setup">Setup</button>
-      </div>
-      <div class="setup" id="today-setup" hidden>
-        <header class="su-head">
-          <div class="su-row">
-            <input id="su-add" class="su-add" type="text" placeholder="New task" maxlength="300" />
-            <div class="su-groups" id="su-groups"></div>
-          </div>
-          <div class="su-tray" id="su-tray"></div>
-          <p class="hint">Drag a task onto a day to plan it. Drag a block to move it, or its bottom edge to change how long. Drop it back up here to unplan. Drop a task on a group to file it there.</p>
-        </header>
-        <div class="su-days" id="su-days"></div>
       </div>
       <div class="today-map" id="today-map" hidden>
       <div class="map-head">
@@ -175,6 +183,12 @@
         <button class="tab" data-v="ring">Ring</button>
         <button class="tab" data-v="ringPct">Ring + %</button>
         <button class="tab" data-v="text">Time left</button>
+      </div>
+
+      <h2 class="eyebrow">Setup</h2>
+      <div class="tabs" id="s-setup-mode">
+        <button class="tab" data-v="modal">On main monitor</button>
+        <button class="tab" data-v="inline">In One Focus</button>
       </div>
 
       <h2 class="eyebrow">After Done</h2>

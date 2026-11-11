@@ -5,6 +5,7 @@ const store = require('./store');
 const Tracker = require('./tracker');
 const google = require('./google');
 const web = require('./web');
+const planning = require('./plan');
 
 const VIEW_BASE = 'https://973lean.github.io/one-focus/';
 
@@ -56,6 +57,7 @@ function snapshot() {
     todayDate: localDate(),
     goals: goalsFor([cur, held, ...today.open.map((t) => ({ key: 'g:' + t.id }))]),
     plans: plansFor(today.open),
+    breaks: state.breaks,
     web: {
       on: !!state.web.token,
       url: state.web.gistId ? VIEW_BASE + '#' + state.web.gistId : null,
@@ -75,7 +77,8 @@ function plansFor(open) {
   const out = {};
   for (const t of open) {
     const m = state.taskMeta['g:' + t.id];
-    if (m && (m.plan || m.category)) out['g:' + t.id] = { plan: m.plan || null, group: m.category || null };
+    if (m && (m.plan || m.repeat || m.mins))
+      out['g:' + t.id] = { plan: m.plan || null, repeat: m.repeat || null, mins: m.mins || null };
   }
   return out;
 }
@@ -148,7 +151,9 @@ function push() {
   scheduleWeb();
   // The blur only makes sense while a real task runs.
   if (check && (!state.current || isHold(state.current))) closeCheck();
-  if (win && !win.isDestroyed()) win.webContents.send('state', snapshot());
+  const snap = snapshot();
+  if (win && !win.isDestroyed()) win.webContents.send('state', snap);
+  if (setupWin && !setupWin.isDestroyed()) setupWin.webContents.send('state', snap);
 }
 
 // ---------- "Still on this?" and end of day: blur every screen ----------
@@ -259,7 +264,7 @@ const startOfDay = () => {
   return d;
 };
 // Google stores a task's date as midnight UTC of that day: keep "YYYY-MM-DD".
-const pick = (t) => ({ id: t.id, title: t.title.trim(), completed: t.completed || null, due: t.due ? t.due.slice(0, 10) : null });
+const pick = (t) => ({ id: t.id, title: t.title.trim(), notes: t.notes || '', completed: t.completed || null, due: t.due ? t.due.slice(0, 10) : null });
 const byPosition = (a, b) => (a.position < b.position ? -1 : a.position > b.position ? 1 : 0);
 
 let syncing = null;
@@ -282,7 +287,9 @@ async function doSync() {
       store.save(state);
     }
     const all = (await client.listTasks(listId)).filter((t) => !t.parent && (t.title || '').trim());
-    const open = all.filter((t) => t.status !== 'completed').sort(byPosition);
+    // List order, then anything with a planned or "by" time pulled to the
+    // front in time order, so the next task is always the earliest one.
+    const open = planning.orderTasks(all.filter((t) => t.status !== 'completed').sort(byPosition), state.taskMeta);
     const sod = startOfDay();
     const done = all
       .filter((t) => t.status === 'completed' && t.completed && new Date(t.completed) >= sod)
@@ -291,9 +298,37 @@ async function doSync() {
     // Log completions (Google's timestamp is the source of truth), but never
     // back-fill tasks finished before One Focus was connected.
     const since = state.google.connectedAt;
+    const spawn = [];
     for (const t of all)
-      if (t.status === 'completed' && t.completed && since && t.completed >= since)
+      if (t.status === 'completed' && t.completed && since && t.completed >= since) {
         tracker.recordCompletion({ key: 'g:' + t.id, title: t.title.trim(), googleId: t.id }, t.completed);
+        const m = state.taskMeta['g:' + t.id];
+        if (m && m.repeat && m.spawned !== t.completed) {
+          m.spawned = t.completed; // once per completion
+          spawn.push({ t, m });
+        }
+      }
+    // Repeating tasks: finishing one creates the next, same time of day.
+    for (const { t, m } of spawn) {
+      const doneDay = localDate(new Date(t.completed));
+      const from = t.due && t.due.slice(0, 10) > doneDay ? t.due.slice(0, 10) : doneDay;
+      const next = planning.nextDate(from, m.repeat);
+      const created = await client.insert(listId, { title: t.title.trim(), notes: t.notes || undefined, due: next + 'T00:00:00.000Z' });
+      const meta = { repeat: m.repeat };
+      if (m.mins) meta.mins = m.mins;
+      if (m.plan) {
+        const old = new Date(m.plan.start);
+        const [y, mo, d] = next.split('-').map(Number);
+        const start = new Date(y, mo - 1, d, old.getHours(), old.getMinutes());
+        meta.plan = { start: start.toISOString(), mins: m.plan.mins };
+        meta.goal = new Date(start.getTime() + m.plan.mins * 60e3).toISOString();
+      }
+      state.taskMeta['g:' + created.id] = meta;
+    }
+    if (spawn.length) {
+      store.save(state);
+      setTimeout(() => resync(), 500);
+    }
 
     today = { open: open.map(pick), done: done.map(pick), syncedAt: new Date().toISOString(), error: null };
 
@@ -435,6 +470,87 @@ ipcMain.handle('review:open', () => {
   const u = state.settings.reviewUrl;
   if (u && /^https?:\/\//i.test(u)) shell.openExternal(u);
   return !!u;
+});
+
+// ---------- Setup window (a large window on the main monitor) ----------
+
+let setupWin = null;
+function openSetupWindow() {
+  if (setupWin && !setupWin.isDestroyed()) {
+    setupWin.show();
+    setupWin.focus();
+    return;
+  }
+  const wa = screen.getPrimaryDisplay().workArea;
+  const width = Math.round(Math.min(wa.width * 0.88, 1560));
+  const height = Math.round(Math.min(wa.height * 0.88, 1000));
+  setupWin = new BrowserWindow({
+    x: wa.x + Math.round((wa.width - width) / 2),
+    y: wa.y + Math.round((wa.height - height) / 2),
+    width,
+    height,
+    minWidth: 760,
+    minHeight: 520,
+    frame: false,
+    show: false,
+    backgroundColor: '#0B0B0C',
+    title: 'One Focus · Set up',
+    icon: path.join(__dirname, 'assets', 'icon.png'),
+    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false },
+  });
+  setupWin.loadFile(path.join(__dirname, 'index.html'), { query: { mode: 'setup' } });
+  setupWin.once('ready-to-show', () => setupWin.show());
+  setupWin.on('closed', () => (setupWin = null));
+}
+ipcMain.handle('setup:open', () => openSetupWindow());
+
+// Day structure: times as "HH:MM", ranges kept only if they make sense.
+function cleanStructure(d) {
+  if (!d) return null;
+  const hm = (v) => (/^\d{2}:\d{2}$/.test(v) ? v : null);
+  const ranges = (list) =>
+    (Array.isArray(list) ? list : []).map(([a, b]) => [hm(a), hm(b)]).filter(([a, b]) => a && b && a < b).slice(0, 8);
+  const start = hm(d.start) || '09:00';
+  const end = hm(d.end) || '17:30';
+  return { start, end: end > start ? end : '17:30', work: ranges(d.work), breaks: ranges(d.breaks), weekends: !!d.weekends };
+}
+
+// Task details from Setup: title and notes go to Google; length and repeat stay here.
+ipcMain.handle('task:detail', async (_e, id, patch) => {
+  const key = 'g:' + id;
+  const meta = (state.taskMeta[key] = { ...(state.taskMeta[key] || {}) });
+  if ('repeat' in patch) {
+    if (['daily', 'weekdays', 'weekly'].includes(patch.repeat)) meta.repeat = patch.repeat;
+    else delete meta.repeat;
+  }
+  if ('mins' in patch) {
+    const mins = Math.min(Math.max(Math.round(+patch.mins / 15) * 15 || 30, 15), 12 * 60);
+    meta.mins = mins;
+    if (meta.plan) {
+      meta.plan.mins = mins;
+      meta.goal = new Date(Date.parse(meta.plan.start) + mins * 60e3).toISOString();
+    }
+  }
+  store.save(state);
+  const body = {};
+  if (typeof patch.title === 'string' && patch.title.trim()) body.title = patch.title.trim().slice(0, 1024);
+  if (typeof patch.notes === 'string') body.notes = patch.notes.slice(0, 8000);
+  if (Object.keys(body).length && client && state.google.listId) await client.patch(state.google.listId, id, body).catch(() => {});
+  await resync();
+  return snapshot();
+});
+
+// One-off breaks placed in Setup. plan null = remove.
+ipcMain.handle('break:set', (_e, id, plan) => {
+  const keep = Date.now() - 14 * 86400e3;
+  state.breaks = state.breaks.filter((b) => Date.parse(b.start) > keep && b.id !== id);
+  if (plan && !Number.isNaN(Date.parse(plan.start))) {
+    const mins = Math.min(Math.max(Math.round(+plan.mins / 15) * 15 || 15, 15), 4 * 60);
+    state.breaks.push({ id: id || 'b' + Date.now().toString(36), start: new Date(plan.start).toISOString(), mins });
+  }
+  store.save(state);
+  push();
+  return snapshot();
 });
 
 // Setup: place a task at a time on a day for a number of minutes. Its
@@ -651,7 +767,11 @@ ipcMain.handle('task:action', async (_e, action, id, value) => {
       await client.insert(listId, { title, ...(id === 'today' ? { due: todayDue() } : {}) }, last && last.id);
     } else if (action === 'schedule') await client.patch(listId, id, { due: todayDue() });
     else if (action === 'unschedule') {
-      await client.patch(listId, id, { due: null });
+      // Later: off today. Clears its date and any planned time.
+      await client.clearDue(listId, id);
+      const m = state.taskMeta['g:' + id];
+      if (m) delete m.plan, delete m.goal;
+      store.save(state);
     } else if (action === 'delete') await client.remove(listId, id);
     else if (action === 'focus') await client.move(listId, id);
     else if (action === 'move') await client.move(listId, id, value || undefined);
@@ -694,6 +814,8 @@ ipcMain.handle('settings:update', async (_e, patch) => {
   const allowed = ['showSince', 'showElapsed', 'alwaysOnTop', 'listName', 'clientId', 'clientSecret', 'askCategory', 'askRating', 'launchAtLogin'];
   const prev = { ...state.settings };
   for (const k of allowed) if (k in patch) state.settings[k] = typeof patch[k] === 'string' ? patch[k].trim() : !!patch[k];
+  if ('setupMode' in patch) state.settings.setupMode = patch.setupMode === 'inline' ? 'inline' : 'modal';
+  if ('dayStructure' in patch) state.settings.dayStructure = cleanStructure(patch.dayStructure);
   if ('logView' in patch) state.settings.logView = patch.logView === 'sessions' ? 'sessions' : 'summary';
   if ('mapGoals' in patch) state.settings.mapGoals = !!patch.mapGoals;
   if ('reviewUrl' in patch) {

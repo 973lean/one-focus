@@ -103,6 +103,14 @@
 - [x] Planned tasks set their Google date and goal (planned end); Push plan moves planned blocks too
 - [x] Hop off closes One Focus with the side borders closing in
 
+## v0.17 — Setup grows up
+- [x] Setup at the top level; opens as a window on the main monitor (setting: or inline)
+- [x] Time order everywhere: planned/"by" times sort Today and All, so Start picks the earliest
+- [x] Bigger header and cards; Break cards and blocks; groups and hint text removed
+- [x] Task details: title, notes, length, repeat (daily / weekdays / weekly) with previews
+- [x] Day structure: workday, work blocks, breaks as faint bands
+- [x] Map hidden; Later fixed (dates are now cleared reliably)
+
 ## Parked
 - [x] ~~Full-screen announcements~~ → became the v0.7 blur for "Still on this?" and end of day
 

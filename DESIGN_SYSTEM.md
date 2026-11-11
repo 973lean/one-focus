@@ -105,9 +105,8 @@ Panels are for the occasional look, not the resting state, so they can be denser
 - Hover: a 2px marker and a tooltip above it, "2:30 PM · in 4h 25m". Times snap to 15 minutes. Click sets the goal. Esc or clicking elsewhere closes it.
 - With a goal, the time line shows progress (Settings → Goal progress): **Ring** (default) — a 0.85em ring right after the time on task, filling from task start to goal, primary ink once over; **Ring + %** — the same with "(54%)"; **Time left** — "2h 10m left" / "15m over". Hovering the time line always shows the goal time. One jolt when the goal is reached.
 
-## Map
+## Map (hidden for now)
 
-- Lives as the third tab in Today (Today · All · Map).
 - One 34px rounded bar in `--fill`, from your first block (or 2h ago) to a few hours ahead, whole hours, labels every 1–3 hours in 10px tertiary.
 - Past: task blocks at 20% ink (live block 30%), holds at 9%, idle left empty; each block labelled inside at 11px, truncated. Future: a faint hairline texture. Now: a 2px primary-ink line.
 - Goals (toggle): a tick above the bar with the task name in 10px, two label rows, ticks only when crowded. Done goals struck through.
@@ -128,11 +127,12 @@ Panels are for the occasional look, not the resting state, so they can be denser
 
 ## Setup (week planner)
 
-- The window grows to at least 980 × 660 while Setup is open.
-- Header ("fat header"): a 15px "New task" field, group tabs (All, each group, "+ Group"), the tray of unplanned task chips (12px hairline pills; a 10px tertiary tag for the day or group), one hint line, then a hairline.
-- Day cards: 196px wide, 10px radius, 2.5% fill, side by side and scrolling horizontally (snap), with a sticky header ("Today", "Tomorrow", "12 Thu" + planned total). Hours run down each card at 44px per hour, hairline rules, 10px labels; a 2px primary-ink now line on Today.
-- Blocks: 16% ink, 6px radius, title 12px + time range 10px secondary, an invisible 8px resize strip at the bottom. The running task gets a 2px primary-ink left edge.
-- Dragging: a small bordered ghost pill follows the pointer; a dashed preview shows where and how long it will land, labelled with the time. Times snap to 15 minutes.
+- Opens as its own frameless window centred on the main monitor (88% of it, max 1560 × 1000), or inline in One Focus (≥ 980 × 660). Same styling either way.
+- Header: 26px "Set up" + the date range in tertiary; "Day structure" and close as hairline pills on the right. A 20px "Add a task" field. Then the cards: 12px radius, 2.5% fill, hairline border, 15px title + 11px tertiary meta ("1h · ↻ Daily · today"). The Break card is dashed and hatched. The header drags the window.
+- Day columns: hours down each at 48px per hour; sticky day header ("Today", "Tomorrow", "13 Fri" + planned total); a 2px now line.
+- Blocks: 16% ink, 8px radius, 13px title + 10px time; 15–20 minute blocks collapse to one line. Breaks are hatched. Repeating tasks show faint outlined previews on later days.
+- Day structure: hours outside the workday shaded darker; work blocks a faint band with a 2px left rule; breaks hatched with a tiny "break" label. Nothing moves: it's a guide under the blocks.
+- Details sheet: a 320px panel sliding in from the right over the columns: title field, notes, When, Length tabs, Repeat tabs, then actions at the bottom.
 
 ## Hop off
 

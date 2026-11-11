@@ -184,6 +184,15 @@ class Client {
     return this.api('DELETE', `/lists/${enc(listId)}/tasks/${enc(id)}`);
   }
 
+  // Clear a task's date. PATCH with due: null isn't reliably honoured, so
+  // read the task, drop the date and write the whole task back.
+  async clearDue(listId, id) {
+    const path = `/lists/${enc(listId)}/tasks/${enc(id)}`;
+    const t = await this.api('GET', path);
+    delete t.due;
+    return this.api('PUT', path, t);
+  }
+
   // Place after `previous`; without it, move to the top of the list.
   move(listId, id, previous) {
     return this.api('POST', `/lists/${enc(listId)}/tasks/${enc(id)}/move${previous ? '?previous=' + enc(previous) : ''}`);

@@ -29,18 +29,27 @@ function el(tag, cls, text) {
 
 // ---------- views ----------
 
+// The Setup window (on the main monitor) loads this page with ?mode=setup.
+const setupMode = new URLSearchParams(location.search).get('mode') === 'setup';
+if (setupMode) document.body.classList.add('mode-setup');
+
 function setView(name) {
   view = name;
   appEl.dataset.view = name;
-  for (const id of ['now', 'log', 'today', 'settings']) $('view-' + id).hidden = id !== name;
+  for (const id of ['now', 'log', 'today', 'setup', 'settings']) $('view-' + id).hidden = id !== name;
   document.querySelectorAll('.menu__item').forEach((b) => b.setAttribute('aria-current', String(b.dataset.view === name)));
-  api.setView(name);
-  if (name === 'log' || (name === 'today' && todayTab === 'map')) loadLog();
+  if (!setupMode) api.setView(name);
+  if (name === 'log') loadLog();
   render();
+  if (name === 'setup') setTimeout(scrollSetupToNow, 350);
 }
 
 document.querySelectorAll('button[data-view]').forEach((b) =>
-  b.addEventListener('click', () => setView(view === b.dataset.view && b.dataset.view !== 'now' ? 'now' : b.dataset.view))
+  b.addEventListener('click', () => {
+    // Setup opens as its own window on the main monitor unless set to inline.
+    if (b.dataset.view === 'setup' && S && S.settings.setupMode !== 'inline') return api.openSetup();
+    setView(view === b.dataset.view && b.dataset.view !== 'now' ? 'now' : b.dataset.view);
+  })
 );
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && view !== 'now' && !e.target.matches('input')) setView('now');
@@ -1243,16 +1252,8 @@ function taskRow(t, { current, next, done, allView }) {
 function renderToday() {
   if (!S || renaming) return;
   document.querySelectorAll('#today-tabs .tab').forEach((t) => t.setAttribute('aria-selected', String(t.dataset.list === todayTab)));
-  const mapTab = todayTab === 'map';
-  const setupTab = todayTab === 'setup';
+  const mapTab = todayTab === 'map'; // Map is hidden for now; its code stays
   $('today-map').hidden = !mapTab;
-  $('today-setup').hidden = !setupTab;
-  $('view-today').classList.toggle('is-setup', setupTab);
-  if (setupTab) {
-    $('today-off').hidden = $('today-on').hidden = true;
-    renderSetup();
-    return;
-  }
   if (mapTab) {
     $('today-off').hidden = $('today-on').hidden = true;
     return;
@@ -1287,30 +1288,53 @@ document.querySelectorAll('#today-tabs .tab').forEach((t) =>
     todayTab = t.dataset.list;
     renderToday();
     if (todayTab === 'map') loadLog();
-    api.setView(todayTab === 'setup' ? 'setup' : 'today');
-    if (todayTab === 'setup') setTimeout(scrollSetupToNow, 350);
   })
 );
 
-// ---------- Setup: a week of day cards; drag tasks in, move, resize ----------
+// ---------- Setup: plan the week. Cards up top, seven day columns below. ----------
+// Drag a card onto a day; drag a block to move it, its bottom edge to resize,
+// back up to the header to unplan. Click a card or block for its details.
 
-const HOUR = 44; // px per hour
+const HOUR = 48; // px per hour
 const SNAP = 15; // minutes
-let suGroup = null; // selected group filter, null = all
 let suDrag = null;
+let suSheet = null; // { type: 'task', id } | { type: 'break', id } | { type: 'structure' }
 
 const ld = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-const planOf = (key) => (S.plans && S.plans[key] && S.plans[key].plan) || null;
-const groupOf = (key) => (S.plans && S.plans[key] && S.plans[key].group) || null;
+const metaOf = (key) => (S.plans && S.plans[key]) || {};
+const planOf = (key) => metaOf(key).plan || null;
 const shortDay = new Intl.DateTimeFormat('en-US', { weekday: 'short', day: 'numeric' });
+const rangeFmt = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' });
+const REPEAT = { daily: 'Daily', weekdays: 'Weekdays', weekly: 'Weekly' };
+const toMin = (hhmm) => {
+  const [h, m] = hhmm.split(':').map(Number);
+  return h * 60 + m;
+};
+const lenLabel = (m) => (m % 60 ? (m > 60 ? Math.floor(m / 60) + 'h ' + (m % 60) + 'm' : m + 'm') : m / 60 + 'h');
+const dateAt = (dayKey, minutes) => {
+  const [y, mo, d] = dayKey.split('-').map(Number);
+  return new Date(y, mo - 1, d, 0, minutes);
+};
+// Does a repeating task land on this day (faint preview)?
+function repeatsOn(fromKey, freq, key) {
+  if (key <= fromKey) return false;
+  const day = dateAt(key, 12 * 60).getDay();
+  if (freq === 'daily') return true;
+  if (freq === 'weekdays') return day !== 0 && day !== 6;
+  if (freq === 'weekly') return day === dateAt(fromKey, 12 * 60).getDay();
+  return false;
+}
 
-// Hours shown: 7am–11pm, widened to fit anything planned outside that.
+// Hours shown: the workday (or 7am–11pm), widened to fit anything planned.
 function suHours() {
-  let h0 = 7;
-  let h1 = 23;
-  for (const t of S.today.open) {
-    const p = planOf('g:' + t.id);
-    if (!p) continue;
+  const ds = S.settings.dayStructure;
+  let h0 = ds ? Math.max(0, Math.floor(toMin(ds.start) / 60) - 1) : 7;
+  let h1 = ds ? Math.min(24, Math.ceil(toMin(ds.end) / 60) + 1) : 23;
+  const items = [
+    ...S.today.open.map((t) => planOf('g:' + t.id)).filter(Boolean),
+    ...(S.breaks || []),
+  ];
+  for (const p of items) {
     const s = new Date(p.start);
     h0 = Math.min(h0, s.getHours());
     h1 = Math.max(h1, Math.min(24, Math.ceil(s.getHours() + (s.getMinutes() + p.mins) / 60)));
@@ -1318,110 +1342,147 @@ function suHours() {
   return [h0, h1];
 }
 
+function card(cls, title, meta) {
+  const c = el('div', 'su-card' + (cls ? ' ' + cls : ''));
+  c.append(el('span', 't', title));
+  if (meta) c.append(el('span', 'm', meta));
+  c.title = title;
+  return c;
+}
+
 function renderSetup() {
   if (!S || suDrag) return;
-  if (!S.connected) {
-    $('su-days').replaceChildren(el('p', 'note', 'Connect Google Tasks in Settings to plan your week here.'));
-    $('su-tray').replaceChildren();
-    return;
-  }
-  const [h0, h1] = suHours();
+  const now = new Date();
+  const end = new Date(now);
+  end.setDate(end.getDate() + 6);
+  $('su-range').textContent = `${rangeFmt.format(now)} – ${rangeFmt.format(end)}`;
+  $('su-structure').setAttribute('aria-pressed', String(!!(suSheet && suSheet.type === 'structure')));
+  $('view-setup').classList.toggle('is-modal', setupMode);
 
-  // Groups: All, each group you've used, and a field to start a new one.
-  const groups = $('su-groups');
-  groups.replaceChildren();
-  for (const name of [null, ...(S.categories || [])]) {
-    const b = el('button', 'su-group', name || 'All');
-    b.dataset.group = name || '';
-    b.setAttribute('aria-selected', String(suGroup === name));
-    b.addEventListener('click', () => ((suGroup = name), renderSetup()));
-    groups.append(b);
-  }
-  const add = el('input', 'su-group-add');
-  add.type = 'text';
-  add.placeholder = '+ Group';
-  add.addEventListener('keydown', (e) => {
-    if (e.key !== 'Enter' || !add.value.trim()) return;
-    suGroup = add.value.trim();
-    if (!(S.categories || []).includes(suGroup)) S.categories = [...(S.categories || []), suGroup];
-    renderSetup();
-  });
-  groups.append(add);
-
-  // Tray: open tasks not yet on the calendar (in the selected group).
+  // Header cards: a Break to drag in, then every task not yet on the calendar.
   const tray = $('su-tray');
   tray.replaceChildren();
-  const unplanned = S.today.open.filter((t) => !planOf('g:' + t.id) && (!suGroup || groupOf('g:' + t.id) === suGroup));
-  for (const t of unplanned) {
-    const c = el('span', 'su-chip', t.title);
-    c.title = t.title;
-    // Small tag: the day it's dated for in Google (no time yet), else its group.
-    const tag = t.due ? (t.due === S.todayDate ? 'today' : t.due < S.todayDate ? 'overdue' : shortDay.format(new Date(t.due + 'T12:00:00'))) : !suGroup && groupOf('g:' + t.id);
-    if (tag) c.append(el('small', null, tag));
-    c.addEventListener('pointerdown', (e) => beginDrag(e, { task: t, mode: 'new', mins: 30 }));
-    tray.append(c);
+  const br = card('is-break', 'Break', '15m · drag onto a day');
+  br.addEventListener('pointerdown', (e) => beginDrag(e, { kind: 'break', mode: 'new', mins: 15 }));
+  tray.append(br);
+  if (!S.connected) tray.append(el('span', 'su-note', 'Connect Google Tasks in Settings to plan your tasks here.'));
+  else {
+    const unplanned = S.today.open.filter((t) => !planOf('g:' + t.id));
+    for (const t of unplanned) {
+      const m = metaOf('g:' + t.id);
+      const tag = t.due ? (t.due === S.todayDate ? 'today' : t.due < S.todayDate ? 'overdue' : shortDay.format(new Date(t.due + 'T12:00:00'))) : null;
+      const bits = [lenLabel(m.mins || 30), m.repeat ? '↻ ' + REPEAT[m.repeat] : null, tag].filter(Boolean);
+      const c = card('', t.title, bits.join(' · '));
+      c.addEventListener('pointerdown', (e) => beginDrag(e, { kind: 'task', task: t, mode: 'new', mins: m.mins || 30 }));
+      tray.append(c);
+    }
+    if (!unplanned.length) tray.append(el('span', 'su-note', 'Everything is planned. Add a task above.'));
   }
-  if (!unplanned.length) tray.append(el('span', 'su-empty', suGroup ? `Nothing unplanned in ${suGroup}.` : 'Everything is planned. Add a task above.'));
 
-  // Day cards: today and the next 6 days.
+  // Day columns.
+  const [h0, h1] = suHours();
+  const ds = S.settings.dayStructure;
   const days = $('su-days');
-  const scrollLeft = days.scrollLeft;
-  const scrollTop = days.scrollTop;
+  const keep = [days.scrollLeft, days.scrollTop];
   days.replaceChildren();
-  const now = new Date();
+  const px = (min) => (min - h0 * 60) * (HOUR / 60);
+  const span = (cls, fromMin, toMinute, label) => {
+    const b = el('div', cls);
+    b.style.top = px(Math.max(fromMin, h0 * 60)) + 'px';
+    b.style.height = Math.max(0, px(Math.min(toMinute, h1 * 60)) - px(Math.max(fromMin, h0 * 60))) + 'px';
+    if (label) b.append(el('span', null, label));
+    return b;
+  };
   for (let i = 0; i < 7; i++) {
     const d = new Date(now);
     d.setHours(0, 0, 0, 0);
     d.setDate(d.getDate() + i);
     const key = ld(d);
-    const card = el('section', 'su-day' + (i === 0 ? ' is-today' : ''));
-    const head = el('div', 'su-day__head');
-    const planned = S.today.open.filter((t) => {
-      const p = planOf('g:' + t.id);
-      return p && ld(new Date(p.start)) === key;
-    });
-    const total = planned.reduce((n, t) => n + planOf('g:' + t.id).mins, 0);
-    head.append(el('span', 'su-day__name', i === 0 ? 'Today' : i === 1 ? 'Tomorrow' : shortDay.format(d)), el('span', 'su-day__total', total ? dur(total * 60e3) : ''));
     const col = el('div', 'su-col');
     col.dataset.day = key;
     col.dataset.h0 = h0;
     col.style.height = (h1 - h0) * HOUR + 'px';
+
+    // Day structure: off-hours shaded, work blocks and breaks as faint bands.
+    if (ds) {
+      const weekend = d.getDay() === 0 || d.getDay() === 6;
+      if (weekend && !ds.weekends) col.append(span('su-off', h0 * 60, h1 * 60));
+      else {
+        col.append(span('su-off', h0 * 60, toMin(ds.start)), span('su-off', toMin(ds.end), h1 * 60));
+        for (const [a, b] of ds.work) col.append(span('su-work', toMin(a), toMin(b)));
+        for (const [a, b] of ds.breaks) col.append(span('su-sbreak', toMin(a), toMin(b), 'break'));
+      }
+    }
     for (let h = h0; h <= h1; h++) {
       const line = el('div', 'su-hour');
       line.style.top = (h - h0) * HOUR + 'px';
-      if (h < h1) line.append(el('span', null, hourFmt.format(new Date(2000, 0, 1, h)).replace(' ', '').toLowerCase()));
+      if (h > h0 && h < h1) line.append(el('span', null, hourFmt.format(new Date(2000, 0, 1, h)).replace(' ', '').toLowerCase()));
       col.append(line);
     }
-    if (i === 0) {
+    if (i === 0 && now.getHours() >= h0 && now.getHours() < h1) {
       const n = el('div', 'su-now');
-      n.style.top = ((now.getHours() - h0) * 60 + now.getMinutes()) * (HOUR / 60) + 'px';
-      if (now.getHours() >= h0 && now.getHours() < h1) col.append(n);
+      n.style.top = px(now.getHours() * 60 + now.getMinutes()) + 'px';
+      col.append(n);
     }
-    for (const t of planned) {
-      const p = planOf('g:' + t.id);
-      const s = new Date(p.start);
-      const b = el('div', 'su-block' + (S.current && S.current.googleId === t.id ? ' is-running' : ''));
-      b.style.top = ((s.getHours() - h0) * 60 + s.getMinutes()) * (HOUR / 60) + 'px';
-      b.style.height = Math.max(p.mins * (HOUR / 60) - 2, 14) + 'px';
-      b.append(el('span', 't', t.title), el('span', 'w', `${hm(s)}–${hm(s.getTime() + p.mins * 60e3)}`), el('span', 'h'));
-      b.title = `${t.title} · ${hm(s)}–${hm(s.getTime() + p.mins * 60e3)}${groupOf('g:' + t.id) ? ' · ' + groupOf('g:' + t.id) : ''}`;
-      b.addEventListener('pointerdown', (e) =>
-        beginDrag(e, { task: t, mode: e.target.classList.contains('h') ? 'resize' : 'move', mins: p.mins, start: p.start, block: b })
+
+    let total = 0;
+    // Faint previews of repeating tasks on later days.
+    for (const t of S.today.open) {
+      const m = metaOf('g:' + t.id);
+      if (!m.repeat || !m.plan) continue;
+      const s = new Date(m.plan.start);
+      if (!repeatsOn(ld(s), m.repeat, key)) continue;
+      const g = el('div', 'su-block is-ghost');
+      g.style.top = px(s.getHours() * 60 + s.getMinutes()) + 'px';
+      g.style.height = Math.max(m.plan.mins * (HOUR / 60) - 2, 16) + 'px';
+      g.append(el('span', 't', t.title), el('span', 'w', '↻ ' + REPEAT[m.repeat]));
+      col.append(g);
+    }
+    // One-off breaks.
+    for (const b of (S.breaks || []).filter((x) => ld(new Date(x.start)) === key)) {
+      const s = new Date(b.start);
+      const blk = el('div', 'su-block is-break' + (b.mins <= 20 ? ' is-short' : ''));
+      blk.style.top = px(s.getHours() * 60 + s.getMinutes()) + 'px';
+      blk.style.height = Math.max(b.mins * (HOUR / 60) - 2, 16) + 'px';
+      blk.append(el('span', 't', 'Break'), el('span', 'w', b.mins <= 20 ? hm(s) : `${hm(s)}–${hm(s.getTime() + b.mins * 60e3)}`), el('span', 'h'));
+      blk.addEventListener('pointerdown', (e) =>
+        beginDrag(e, { kind: 'break', id: b.id, mode: e.target.classList.contains('h') ? 'resize' : 'move', mins: b.mins, start: b.start, block: blk })
       );
-      col.append(b);
+      col.append(blk);
     }
-    card.append(head, col);
-    days.append(card);
+    // Planned tasks.
+    for (const t of S.today.open) {
+      const p = planOf('g:' + t.id);
+      if (!p || ld(new Date(p.start)) !== key) continue;
+      total += p.mins;
+      const s = new Date(p.start);
+      const m = metaOf('g:' + t.id);
+      const blk = el('div', 'su-block' + (S.current && S.current.googleId === t.id ? ' is-running' : '') + (p.mins <= 20 ? ' is-short' : ''));
+      blk.style.top = px(s.getHours() * 60 + s.getMinutes()) + 'px';
+      blk.style.height = Math.max(p.mins * (HOUR / 60) - 2, 16) + 'px';
+      blk.append(el('span', 't', t.title), el('span', 'w', (p.mins <= 20 ? hm(s) : `${hm(s)}–${hm(s.getTime() + p.mins * 60e3)}`) + (m.repeat ? ' · ↻' : '')), el('span', 'h'));
+      blk.title = t.title;
+      blk.addEventListener('pointerdown', (e) =>
+        beginDrag(e, { kind: 'task', task: t, mode: e.target.classList.contains('h') ? 'resize' : 'move', mins: p.mins, start: p.start, block: blk })
+      );
+      col.append(blk);
+    }
+
+    const dayCard = el('section', 'su-day' + (i === 0 ? ' is-today' : ''));
+    const head = el('div', 'su-day__head');
+    head.append(el('span', 'su-day__name', i === 0 ? 'Today' : i === 1 ? 'Tomorrow' : shortDay.format(d)), el('span', 'su-day__total', total ? dur(total * 60e3) : ''));
+    dayCard.append(head, col);
+    days.append(dayCard);
   }
-  days.scrollLeft = scrollLeft;
-  days.scrollTop = scrollTop;
+  days.scrollLeft = keep[0];
+  days.scrollTop = keep[1];
+  renderSheet();
 }
 
 function scrollSetupToNow() {
   const col = document.querySelector('.su-col');
   if (!col) return;
-  const h0 = +col.dataset.h0;
-  $('su-days').scrollTop = Math.max(0, (new Date().getHours() - h0 - 1) * HOUR);
+  $('su-days').scrollTop = Math.max(0, (new Date().getHours() - +col.dataset.h0 - 1) * HOUR);
 }
 
 // Minutes since midnight at a pointer y inside a day column, snapped.
@@ -1442,11 +1503,7 @@ function beginDrag(e, d) {
 
 function targetAt(x, y) {
   const hit = document.elementFromPoint(x, y);
-  return {
-    col: hit && hit.closest('.su-col'),
-    tray: hit && hit.closest('.su-head'),
-    group: hit && hit.closest('.su-group'),
-  };
+  return { col: hit && hit.closest('.su-col'), head: hit && hit.closest('.su-head') };
 }
 
 function onDragMove(e) {
@@ -1464,52 +1521,219 @@ function onDragMove(e) {
   }
   if (d.block) d.block.classList.add('is-dragging');
   if (!d.ghost) {
-    d.ghost = el('div', 'su-ghost', d.task.title);
+    d.ghost = el('div', 'su-ghost', d.kind === 'break' ? 'Break' : d.task.title);
     document.body.append(d.ghost);
   }
   d.ghost.style.left = e.clientX + 'px';
   d.ghost.style.top = e.clientY + 'px';
   document.querySelectorAll('.su-preview').forEach((p) => p.remove());
-  document.querySelectorAll('.is-drop').forEach((x) => x.classList.remove('is-drop'));
+  $('su-tray').classList.remove('is-drop');
   const t = targetAt(e.clientX, e.clientY);
   if (t.col) {
     const m = colMinutes(t.col, e.clientY);
     const p = el('div', 'su-preview');
     p.style.top = (m - +t.col.dataset.h0 * 60) * (HOUR / 60) + 'px';
     p.style.height = d.mins * (HOUR / 60) - 2 + 'px';
-    p.append(el('span', null, `${hm(new Date(2000, 0, 1, 0, m))} · ${dur(d.mins * 60e3)}`));
+    p.append(el('span', null, `${hm(new Date(2000, 0, 1, 0, m))} · ${lenLabel(d.mins)}`));
     t.col.append(p);
-  } else if (t.group && t.group.dataset.group) t.group.classList.add('is-drop');
-  else if (t.tray && d.mode === 'move') $('su-tray').classList.add('is-drop');
+  } else if (t.head && d.mode === 'move') $('su-tray').classList.add('is-drop');
 }
 
 async function onDragEnd(e) {
   const d = suDrag;
   document.removeEventListener('pointermove', onDragMove);
   document.querySelectorAll('.su-preview').forEach((p) => p.remove());
-  document.querySelectorAll('.is-drop').forEach((x) => x.classList.remove('is-drop'));
+  $('su-tray').classList.remove('is-drop');
   if (d && d.ghost) d.ghost.remove();
   suDrag = null;
-  if (!d || !d.moved) return renderSetup();
-  const id = d.task.id;
-  if (d.mode === 'resize') S = await api.plan(id, { start: d.start, mins: d.mins });
+  if (!d) return;
+  if (!d.moved) {
+    // A click, not a drag: open details.
+    if (d.kind === 'task') suSheet = { type: 'task', id: d.task.id };
+    else if (d.id) suSheet = { type: 'break', id: d.id };
+    return renderSetup();
+  }
+  const save = (start, mins) => (d.kind === 'break' ? api.setBreak(d.id || null, start ? { start, mins } : null) : api.plan(d.task.id, start ? { start, mins } : null));
+  if (d.mode === 'resize') S = await save(d.start, d.mins);
   else {
     const t = targetAt(e.clientX, e.clientY);
-    if (t.col) {
-      const [y, mo, da] = t.col.dataset.day.split('-').map(Number);
-      const m = colMinutes(t.col, e.clientY);
-      S = await api.plan(id, { start: new Date(y, mo - 1, da, 0, m).toISOString(), mins: d.mins });
-    } else if (t.group && t.group.dataset.group) S = await api.setMeta('g:' + id, { category: t.group.dataset.group });
-    else if (t.tray && d.mode === 'move') S = await api.plan(id, null);
+    if (t.col) S = await save(dateAt(t.col.dataset.day, colMinutes(t.col, e.clientY)).toISOString(), d.mins);
+    else if (t.head && d.mode === 'move') S = await save(null);
   }
   render();
 }
 
+// ---------- Setup side sheet: task details, a break, or the day structure ----------
+
+function tabsRow(options, current, onPick) {
+  const row = el('div', 'tabs');
+  for (const [value, label] of options) {
+    const b = el('button', 'tab', label);
+    b.setAttribute('aria-selected', String(value === current));
+    b.addEventListener('click', () => onPick(value));
+    row.append(b);
+  }
+  return row;
+}
+
+function sheetTop(titleNode) {
+  const top = el('div', 'su-sheet__top');
+  const close = el('button', 'su-tool su-close');
+  close.innerHTML = '<svg viewBox="0 0 10 10"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7"/></svg>';
+  close.setAttribute('aria-label', 'Close');
+  close.addEventListener('click', () => ((suSheet = null), renderSetup()));
+  top.append(titleNode, close);
+  return top;
+}
+
+const LENGTHS = [15, 30, 45, 60, 90, 120, 180].map((m) => [m, lenLabel(m)]);
+
+function renderSheet() {
+  const sheet = $('su-sheet');
+  // Don't rebuild while you're typing in it; tab clicks still refresh it.
+  const typing = document.activeElement && sheet.contains(document.activeElement) && document.activeElement.matches('input, textarea');
+  if (!suSheet || (typing && sheet.dataset.for === JSON.stringify(suSheet))) {
+    sheet.hidden = !suSheet;
+    return;
+  }
+  sheet.dataset.for = JSON.stringify(suSheet);
+  sheet.replaceChildren();
+  sheet.hidden = false;
+
+  if (suSheet.type === 'task') {
+    const t = S.today.open.find((x) => x.id === suSheet.id);
+    if (!t) return ((suSheet = null), (sheet.hidden = true));
+    const m = metaOf('g:' + t.id);
+    const p = m.plan;
+    const name = el('input', 'su-sheet__name');
+    name.type = 'text';
+    name.value = t.title;
+    name.addEventListener('change', async () => name.value.trim() && (S = await api.taskDetail(t.id, { title: name.value.trim() })));
+    const notes = el('textarea');
+    notes.placeholder = 'Notes';
+    notes.value = t.notes || '';
+    notes.addEventListener('change', async () => (S = await api.taskDetail(t.id, { notes: notes.value })));
+    const when = el(
+      'p',
+      'when',
+      p ? `${shortDay.format(new Date(p.start))} · ${hm(p.start)}–${hm(Date.parse(p.start) + p.mins * 60e3)}` : 'Not on the calendar yet. Drag it onto a day.'
+    );
+    const length = tabsRow(LENGTHS, (p && p.mins) || m.mins || 30, async (v) => ((S = await api.taskDetail(t.id, { mins: v })), render()));
+    const repeat = tabsRow([[null, 'Never'], ['daily', 'Daily'], ['weekdays', 'Weekdays'], ['weekly', 'Weekly']], m.repeat || null, async (v) => ((S = await api.taskDetail(t.id, { repeat: v })), render()));
+    const acts = el('div', 'acts-row');
+    if (p) {
+      const un = el('button', 'act', 'Take off calendar');
+      un.addEventListener('click', async () => ((S = await api.plan(t.id, null)), render()));
+      acts.append(un);
+    }
+    const del = el('button', 'act', 'Delete task');
+    del.addEventListener('click', async () => {
+      suSheet = null;
+      await api.task('delete', t.id);
+    });
+    acts.append(del);
+    sheet.append(sheetTop(name), notes, el('span', 'label', 'When'), when, el('span', 'label', 'Length'), length, el('span', 'label', 'Repeat'), repeat);
+    if (m.repeat) sheet.append(el('p', 'hint', 'When you finish it, the next one is added with the same time of day.'));
+    sheet.append(acts);
+    return;
+  }
+
+  if (suSheet.type === 'break') {
+    const b = (S.breaks || []).find((x) => x.id === suSheet.id);
+    if (!b) return ((suSheet = null), (sheet.hidden = true));
+    const length = tabsRow(LENGTHS.slice(0, 5), b.mins, async (v) => ((S = await api.setBreak(b.id, { start: b.start, mins: v })), render()));
+    const acts = el('div', 'acts-row');
+    const del = el('button', 'act', 'Remove break');
+    del.addEventListener('click', async () => {
+      suSheet = null;
+      S = await api.setBreak(b.id, null);
+      render();
+    });
+    acts.append(del);
+    sheet.append(sheetTop(el('span', 'su-sheet__name', 'Break')), el('p', 'when', `${shortDay.format(new Date(b.start))} · ${hm(b.start)}–${hm(Date.parse(b.start) + b.mins * 60e3)}`), el('span', 'label', 'Length'), length, acts);
+    return;
+  }
+
+  // Day structure: workday, work blocks, breaks. Shown as faint bands.
+  const ds = S.settings.dayStructure || { start: '09:00', end: '17:30', work: [['09:00', '12:00'], ['13:00', '17:30']], breaks: [['12:00', '13:00']], weekends: false };
+  const save = async (next) => ((S = await api.updateSettings({ dayStructure: next })), render());
+  if (!S.settings.dayStructure) save(ds);
+  const timeIn = (v, onChange) => {
+    const i = el('input');
+    i.type = 'time';
+    i.value = v;
+    i.addEventListener('change', () => i.value && onChange(i.value));
+    return i;
+  };
+  const rangeRow = (pair, onChange, onRemove) => {
+    const r = el('div', 'su-range-row');
+    const rm = el('button', 'act', '×');
+    rm.title = 'Remove';
+    rm.addEventListener('click', onRemove);
+    r.append(timeIn(pair[0], (v) => onChange([v, pair[1]])), el('span', null, '–'), timeIn(pair[1], (v) => onChange([pair[0], v])), rm);
+    return r;
+  };
+  const list = (field, label, fallback) => {
+    const wrapEl = el('div', 'su-list');
+    wrapEl.append(el('span', 'label', label));
+    ds[field].forEach((pair, i) =>
+      wrapEl.append(
+        rangeRow(
+          pair,
+          (np) => save({ ...ds, [field]: ds[field].map((x, j) => (j === i ? np : x)) }),
+          () => save({ ...ds, [field]: ds[field].filter((_, j) => j !== i) })
+        )
+      )
+    );
+    const add = el('button', 'act', '+ Add');
+    add.addEventListener('click', () => save({ ...ds, [field]: [...ds[field], fallback] }));
+    wrapEl.append(add);
+    return wrapEl;
+  };
+  const day = el('div', 'su-range-row');
+  day.append(timeIn(ds.start, (v) => save({ ...ds, start: v })), el('span', null, '–'), timeIn(ds.end, (v) => save({ ...ds, end: v })));
+  const wk = el('label', 'toggle');
+  const box = el('input');
+  box.type = 'checkbox';
+  box.checked = !!ds.weekends;
+  box.addEventListener('change', () => save({ ...ds, weekends: box.checked }));
+  wk.append(box, el('span', null, 'Weekends are workdays'));
+  const acts = el('div', 'acts-row');
+  const clear = el('button', 'act', 'Clear day structure');
+  clear.addEventListener('click', async () => {
+    suSheet = null;
+    S = await api.updateSettings({ dayStructure: null });
+    render();
+  });
+  acts.append(clear);
+  sheet.append(
+    sheetTop(el('span', 'su-sheet__name', 'Day structure')),
+    el('p', 'hint', 'A light guide for your days. Work blocks and breaks show as faint bands; you can still plan anything anywhere.'),
+    el('span', 'label', 'Workday'),
+    day,
+    list('work', 'Work blocks', ['14:00', '16:00']),
+    list('breaks', 'Breaks', ['15:00', '15:15']),
+    wk,
+    acts
+  );
+}
+
+$('su-structure').addEventListener('click', () => {
+  suSheet = suSheet && suSheet.type === 'structure' ? null : { type: 'structure' };
+  renderSetup();
+});
+$('su-close').addEventListener('click', () => (setupMode ? api.windowAction('close') : setView('now')));
 $('su-add').addEventListener('keydown', async (e) => {
   if (e.key !== 'Enter' || !e.target.value.trim()) return;
   const title = e.target.value.trim();
   e.target.value = '';
   await api.task('add', null, title);
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && view === 'setup' && suSheet && !e.target.matches('input, textarea')) {
+    suSheet = null;
+    renderSetup();
+  }
 });
 
 // Drag a row to reorder; the new order is saved to Google.
@@ -1584,6 +1808,9 @@ for (const [sel, key] of [['#s-check', 'checkMinutes'], ['#s-away', 'awayMinutes
   );
 $('s-eod').addEventListener('change', async (e) => (S = await api.updateSettings({ endOfDay: e.target.value })) && render());
 $('s-eod-off').addEventListener('click', async () => (S = await api.updateSettings({ endOfDay: '' })) && render());
+document.querySelectorAll('#s-setup-mode .tab').forEach((t) =>
+  t.addEventListener('click', async () => (S = await api.updateSettings({ setupMode: t.dataset.v })) && render())
+);
 document.querySelectorAll('#s-goal-display .tab').forEach((t) =>
   t.addEventListener('click', async () => (S = await api.updateSettings({ goalDisplay: t.dataset.v })) && render())
 );
@@ -1646,6 +1873,7 @@ function renderSettings() {
   for (const [id, key] of Object.entries(toggles)) $(id).checked = !!s[key];
   document.querySelectorAll('#s-jolt .tab').forEach((t) => t.setAttribute('aria-selected', String(+t.dataset.min === (s.joltMinutes || 0))));
   document.querySelectorAll('#s-goal-display .tab').forEach((t) => t.setAttribute('aria-selected', String(t.dataset.v === (s.goalDisplay || 'ring'))));
+  document.querySelectorAll('#s-setup-mode .tab').forEach((t) => t.setAttribute('aria-selected', String(t.dataset.v === (s.setupMode || 'modal'))));
   document.querySelectorAll('#s-check .tab').forEach((t) => t.setAttribute('aria-selected', String(+t.dataset.min === (s.checkMinutes ?? 120))));
   document.querySelectorAll('#s-away .tab').forEach((t) => t.setAttribute('aria-selected', String(+t.dataset.min === (s.awayMinutes || 10))));
   if (document.activeElement !== $('s-eod')) $('s-eod').value = s.endOfDay || '';
@@ -1684,6 +1912,7 @@ function renderSettings() {
 // ---------- boot ----------
 
 function render() {
+  if (view === 'setup') renderSetup();
   renderNow();
   if (view === 'today') renderToday();
   if (view === 'settings') renderSettings();
@@ -1697,7 +1926,7 @@ api.onState((s) => {
 
 api.getState().then((s) => {
   S = s;
-  setView('now');
+  setView(setupMode ? 'setup' : 'now');
   tick();
   setInterval(tick, 1000);
   setInterval(() => view === 'log' && renderLog(), 30e3);

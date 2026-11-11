@@ -35,6 +35,12 @@ function fakeGoogle() {
       if (t.status === 'completed') t.completed = new Date().toISOString();
       return json(200, t);
     }
+    if (m && method === 'GET') return json(200, { ...tasks[m[1]].find((x) => x.id === m[2]) });
+    if (m && method === 'PUT') {
+      const i = tasks[m[1]].findIndex((x) => x.id === m[2]);
+      tasks[m[1]][i] = JSON.parse(opts.body);
+      return json(200, tasks[m[1]][i]);
+    }
     if (m && method === 'DELETE') {
       tasks[m[1]] = tasks[m[1]].filter((x) => x.id !== m[2]);
       return { ok: true, status: 204, json: async () => null };
@@ -70,4 +76,15 @@ test('insert, complete, rename, delete round-trip', async () => {
   assert.equal(all.length, 1);
   // Token fetched once and reused.
   assert.equal(g.calls.filter((x) => x.startsWith('POST /token')).length, 1);
+});
+
+test('clearDue removes the date (Later)', async () => {
+  fakeGoogle();
+  const c = new Client({ clientId: 'id', clientSecret: 's', refreshToken: 'r' });
+  const list = await c.ensureList('One Focus');
+  const a = await c.insert(list, { title: 'A', due: '2026-11-11T00:00:00.000Z' });
+  await c.clearDue(list, a.id);
+  const all = await c.listTasks(list);
+  assert.equal(all[0].due, undefined);
+  assert.equal(all[0].title, 'A');
 });

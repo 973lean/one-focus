@@ -16,6 +16,8 @@ const DEFAULTS = {
     askRating: true, // 1–5 stars after Done
     joltMinutes: 60, // 0 = off
     goalDisplay: 'ring', // ring | ringPct | text
+    setupMode: 'modal', // modal = its own window on the main monitor; inline = inside One Focus
+    dayStructure: null, // { start, end, work: [[from, to]], breaks: [[from, to]], weekends } or null
     mapGoals: true, // show goal markers on the Map
     logView: 'summary', // summary | sessions
     reviewUrl: '', // opened by "Hop off" when the day's tasks are done
@@ -38,6 +40,7 @@ const DEFAULTS = {
   checkFrom: null, // last "Still on this?" confirm
   eodDate: null, // day the end-of-day check last ran
   web: { token: null, gistId: null, publishedAt: null, error: null }, // private web view (secret Gist)
+  breaks: [], // one-off breaks placed in Setup: { id, start, mins }
 };
 
 const dir = () => app.getPath('userData');
