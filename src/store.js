@@ -26,6 +26,7 @@ const DEFAULTS = {
     remindBlocks: true, // when a planned block starts
     remindOver: true, // when the running task passes its planned end
     colorTime: false, // green/red planned blocks by how long they really took
+    settingsMode: 'inline', // inline = inside One Focus; modal = in the Planner window on the main monitor
     dayStructure: null, // { start, end, work: [[from, to]], breaks: [[from, to]], weekends } or null
     mapGoals: true, // show goal markers on the Map
     logView: 'summary', // summary | sessions

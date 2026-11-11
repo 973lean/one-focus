@@ -127,6 +127,13 @@
 - [x] Optional green/red colouring of finished blocks (±20%)
 - [x] Light mode: the Google Tasks wrapper only
 
+## v0.20 — Plan vs actual, behind plan, Settings
+- [x] Planner shows the plan as a soft outline and what really happened as a more solid layer on top; overruns grow past the plan.
+- [x] Colour: neutral until the planned end, then a gradient into red; done well under time stays green.
+- [x] ⚠️ Behind plan: missed blocks get a mark and the header a chip; tap for Re-plan from now, Push the rest of today (up to 3h), Start it now, Move to tomorrow, Take it off the plan, Delete.
+- [x] No blink at start: windows show only after the first frame paints.
+- [x] Settings redesigned into roomy cards with switches; can open in the Planner window on the main monitor (gear in its bottom-right corner on hover).
+
 ## Parked
 - [x] ~~Full-screen announcements~~ → became the v0.7 blur for "Still on this?" and end of day
 

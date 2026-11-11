@@ -6,7 +6,7 @@
   <title>One Focus</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
-<body>
+<body class="booting">
   <!-- app:start -->
   <div class="app" id="app" data-view="now">
     <header class="bar">
@@ -88,6 +88,7 @@
                 <button class="su-tool" id="su-today">Today</button>
                 <button class="su-tool su-arrow" id="su-next" aria-label="Next week" title="Next week"><svg viewBox="0 0 10 10"><path d="M3.5 1.5 7 5 3.5 8.5"/></svg></button>
               </div>
+              <button class="su-tool su-warn" id="su-behind" hidden>⚠️ Behind plan</button>
               <button class="su-tool" id="su-structure">Day structure</button>
               <button class="su-tool su-close" id="su-close" aria-label="Close" title="Close"><svg viewBox="0 0 10 10"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7"/></svg></button>
             </div>
@@ -172,127 +173,135 @@
       </div>
     </section>
 
-    <section class="panel" id="view-settings" hidden>
-      <h2 class="eyebrow">Google Tasks</h2>
-      <p class="note" id="g-status"></p>
-      <div id="g-setup">
-        <label class="field"><span>Client ID</span><input id="s-client-id" type="text" spellcheck="false" autocomplete="off" /></label>
-        <label class="field"><span>Client secret</span><input id="s-client-secret" type="password" spellcheck="false" autocomplete="off" /></label>
-        <p class="hint">Google Cloud Console → APIs &amp; Services → Credentials → Create OAuth client ID → Desktop app. Enable the Google Tasks API first.</p>
-      </div>
-      <label class="field"><span>List name</span><input id="s-list" type="text" spellcheck="false" /></label>
-      <div class="actions">
-        <button class="btn" id="g-connect">Connect</button>
-        <button class="btn btn--quiet" id="g-disconnect" hidden>Disconnect</button>
-        <span class="status" id="g-msg"></span>
-      </div>
+    <section class="panel panel--settings" id="view-settings" hidden>
+      <header class="st-head">
+        <h1 class="st-title">Settings</h1>
+        <button class="su-tool su-close" id="st-close" aria-label="Close" title="Close"><svg viewBox="0 0 10 10"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7"/></svg></button>
+      </header>
+      <div class="st-grid">
 
-      <h2 class="eyebrow">Display</h2>
-      <label class="toggle"><input type="checkbox" id="s-since" /><span>Show when the task started</span></label>
-      <label class="toggle"><input type="checkbox" id="s-elapsed" /><span>Show time on task</span></label>
-      <div class="field"><span>Goal progress</span></div>
-      <div class="tabs" id="s-goal-display">
-        <button class="tab" data-v="ring">Ring</button>
-        <button class="tab" data-v="ringPct">Ring + %</button>
-        <button class="tab" data-v="text">Time left</button>
-      </div>
+        <section class="st-card">
+          <h2 class="st-h">Google Tasks</h2>
+          <p class="st-sub" id="g-status"></p>
+          <div id="g-setup" class="st-stack">
+            <label class="field"><span>Client ID</span><input id="s-client-id" type="text" spellcheck="false" autocomplete="off" /></label>
+            <label class="field"><span>Client secret</span><input id="s-client-secret" type="password" spellcheck="false" autocomplete="off" /></label>
+            <p class="hint">Google Cloud Console → APIs &amp; Services → Credentials → Create OAuth client ID → Desktop app. Enable the Google Tasks API first.</p>
+          </div>
+          <label class="field"><span>List name</span><input id="s-list" type="text" spellcheck="false" /></label>
+          <div class="actions">
+            <button class="btn" id="g-connect">Connect</button>
+            <button class="btn btn--quiet" id="g-disconnect" hidden>Disconnect</button>
+            <span class="status" id="g-msg"></span>
+          </div>
+        </section>
 
-      <h2 class="eyebrow">Mode</h2>
-      <div class="tabs" id="s-app-mode">
-        <button class="tab" data-v="full">Full</button>
-        <button class="tab" data-v="light">Light</button>
-      </div>
-      <p class="hint">Light keeps One Focus to a Google Tasks wrapper: time, your task, Today and All, the log. No Planner, reminders or shortcuts.</p>
+        <section class="st-card">
+          <h2 class="st-h">Mode</h2>
+          <div class="st-row">
+            <div class="st-l"><span class="st-name">How much One Focus does</span><span class="st-desc">Light is just the Google Tasks wrapper: time, your task, Today and All, the log.</span></div>
+            <div class="tabs st-seg" id="s-app-mode"><button class="tab" data-v="full">Full</button><button class="tab" data-v="light">Light</button></div>
+          </div>
+          <div class="st-row">
+            <div class="st-l"><span class="st-name">Settings open</span><span class="st-desc">Here, or in the Planner window on your main monitor.</span></div>
+            <div class="tabs st-seg" id="s-settings-mode"><button class="tab" data-v="inline">Here</button><button class="tab" data-v="modal">Main monitor</button></div>
+          </div>
+        </section>
 
-      <div class="full-only">
-      <h2 class="eyebrow">Planner</h2>
-      <div class="tabs" id="s-setup-mode">
-        <button class="tab" data-v="modal">On main monitor</button>
-        <button class="tab" data-v="inline">In One Focus</button>
-      </div>
-      <label class="toggle"><input type="checkbox" id="s-blur-close" /><span>Close when I click outside it</span></label>
-      <div class="field"><span>Today · triple-bump a corner of the main monitor</span></div>
-      <div class="tabs tabs--dense" id="s-corner-today"></div>
-      <div class="field"><span>Week · triple-bump a corner</span></div>
-      <div class="tabs tabs--dense" id="s-corner-week"></div>
-      <label class="toggle"><input type="checkbox" id="s-shortcuts" /><span>Keyboard: Ctrl+Alt+T (Today), Ctrl+Alt+W (Week)</span></label>
-      <div class="field"><span>Open by itself</span></div>
-      <div class="tabs tabs--dense" id="s-autoplan"></div>
-      <div class="tabs tabs--dense" id="s-autoplan-every" hidden></div>
-      <div class="su-range-row" id="s-autoplan-times" hidden></div>
-      <p class="hint" id="s-autoplan-hint"></p>
+        <section class="st-card">
+          <h2 class="st-h">Now screen</h2>
+          <label class="st-row"><div class="st-l"><span class="st-name">When the task started</span></div><input type="checkbox" id="s-since" /></label>
+          <label class="st-row"><div class="st-l"><span class="st-name">Time on task</span></div><input type="checkbox" id="s-elapsed" /></label>
+          <div class="st-row">
+            <div class="st-l"><span class="st-name">Goal progress</span></div>
+            <div class="tabs st-seg" id="s-goal-display"><button class="tab" data-v="ring">Ring</button><button class="tab" data-v="ringPct">Ring + %</button><button class="tab" data-v="text">Time left</button></div>
+          </div>
+          <div class="st-row">
+            <div class="st-l"><span class="st-name">Jolt</span><span class="st-desc">Time and task flash blue so your eye comes back.</span></div>
+            <div class="tabs st-seg" id="s-jolt"><button class="tab" data-min="0">Off</button><button class="tab" data-min="30">30m</button><button class="tab" data-min="60">60m</button><button class="tab" data-min="90">90m</button><button class="tab" data-min="120">120m</button></div>
+          </div>
+        </section>
 
-      <h2 class="eyebrow">Reminders</h2>
-      <label class="toggle"><input type="checkbox" id="s-remind-blocks" /><span>When a planned block starts</span></label>
-      <label class="toggle"><input type="checkbox" id="s-remind-over" /><span>When I run over a task's planned time</span></label>
-      <label class="toggle"><input type="checkbox" id="s-color-time" /><span>Colour finished blocks: green under time, red over (±20% stays white)</span></label>
-      </div>
+        <section class="st-card full-only">
+          <h2 class="st-h">Planner</h2>
+          <div class="st-row">
+            <div class="st-l"><span class="st-name">Opens</span></div>
+            <div class="tabs st-seg" id="s-setup-mode"><button class="tab" data-v="modal">Main monitor</button><button class="tab" data-v="inline">Here</button></div>
+          </div>
+          <label class="st-row"><div class="st-l"><span class="st-name">Close when I click outside it</span></div><input type="checkbox" id="s-blur-close" /></label>
+          <div class="st-row st-row--wrap">
+            <div class="st-l"><span class="st-name">Today corner</span><span class="st-desc">Bump the pointer into this corner of the main monitor 3 times.</span></div>
+            <div class="tabs st-seg" id="s-corner-today"></div>
+          </div>
+          <div class="st-row st-row--wrap">
+            <div class="st-l"><span class="st-name">Week corner</span></div>
+            <div class="tabs st-seg" id="s-corner-week"></div>
+          </div>
+          <label class="st-row"><div class="st-l"><span class="st-name">Keyboard shortcuts</span><span class="st-desc">Ctrl+Alt+T for Today, Ctrl+Alt+W for Week.</span></div><input type="checkbox" id="s-shortcuts" /></label>
+          <div class="st-row st-row--wrap">
+            <div class="st-l"><span class="st-name">Open by itself</span><span class="st-desc" id="s-autoplan-hint"></span></div>
+            <div class="tabs st-seg" id="s-autoplan"></div>
+          </div>
+          <div class="tabs st-seg" id="s-autoplan-every" hidden></div>
+          <div class="su-range-row" id="s-autoplan-times" hidden></div>
+        </section>
 
-      <h2 class="eyebrow">After Done</h2>
-      <label class="toggle"><input type="checkbox" id="s-ask-cat" /><span>Pick a category</span></label>
-      <label class="toggle"><input type="checkbox" id="s-ask-rating" /><span>Rate focus and vibe</span></label>
+        <section class="st-card">
+          <h2 class="st-h">Reminders &amp; checks</h2>
+          <label class="st-row full-only"><div class="st-l"><span class="st-name">A planned block starts</span></div><input type="checkbox" id="s-remind-blocks" /></label>
+          <label class="st-row full-only"><div class="st-l"><span class="st-name">I run over a planned time</span><span class="st-desc">Again every 15 minutes.</span></div><input type="checkbox" id="s-remind-over" /></label>
+          <label class="st-row full-only"><div class="st-l"><span class="st-name">Colour time on the Planner</span><span class="st-desc">Overrun fades to red past the planned end; done under time stays green.</span></div><input type="checkbox" id="s-color-time" /></label>
+          <div class="st-row">
+            <div class="st-l"><span class="st-name">Still on this?</span><span class="st-desc">After a task runs this long, your screens blur until you confirm.</span></div>
+            <div class="tabs st-seg" id="s-check"><button class="tab" data-min="0">Off</button><button class="tab" data-min="60">1h</button><button class="tab" data-min="120">2h</button><button class="tab" data-min="180">3h</button></div>
+          </div>
+          <div class="st-row">
+            <div class="st-l"><span class="st-name">End of day</span><span class="st-desc">If a task is still running, ask Done or Tomorrow.</span></div>
+            <div class="actions"><input id="s-eod" class="time" type="time" /><button class="btn btn--quiet" id="s-eod-off">Off</button></div>
+          </div>
+          <div class="st-row">
+            <div class="st-l"><span class="st-name">Away after</span><span class="st-desc">No input this long counts as idle.</span></div>
+            <div class="tabs st-seg" id="s-away"><button class="tab" data-min="5">5m</button><button class="tab" data-min="10">10m</button><button class="tab" data-min="20">20m</button><button class="tab" data-min="30">30m</button></div>
+          </div>
+        </section>
 
-      <h2 class="eyebrow">Still on this?</h2>
-      <div class="tabs" id="s-check">
-        <button class="tab" data-min="0">Off</button>
-        <button class="tab" data-min="60">1h</button>
-        <button class="tab" data-min="120">2h</button>
-        <button class="tab" data-min="180">3h</button>
-      </div>
-      <p class="hint">After a task runs this long, your screens blur until you confirm you’re still on it.</p>
+        <section class="st-card">
+          <h2 class="st-h">After Done</h2>
+          <label class="st-row"><div class="st-l"><span class="st-name">Pick a category</span></div><input type="checkbox" id="s-ask-cat" /></label>
+          <label class="st-row"><div class="st-l"><span class="st-name">Rate focus and vibe</span></div><input type="checkbox" id="s-ask-rating" /></label>
+          <label class="field"><span>Review link for Hop off</span><input id="s-review" type="text" placeholder="https://…" spellcheck="false" /></label>
+        </section>
 
-      <h2 class="eyebrow">End of day</h2>
-      <div class="actions">
-        <input id="s-eod" class="time" type="time" />
-        <button class="btn btn--quiet" id="s-eod-off">Off</button>
-      </div>
-      <p class="hint">At this time, if a task is still running, your screens blur and ask Done or Tomorrow.</p>
+        <section class="st-card">
+          <h2 class="st-h">Window</h2>
+          <label class="st-row"><div class="st-l"><span class="st-name">Always on top</span></div><input type="checkbox" id="s-top" /></label>
+          <label class="st-row"><div class="st-l"><span class="st-name">Open when I log in</span></div><input type="checkbox" id="s-login" /></label>
+        </section>
 
-      <h2 class="eyebrow">Away after</h2>
-      <div class="tabs" id="s-away">
-        <button class="tab" data-min="5">5m</button>
-        <button class="tab" data-min="10">10m</button>
-        <button class="tab" data-min="20">20m</button>
-        <button class="tab" data-min="30">30m</button>
-      </div>
-      <p class="hint">With no mouse or keyboard input this long, time counts as idle instead of on your task.</p>
+        <section class="st-card">
+          <h2 class="st-h">Web view</h2>
+          <p class="st-sub" id="web-status"></p>
+          <div id="web-setup" class="st-stack">
+            <label class="field"><span>GitHub token</span><input id="s-web-token" type="password" spellcheck="false" autocomplete="off" placeholder="ghp_…" /></label>
+            <p class="hint">Today and the coming days at a private link in any browser. Needs a token with the <b>gist</b> permission.</p>
+          </div>
+          <div class="actions">
+            <button class="btn" id="web-on">Create link</button>
+            <button class="btn btn--quiet" id="web-open" hidden>Open</button>
+            <button class="btn btn--quiet" id="web-copy" hidden>Copy link</button>
+            <button class="btn btn--quiet" id="web-off" hidden>Turn off</button>
+          </div>
+        </section>
 
-      <h2 class="eyebrow">Jolt</h2>
-      <div class="tabs" id="s-jolt">
-        <button class="tab" data-min="0">Off</button>
-        <button class="tab" data-min="30">30m</button>
-        <button class="tab" data-min="60">60m</button>
-        <button class="tab" data-min="90">90m</button>
-        <button class="tab" data-min="120">120m</button>
-      </div>
-      <p class="hint">The time and task flash blue for a moment, so your eye comes back to them.</p>
+        <section class="st-card">
+          <h2 class="st-h">App</h2>
+          <div class="actions">
+            <span class="status" id="app-version"></span>
+            <button class="icon-btn" id="app-check" aria-label="Check for updates" title="Check for updates"><svg viewBox="0 0 12 12"><path d="M10 6a4 4 0 1 1-1.2-2.85"/><path d="M9.2 1.6v2.1H7.1"/></svg></button>
+            <button class="btn btn--quiet" id="app-update" hidden>Restart to update</button>
+          </div>
+        </section>
 
-      <h2 class="eyebrow">Window</h2>
-      <label class="toggle"><input type="checkbox" id="s-top" /><span>Always on top</span></label>
-      <label class="toggle"><input type="checkbox" id="s-login" /><span>Open when I log in</span></label>
-
-      <h2 class="eyebrow">Done for the day</h2>
-      <label class="field"><span>Review link</span><input id="s-review" type="text" placeholder="https://…" spellcheck="false" /></label>
-      <p class="hint">When today’s tasks are all done, Now shows <b>Hop off</b>. It opens this link, e.g. your daily review doc or form.</p>
-
-      <h2 class="eyebrow">Web view</h2>
-      <p class="note" id="web-status"></p>
-      <div id="web-setup">
-        <label class="field"><span>GitHub token</span><input id="s-web-token" type="password" spellcheck="false" autocomplete="off" placeholder="github_pat_…" /></label>
-        <p class="hint">Shows today and the coming days at a private link in any browser. Create a token at github.com/settings/tokens with the <b>Gists</b> permission (read and write). Your day is kept in a secret Gist: anyone with the link can see it.</p>
-      </div>
-      <div class="actions">
-        <button class="btn" id="web-on">Create link</button>
-        <button class="btn btn--quiet" id="web-open" hidden>Open</button>
-        <button class="btn btn--quiet" id="web-copy" hidden>Copy link</button>
-        <button class="btn btn--quiet" id="web-off" hidden>Turn off</button>
-      </div>
-
-      <h2 class="eyebrow">App</h2>
-      <div class="actions">
-        <span class="status" id="app-version"></span>
-        <button class="icon-btn" id="app-check" aria-label="Check for updates" title="Check for updates"><svg viewBox="0 0 12 12"><path d="M10 6a4 4 0 1 1-1.2-2.85"/><path d="M9.2 1.6v2.1H7.1"/></svg></button>
-        <button class="btn btn--quiet" id="app-update" hidden>Restart to update</button>
       </div>
     </section>
     <button class="gear" id="gear" data-view="settings" aria-label="Settings" title="Settings"><svg viewBox="0 0 16 16"><path d="M12.88 6.93 L14.55 7.17 L14.55 8.83 L12.88 9.07 L12.21 10.70 L13.22 12.05 L12.05 13.22 L10.70 12.21 L9.07 12.88 L8.83 14.55 L7.17 14.55 L6.93 12.88 L5.30 12.21 L3.95 13.22 L2.78 12.05 L3.79 10.70 L3.12 9.07 L1.45 8.83 L1.45 7.17 L3.12 6.93 L3.79 5.30 L2.78 3.95 L3.95 2.78 L5.30 3.79 L6.93 3.12 L7.17 1.45 L8.83 1.45 L9.07 3.12 L10.70 3.79 L12.05 2.78 L13.22 3.95 L12.21 5.30 Z"/><circle cx="8" cy="8" r="2.1"/></svg></button>

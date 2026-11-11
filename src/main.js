@@ -375,6 +375,7 @@ function createWindow() {
     minHeight: 220,
     backgroundColor: '#0B0B0C',
     title: 'One Focus',
+    show: false, // shown once the page has drawn (no blink): see ui:ready
     frame: false, // no OS title bar; controls are drawn in the page and appear on hover
     autoHideMenuBar: true,
     alwaysOnTop: !!state.settings.alwaysOnTop,
@@ -386,6 +387,7 @@ function createWindow() {
     },
   });
   win.loadFile(path.join(__dirname, 'index.html'));
+  setTimeout(() => win && !win.isDestroyed() && !win.isVisible() && win.show(), 2500); // fallback
   win.on('focus', () => sync());
 
   // Remember where the window lives (not the temporary panel size).
@@ -496,8 +498,9 @@ ipcMain.handle('review:open', () => {
 let setupWin = null;
 const light = () => state.settings.appMode === 'light';
 function openSetupWindow(tab = 'week') {
-  if (light()) return;
-  if (state.settings.setupMode === 'inline') {
+  if (light() && tab !== 'settings') return;
+  const inline = tab === 'settings' ? state.settings.settingsMode !== 'modal' : state.settings.setupMode === 'inline';
+  if (inline) {
     win.show();
     win.focus();
     win.webContents.send('planner:tab', tab);
@@ -527,10 +530,8 @@ function openSetupWindow(tab = 'week') {
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false },
   });
   setupWin.loadFile(path.join(__dirname, 'index.html'), { query: { mode: 'setup', tab } });
-  setupWin.once('ready-to-show', () => {
-    setupWin.show();
-    setupWin.focus();
-  });
+  // Shown when the page says it has drawn (ui:ready), so it appears all at once.
+  setTimeout(() => setupWin && !setupWin.isDestroyed() && !setupWin.isVisible() && (setupWin.show(), setupWin.focus()), 2500);
   setupWin.on('blur', () =>
     setTimeout(() => {
       if (setupWin && !setupWin.isDestroyed() && !setupWin.isFocused() && state.settings.plannerBlurClose !== false) setupWin.close();
@@ -538,7 +539,59 @@ function openSetupWindow(tab = 'week') {
   );
   setupWin.on('closed', () => (setupWin = null));
 }
-ipcMain.handle('setup:open', (_e, tab) => openSetupWindow(tab === 'today' ? 'today' : 'week'));
+ipcMain.handle('setup:open', (_e, tab) => openSetupWindow(['today', 'settings'].includes(tab) ? tab : 'week'));
+
+// A page has drawn its first frame: show its window now (no white blink).
+ipcMain.on('ui:ready', (e) => {
+  const w = BrowserWindow.fromWebContents(e.sender);
+  if (w && !w.isVisible()) {
+    w.show();
+    if (w === setupWin) w.focus();
+  }
+});
+
+// Re-plan several blocks at once ([{ id, start, mins }]); dates follow in the background.
+ipcMain.handle('plan:many', async (_e, list) => {
+  const moved = [];
+  for (const it of Array.isArray(list) ? list.slice(0, 60) : []) {
+    if (!it || Number.isNaN(Date.parse(it.start))) continue;
+    const key = 'g:' + it.id;
+    const meta = (state.taskMeta[key] = { ...(state.taskMeta[key] || {}) });
+    const mins = Math.min(Math.max(Math.round(+it.mins / 15) * 15 || 30, 15), 12 * 60);
+    meta.plan = { start: new Date(it.start).toISOString(), mins };
+    meta.goal = new Date(Date.parse(it.start) + mins * 60e3).toISOString();
+    moved.push({ id: it.id, day: localDate(new Date(it.start)) });
+  }
+  store.save(state);
+  push();
+  if (client && state.google.listId)
+    for (const m of moved) await client.patch(state.google.listId, m.id, { due: m.day + 'T00:00:00.000Z' }).catch(() => {});
+  await resync();
+  return snapshot();
+});
+
+// Behind plan: push today's remaining planned blocks (and breaks) from a time.
+ipcMain.handle('plan:shift', (_e, fromIso, raw) => {
+  const ms = Math.round(+raw / (5 * 60e3)) * 5 * 60e3;
+  const from = Date.parse(fromIso);
+  if (!ms || Number.isNaN(from) || Math.abs(ms) > 12 * 3600e3) return snapshot();
+  const day = localDate(new Date(from));
+  for (const t of today.open) {
+    const m = state.taskMeta['g:' + t.id];
+    if (!m || !m.plan) continue;
+    const s = Date.parse(m.plan.start);
+    if (s < from || localDate(new Date(s)) !== day) continue;
+    m.plan.start = new Date(s + ms).toISOString();
+    m.goal = new Date(s + ms + m.plan.mins * 60e3).toISOString();
+  }
+  for (const b of state.breaks) {
+    const s = Date.parse(b.start);
+    if (s >= from && localDate(new Date(s)) === day) b.start = new Date(s + ms).toISOString();
+  }
+  store.save(state);
+  push();
+  return snapshot();
+});
 
 // ---------- ways in: screen corners (triple bump) and keyboard shortcuts ----------
 
@@ -1023,6 +1076,7 @@ ipcMain.handle('settings:update', async (_e, patch) => {
   for (const k of allowed) if (k in patch) state.settings[k] = typeof patch[k] === 'string' ? patch[k].trim() : !!patch[k];
   for (const k of ['plannerBlurClose', 'shortcuts', 'remindBlocks', 'remindOver', 'colorTime'])
     if (k in patch) state.settings[k] = !!patch[k];
+  if ('settingsMode' in patch) state.settings.settingsMode = patch.settingsMode === 'modal' ? 'modal' : 'inline';
   if ('appMode' in patch) state.settings.appMode = patch.appMode === 'light' ? 'light' : 'full';
   for (const k of ['cornerToday', 'cornerWeek'])
     if (k in patch) state.settings[k] = ['tl', 'tr', 'bl', 'br'].includes(patch[k]) ? patch[k] : 'off';

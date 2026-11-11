@@ -146,6 +146,15 @@ Panels are for the occasional look, not the resting state, so they can be denser
 - Items: a checklist in the details sheet, 14px circles like Today rows, "Items · 2/4".
 - Reminder line on Now: 12px, takes the buttons' place under the task, text truncates; actions as text buttons, the main one in primary ink.
 
+## Plan vs actual (v0.20)
+- Plan: rgba fill .05 with a 1px .2 inset outline, no dash. Actual: solid .2 fill, no outline, inset 5px, drawn on top from first start to last stop.
+- Overrun: actual stays neutral until the planned end, then fades into red (.5); under 80% of the plan when done = static green.
+- Behind: amber inset on missed blocks with a ⚠️ mark; one chip in the header ("⚠️ N behind" / "⚠️ Xm over"). Choices open in the side sheet as cards.
+
+## Settings (v0.20)
+- Cards on a grid (min 420px), each with a title, rows separated by hairlines: name, optional one-line description, control on the right (switch or segmented pill).
+- Opens here or in the Planner window; there the gear sits in the bottom-right corner and appears only when the pointer is near.
+
 ## Light mode
 
 - Hides the Plan menu item, Planner settings, items counts and reminders. Everything else looks the same.

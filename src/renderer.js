@@ -61,6 +61,8 @@ document.querySelectorAll('button[data-view]').forEach((b) =>
   b.addEventListener('click', () => {
     // Setup opens as its own window on the main monitor unless set to inline.
     if (b.dataset.view === 'setup' && S && S.settings.setupMode !== 'inline') return api.openSetup('week');
+    if (b.dataset.view === 'settings' && S && !setupMode && S.settings.settingsMode === 'modal') return api.openSetup('settings');
+    if (b.dataset.view === 'settings' && setupMode) return setView(view === 'settings' ? 'setup' : 'settings');
     if (b.dataset.view === 'setup') planTab = 'week';
     setView(view === b.dataset.view && b.dataset.view !== 'now' ? 'now' : b.dataset.view);
   })
@@ -1379,16 +1381,89 @@ function trackedOn(key) {
   return ms;
 }
 
-// Green: finished well under the estimate. Red: over by more than 20%. White otherwise.
-function timeTone(t, p) {
-  if (!S.settings.colorTime || !p) return '';
-  const ratio = trackedOn('g:' + t.id) / (p.mins * 60e3);
-  if (t.done) return ratio < 0.8 ? ' is-under' : ratio > 1.2 ? ' is-over' : '';
-  return ratio > 1.2 ? ' is-over' : '';
+
+// First start to last stop of a task's sessions on a day (live = still running).
+function actualSpan(key, day) {
+  if (!logData) return null;
+  const a0 = new Date(day).setHours(0, 0, 0, 0);
+  const a1 = a0 + 86400e3;
+  let start = Infinity;
+  let end = -Infinity;
+  let live = false;
+  const all = [...logData.sessions, ...(logData.open && logData.open.key === key ? [{ ...logData.open, end: null }] : [])];
+  for (const s of all) {
+    if (s.key !== key) continue;
+    const st = Date.parse(s.start);
+    const en = s.end ? Date.parse(s.end) : Date.now();
+    if (en <= a0 || st >= a1) continue;
+    start = Math.min(start, Math.max(st, a0));
+    end = Math.max(end, Math.min(en, a1));
+    if (!s.end) live = true;
+  }
+  return start < end ? { start, end, live } : null;
+}
+
+// Behind plan today: blocks whose start has passed without being started, or
+// that the running task has already pushed past. Returns ids and how far behind.
+function behindToday() {
+  const now = Date.now();
+  const ids = new Set();
+  let from = null;
+  let by = 0;
+  const cur = S.current && S.current.googleId;
+  const curPlan = cur && planOf('g:' + cur);
+  const curEnd = curPlan ? Date.parse(curPlan.start) + curPlan.mins * 60e3 : null;
+  for (const t of S.today.open) {
+    const p = planOf('g:' + t.id);
+    if (!p || ld(new Date(p.start)) !== S.todayDate || t.id === cur) continue;
+    const st = Date.parse(p.start);
+    if (st + 5 * 60e3 > now) continue; // not due yet (5 min grace)
+    if (actualSpan('g:' + t.id, new Date())) continue; // you did work on it
+    ids.add(t.id);
+    if (from === null || st < from) from = st;
+  }
+  if (from !== null) by = now - from;
+  if (curEnd && now > curEnd) {
+    by = Math.max(by, now - curEnd);
+    if (from === null) from = curEnd;
+  }
+  return { ids, from, by };
+}
+
+// Missed blocks go back to back from now (after the running task's planned
+// end, if later); later blocks keep their time unless they'd now overlap.
+function replanFromNow(b) {
+  const step = 5 * 60e3;
+  const cur = S.current && S.current.googleId;
+  const curPlan = cur && planOf('g:' + cur);
+  let cursor = Math.ceil(Date.now() / step) * step;
+  if (curPlan) cursor = Math.max(cursor, Math.ceil((Date.now() + 0) / step) * step);
+  const todays = S.today.open
+    .filter((t) => t.id !== cur)
+    .map((t) => ({ t, p: planOf('g:' + t.id) }))
+    .filter((x) => x.p && ld(new Date(x.p.start)) === S.todayDate)
+    .sort((x, y) => Date.parse(x.p.start) - Date.parse(y.p.start));
+  const out = [];
+  const missed = todays.filter((x) => b.ids.has(x.t.id));
+  const later = todays.filter((x) => !b.ids.has(x.t.id) && Date.parse(x.p.start) >= Date.now());
+  for (const x of missed) {
+    out.push({ id: x.t.id, start: new Date(cursor).toISOString(), mins: x.p.mins });
+    cursor += x.p.mins * 60e3;
+  }
+  for (const x of later) {
+    const st = Math.max(Date.parse(x.p.start), cursor);
+    if (st !== Date.parse(x.p.start)) out.push({ id: x.t.id, start: new Date(st).toISOString(), mins: x.p.mins });
+    cursor = st + x.p.mins * 60e3;
+  }
+  return out;
 }
 
 function renderSetup() {
   if (!S || suDrag) return;
+  const behindNow = behindToday();
+  $('su-behind').hidden = !(behindNow.ids.size || behindNow.by > 10 * 60e3) || S.settings.appMode === 'light';
+  if (!$('su-behind').hidden)
+    $('su-behind').textContent = behindNow.ids.size ? `⚠️ ${behindNow.ids.size} behind` : `⚠️ ${dur(Math.ceil(behindNow.by / (5 * 60e3)) * 5 * 60e3)} over`;
   const now = new Date();
   $('su-structure').setAttribute('aria-pressed', String(!!(suSheet && suSheet.type === 'structure')));
   $('view-setup').classList.toggle('is-modal', setupMode);
@@ -1483,8 +1558,9 @@ function dayCard(i, now, h0, h1, { wide }) {
   // Today (wide): what you actually did, as a slim lane on the right.
   if (wide && logData) {
     const sod = d.getTime();
+    const plannedKeys = new Set([...S.today.open, ...S.today.done].filter((t) => { const p = planOf('g:' + t.id); return p && ld(new Date(p.start)) === key; }).map((t) => 'g:' + t.id));
     const lane = [...logData.sessions, ...(logData.open ? [{ ...logData.open, end: new Date().toISOString() }] : [])].filter(
-      (s) => s.key !== 'idle' && Date.parse(s.end) > sod && Date.parse(s.start) < sod + 86400e3
+      (s) => s.key !== 'idle' && !plannedKeys.has(s.key) && Date.parse(s.end) > sod && Date.parse(s.start) < sod + 86400e3
     );
     for (const s of lane) {
       const a = new Date(Math.max(Date.parse(s.start), sod));
@@ -1521,27 +1597,60 @@ function dayCard(i, now, h0, h1, { wide }) {
     );
     col.append(blk);
   }
-  // Planned tasks: open ones are draggable; finished ones stay as a record.
+  // Planned tasks: the plan is a soft outline; what really happened is a more
+  // solid layer on top that grows past the plan when you run over.
+  const behind = i === 0 ? behindToday() : { ids: new Set() };
   for (const t of [...S.today.open, ...S.today.done.map((x) => ({ ...x, done: true }))]) {
     const p = planOf('g:' + t.id);
     if (!p || ld(new Date(p.start)) !== key) continue;
     total += p.mins;
     const s = new Date(p.start);
+    const pEnd = s.getTime() + p.mins * 60e3;
     const m = metaOf('g:' + t.id);
-    const cls = 'su-block' + (S.current && S.current.googleId === t.id ? ' is-running' : '') + (p.mins <= 20 ? ' is-short' : '') + (t.done ? ' is-done' : '') + timeTone(t, p);
+    const real = actualSpan('g:' + t.id, d);
+    const isBehind = behind.ids.has(t.id);
+    const cls = 'su-block is-plan' + (S.current && S.current.googleId === t.id ? ' is-running' : '') + (p.mins <= 20 ? ' is-short' : '') + (t.done ? ' is-done' : '') + (isBehind ? ' is-behind' : '');
     const blk = el('div', cls);
     blk.style.top = px(s.getHours() * 60 + s.getMinutes()) + 'px';
     blk.style.height = Math.max(p.mins * (HOUR / 60) - 2, 16) + 'px';
-    const took = t.done && S.settings.colorTime ? ` · took ${dur(trackedOn('g:' + t.id))}` : '';
-    blk.append(titleWithSeries(el('span', 't', t.title), t), el('span', 'w', (p.mins <= 20 ? hm(s) : `${hm(s)}–${hm(s.getTime() + p.mins * 60e3)}`) + (m.repeat ? ' · ↻' : '') + took));
-    blk.title = t.title + took;
+    blk.append(titleWithSeries(el('span', 't', t.title), t), el('span', 'w', (p.mins <= 20 ? hm(s) : `${hm(s)}–${hm(pEnd)}`) + (m.repeat ? ' · ↻' : '')));
+    blk.title = t.title;
     if (!t.done) {
       blk.append(el('span', 'h'));
-      blk.addEventListener('pointerdown', (e) =>
-        beginDrag(e, { kind: 'task', task: t, mode: e.target.classList.contains('h') ? 'resize' : 'move', mins: p.mins, start: p.start, block: blk })
-      );
+      blk.addEventListener('pointerdown', (e) => {
+        if (e.target.classList.contains('su-warnmark')) return;
+        beginDrag(e, { kind: 'task', task: t, mode: e.target.classList.contains('h') ? 'resize' : 'move', mins: p.mins, start: p.start, block: blk });
+      });
+    }
+    if (isBehind) {
+      const w = el('span', 'su-warnmark', '⚠️');
+      w.title = 'Behind plan';
+      w.addEventListener('click', (e) => {
+        e.stopPropagation();
+        suSheet = { type: 'behind', id: t.id };
+        renderSetup();
+      });
+      blk.append(w);
     }
     col.append(blk);
+
+    if (real) {
+      const r = el('div', 'su-real' + (real.live ? ' is-live' : ''));
+      const a = new Date(real.start);
+      r.style.top = px(a.getHours() * 60 + a.getMinutes()) + 'px';
+      r.style.height = Math.max(((real.end - real.start) / 60e3) * (HOUR / 60) - 2, 4) + 'px';
+      const took = real.end - real.start;
+      if (S.settings.colorTime) {
+        if (real.end > pEnd) {
+          // Neutral until the planned end, then a fade into red.
+          const from = Math.max(0, Math.min(100, ((pEnd - real.start) / took) * 100));
+          r.style.background = `linear-gradient(to bottom, rgba(245,245,244,0.2) 0%, rgba(245,245,244,0.2) ${from}%, rgba(228,104,96,0.5) 100%)`;
+        } else if (t.done && took < p.mins * 60e3 * 0.8) r.classList.add('is-under');
+      }
+      if (took >= 20 * 60e3) r.append(el('span', null, (real.live ? '' : 'took ') + dur(took)));
+      r.title = `${hm(real.start)}–${real.live ? 'now' : hm(real.end)} · ${dur(took)}`;
+      col.append(r);
+    }
   }
 
   const card = el('section', 'su-day' + (i === 0 ? ' is-today' : '') + (i < 0 ? ' is-past' : '') + (wide ? ' is-wide' : ''));
@@ -1890,6 +1999,42 @@ function renderSheet() {
     return;
   }
 
+  if (suSheet.type === 'behind') {
+    const b = behindToday();
+    const t = suSheet.id && S.today.open.find((x) => x.id === suSheet.id);
+    const byMs = Math.max(Math.ceil(b.by / (5 * 60e3)) * 5 * 60e3, 5 * 60e3);
+    const choice = (title, desc, fn) => {
+      const c = el('button', 'choice');
+      c.append(el('b', null, title), el('span', null, desc));
+      c.addEventListener('click', async () => {
+        suSheet = null;
+        await fn();
+        render();
+      });
+      return c;
+    };
+    const items = [];
+    if (b.from !== null) {
+      items.push(choice('Re-plan from now', 'Missed blocks line up back to back from now; anything later only moves if it would overlap.', async () => (S = await api.planMany(replanFromNow(b)))));
+      if (byMs <= 3 * 3600e3)
+        items.push(choice(`Push the rest of today ${dur(byMs)}`, 'Everything from the first slip onwards moves later by the same amount.', async () => (S = await api.shiftPlan(new Date(b.from).toISOString(), byMs))));
+    }
+    if (t) {
+      const p = planOf('g:' + t.id);
+      items.push(
+        choice('Start it now', `Move "${t.title}" to now and start it.`, async () => {
+          S = await api.plan(t.id, { start: new Date(Math.ceil(Date.now() / (5 * 60e3)) * 5 * 60e3).toISOString(), mins: p.mins });
+          await startWithClaim(t.id);
+        }),
+        choice('Move to tomorrow', 'Same time, tomorrow.', async () => (S = await api.plan(t.id, { start: new Date(Date.parse(p.start) + 86400e3).toISOString(), mins: p.mins }))),
+        choice('Take it off the plan', 'Keeps the task, removes the block.', async () => (S = await api.plan(t.id, null))),
+        choice('Delete the task', 'Gone from Google Tasks too.', async () => api.task('delete', t.id))
+      );
+    }
+    sheet.append(sheetTop(el('span', 'su-sheet__name', '⚠️ Behind plan')), el('p', 'when', t ? t.title : `About ${dur(byMs)} behind.`), ...items);
+    return;
+  }
+
   if (suSheet.type === 'break') {
     const b = (S.breaks || []).find((x) => x.id === suSheet.id);
     if (!b) return ((suSheet = null), (sheet.hidden = true));
@@ -2008,6 +2153,10 @@ function openDuplicate(t) {
   go.focus();
 }
 
+$('su-behind').addEventListener('click', () => {
+  suSheet = { type: 'behind', id: null };
+  renderSetup();
+});
 $('su-structure').addEventListener('click', () => {
   suSheet = suSheet && suSheet.type === 'structure' ? null : { type: 'structure' };
   renderSetup();
@@ -2197,6 +2346,7 @@ function renderSettings() {
   document.querySelectorAll('#s-goal-display .tab').forEach((t) => t.setAttribute('aria-selected', String(t.dataset.v === (s.goalDisplay || 'ring'))));
   document.querySelectorAll('#s-setup-mode .tab').forEach((t) => t.setAttribute('aria-selected', String(t.dataset.v === (s.setupMode || 'modal'))));
   document.querySelectorAll('#s-app-mode .tab').forEach((t) => t.setAttribute('aria-selected', String(t.dataset.v === (s.appMode || 'full'))));
+  document.querySelectorAll('#s-settings-mode .tab').forEach((t) => t.setAttribute('aria-selected', String(t.dataset.v === (s.settingsMode || 'inline'))));
   $('s-blur-close').checked = s.plannerBlurClose !== false;
   $('s-shortcuts').checked = s.shortcuts !== false;
   $('s-remind-blocks').checked = s.remindBlocks !== false;
@@ -2281,11 +2431,26 @@ document.querySelectorAll('.su-tab').forEach((b) =>
   })
 );
 api.onPlannerTab((tab) => {
+  if (tab === 'settings') return setView('settings');
   planTab = tab === 'today' ? 'today' : 'week';
   if (view !== 'setup') setView('setup');
   else renderSetup();
   setTimeout(scrollSetupToNow, 120);
 });
+$('st-close').addEventListener('click', () => setView(setupMode ? 'setup' : 'now'));
+document.querySelectorAll('#s-settings-mode .tab').forEach((t) =>
+  t.addEventListener('click', async () => (S = await api.updateSettings({ settingsMode: t.dataset.v })) && render())
+);
+// In the Planner window the gear appears only near the bottom-right corner.
+if (setupMode) {
+  appEl.classList.add('is-planner-win');
+  document.addEventListener('mousemove', (e) => {
+    const r = appEl.getBoundingClientRect();
+    const dx = r.right - e.clientX;
+    const dy = r.bottom - e.clientY;
+    document.body.classList.toggle('near-gear', dx >= 0 && dy >= 0 && dx < 96 && dy < 72);
+  });
+}
 
 // ---------- Reminders on Now: a planned block starts / running over ----------
 let shownReminder = null;
@@ -2323,7 +2488,15 @@ api.onState((s) => {
 api.getState().then((s) => {
   S = s;
   document.body.classList.toggle('is-light', s.settings.appMode === 'light');
-  setView(setupMode ? 'setup' : 'now');
+  const bootTab = new URLSearchParams(location.search).get('tab');
+  setView(setupMode ? (bootTab === 'settings' ? 'settings' : 'setup') : 'now');
+  // Show the window only once this first frame has painted: no blink.
+  requestAnimationFrame(() =>
+    requestAnimationFrame(() => {
+      api.ready();
+      setTimeout(() => document.body.classList.remove('booting'), 60);
+    })
+  );
   tick();
   setInterval(tick, 1000);
   setInterval(() => view === 'log' && renderLog(), 30e3);
