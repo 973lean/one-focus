@@ -588,6 +588,33 @@ input::placeholder { color: var(--fg-tertiary); }
 .su-preview span { position: absolute; top: 4px; left: 9px; font-size: 10px; color: var(--fg-secondary); }
 .su-ghost { position: fixed; z-index: 50; pointer-events: none; font-size: 13px; color: var(--fg); background: var(--bg); border: 1px solid var(--fg-tertiary); border-radius: 10px; padding: 6px 12px; white-space: nowrap; transform: translate(-50%, -120%); }
 
+/* Same-name tasks count up: "2/5" after the title */
+.series { margin-left: 0.5em; font-size: 0.75em; color: var(--fg-tertiary); font-variant-numeric: tabular-nums; letter-spacing: 0.02em; }
+
+/* Duplicate window */
+.su-modal { position: absolute; inset: 0; z-index: 20; display: grid; place-items: center; background: rgba(11, 11, 12, 0.6); animation: sheet-in 200ms var(--ease); }
+.su-modal__box { width: min(360px, 90%); background: var(--bg); border: 1px solid var(--hairline); border-radius: 14px; padding: 22px; display: flex; flex-direction: column; gap: 14px; box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5); }
+.su-modal__acts { display: flex; justify-content: flex-end; gap: var(--space-2); margin-top: 4px; }
+
+/* Week navigation */
+.su-nav { display: flex; align-items: center; gap: 6px; }
+.su-arrow { width: 32px; height: 32px; padding: 0; display: grid; place-items: center; }
+.su-arrow svg { width: 10px; height: 10px; fill: none; stroke: currentColor; stroke-width: 1.3; stroke-linecap: round; stroke-linejoin: round; }
+/* Days already gone: view-only */
+.su-day.is-past { opacity: 0.45; }
+.su-day.is-past .su-col { pointer-events: none; }
+
+/* Custom repeat, Google-style: Every [−] n [+] day/week/month, weekday circles */
+.su-custom { display: flex; flex-direction: column; gap: 12px; margin-top: -6px; }
+.su-custom__row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13px; color: var(--fg-secondary); }
+.su-step { width: 24px; height: 24px; border-radius: 50%; border: 1px solid var(--hairline); color: var(--fg-secondary); display: grid; place-items: center; line-height: 1; }
+.su-step:hover { color: var(--fg); border-color: var(--fg-tertiary); }
+.su-every { min-width: 1.5ch; text-align: center; color: var(--fg); font-variant-numeric: tabular-nums; }
+.su-dow { display: flex; gap: 6px; }
+.su-dow__d { width: 30px; height: 30px; border-radius: 50%; border: 1px solid var(--hairline); font-size: 12px; color: var(--fg-tertiary); transition: background var(--dur) var(--ease), color var(--dur) var(--ease); }
+.su-dow__d:hover { color: var(--fg); border-color: var(--fg-tertiary); }
+.su-dow__d[aria-pressed="true"] { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+
 /* Side sheet: task details / day structure */
 .su-sheet { position: absolute; top: 0; right: 0; bottom: 0; width: 320px; z-index: 6; background: var(--bg); border-left: 1px solid var(--hairline); padding: 20px 22px; overflow-y: auto; display: flex; flex-direction: column; gap: 18px; box-shadow: -32px 0 48px rgba(0, 0, 0, 0.45); animation: sheet-in 240ms var(--ease); }
 @keyframes sheet-in { from { transform: translateX(16px); opacity: 0; } }

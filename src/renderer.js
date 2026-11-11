@@ -20,6 +20,19 @@ function dur(ms) {
   return Math.floor(m / 60) + 'h ' + String(m % 60).padStart(2, '0') + 'm';
 }
 
+// Tasks that share a name count up in list order: "2/5". Display only.
+function seriesOf(t) {
+  if (!S || !S.today) return null;
+  const same = S.today.open.filter((x) => x.title.trim().toLowerCase() === t.title.trim().toLowerCase());
+  if (same.length < 2) return null;
+  return `${same.findIndex((x) => x.id === t.id) + 1}/${same.length}`;
+}
+function titleWithSeries(node, t) {
+  const n = t && t.id && seriesOf(t);
+  if (n) node.append(el('span', 'series', n));
+  return node;
+}
+
 function el(tag, cls, text) {
   const e = document.createElement(tag);
   if (cls) e.className = cls;
@@ -159,8 +172,10 @@ function renderNow() {
   taskEl.classList.toggle('is-queued', !cur && !!next);
   taskEl.classList.toggle('is-empty', !cur && !next && !allDone);
   if (hold) taskEl.textContent = 'Hold: ' + cur.title;
-  else if (cur) taskEl.textContent = cur.title;
-  else if (next) taskEl.textContent = next.title;
+  else if (cur) {
+    taskEl.textContent = cur.title;
+    titleWithSeries(taskEl, S.today.open.find((x) => x.id === cur.googleId));
+  } else if (next) titleWithSeries((taskEl.textContent = next.title, taskEl), next);
   else if (allDone) taskEl.textContent = 'All done for today';
   else
     taskEl.textContent = !S.connected
@@ -1167,7 +1182,7 @@ function taskRow(t, { current, next, done, allView }) {
   const li = el('li', 'row' + (current ? ' is-current' : '') + (done ? ' is-done' : ''));
   const check = el('button', 'check');
   check.setAttribute('aria-label', done ? 'Mark not done' : 'Mark done');
-  const title = el('span', 't', t.title);
+  const title = titleWithSeries(el('span', 't', t.title), t);
   title.tabIndex = 0;
   li.append(check, title);
   if (current) li.append(el('span', 'tag', 'NOW'));
@@ -1305,7 +1320,9 @@ const metaOf = (key) => (S.plans && S.plans[key]) || {};
 const planOf = (key) => metaOf(key).plan || null;
 const shortDay = new Intl.DateTimeFormat('en-US', { weekday: 'short', day: 'numeric' });
 const rangeFmt = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' });
-const REPEAT = { daily: 'Daily', weekdays: 'Weekdays', weekly: 'Weekly' };
+// Repeat rules come from plan.js (shared with the main process).
+const repeatLabel = (rule, fromKey) => window.Plan.describe(rule, fromKey);
+const SETUP_AHEAD = 30; // days you can plan ahead
 const toMin = (hhmm) => {
   const [h, m] = hhmm.split(':').map(Number);
   return h * 60 + m;
@@ -1316,14 +1333,6 @@ const dateAt = (dayKey, minutes) => {
   return new Date(y, mo - 1, d, 0, minutes);
 };
 // Does a repeating task land on this day (faint preview)?
-function repeatsOn(fromKey, freq, key) {
-  if (key <= fromKey) return false;
-  const day = dateAt(key, 12 * 60).getDay();
-  if (freq === 'daily') return true;
-  if (freq === 'weekdays') return day !== 0 && day !== 6;
-  if (freq === 'weekly') return day === dateAt(fromKey, 12 * 60).getDay();
-  return false;
-}
 
 // Hours shown: the workday (or 7am–11pm), widened to fit anything planned.
 function suHours() {
@@ -1353,9 +1362,6 @@ function card(cls, title, meta) {
 function renderSetup() {
   if (!S || suDrag) return;
   const now = new Date();
-  const end = new Date(now);
-  end.setDate(end.getDate() + 6);
-  $('su-range').textContent = `${rangeFmt.format(now)} – ${rangeFmt.format(end)}`;
   $('su-structure').setAttribute('aria-pressed', String(!!(suSheet && suSheet.type === 'structure')));
   $('view-setup').classList.toggle('is-modal', setupMode);
 
@@ -1371,8 +1377,9 @@ function renderSetup() {
     for (const t of unplanned) {
       const m = metaOf('g:' + t.id);
       const tag = t.due ? (t.due === S.todayDate ? 'today' : t.due < S.todayDate ? 'overdue' : shortDay.format(new Date(t.due + 'T12:00:00'))) : null;
-      const bits = [lenLabel(m.mins || 30), m.repeat ? '↻ ' + REPEAT[m.repeat] : null, tag].filter(Boolean);
+      const bits = [lenLabel(m.mins || 30), m.repeat ? '↻ ' + repeatLabel(m.repeat, t.due || S.todayDate) : null, tag].filter(Boolean);
       const c = card('', t.title, bits.join(' · '));
+      titleWithSeries(c.querySelector('.t'), t);
       c.addEventListener('pointerdown', (e) => beginDrag(e, { kind: 'task', task: t, mode: 'new', mins: m.mins || 30 }));
       tray.append(c);
     }
@@ -1393,7 +1400,12 @@ function renderSetup() {
     if (label) b.append(el('span', null, label));
     return b;
   };
-  for (let i = 0; i < 7; i++) {
+  // From Monday of this week (earlier days are view-only) to a month ahead.
+  const first = new Date(now);
+  first.setHours(0, 0, 0, 0);
+  const back = (first.getDay() + 6) % 7;
+  first.setDate(first.getDate() - back);
+  for (let i = -back; i <= SETUP_AHEAD; i++) {
     const d = new Date(now);
     d.setHours(0, 0, 0, 0);
     d.setDate(d.getDate() + i);
@@ -1431,11 +1443,11 @@ function renderSetup() {
       const m = metaOf('g:' + t.id);
       if (!m.repeat || !m.plan) continue;
       const s = new Date(m.plan.start);
-      if (!repeatsOn(ld(s), m.repeat, key)) continue;
+      if (!window.Plan.repeatsOn(ld(s), m.repeat, key)) continue;
       const g = el('div', 'su-block is-ghost');
       g.style.top = px(s.getHours() * 60 + s.getMinutes()) + 'px';
       g.style.height = Math.max(m.plan.mins * (HOUR / 60) - 2, 16) + 'px';
-      g.append(el('span', 't', t.title), el('span', 'w', '↻ ' + REPEAT[m.repeat]));
+      g.append(el('span', 't', t.title), el('span', 'w', '↻ ' + repeatLabel(m.repeat, ld(s))));
       col.append(g);
     }
     // One-off breaks.
@@ -1460,7 +1472,7 @@ function renderSetup() {
       const blk = el('div', 'su-block' + (S.current && S.current.googleId === t.id ? ' is-running' : '') + (p.mins <= 20 ? ' is-short' : ''));
       blk.style.top = px(s.getHours() * 60 + s.getMinutes()) + 'px';
       blk.style.height = Math.max(p.mins * (HOUR / 60) - 2, 16) + 'px';
-      blk.append(el('span', 't', t.title), el('span', 'w', (p.mins <= 20 ? hm(s) : `${hm(s)}–${hm(s.getTime() + p.mins * 60e3)}`) + (m.repeat ? ' · ↻' : '')), el('span', 'h'));
+      blk.append(titleWithSeries(el('span', 't', t.title), t), el('span', 'w', (p.mins <= 20 ? hm(s) : `${hm(s)}–${hm(s.getTime() + p.mins * 60e3)}`) + (m.repeat ? ' · ↻' : '')), el('span', 'h'));
       blk.title = t.title;
       blk.addEventListener('pointerdown', (e) =>
         beginDrag(e, { kind: 'task', task: t, mode: e.target.classList.contains('h') ? 'resize' : 'move', mins: p.mins, start: p.start, block: blk })
@@ -1468,21 +1480,58 @@ function renderSetup() {
       col.append(blk);
     }
 
-    const dayCard = el('section', 'su-day' + (i === 0 ? ' is-today' : ''));
+    const dayCard = el('section', 'su-day' + (i === 0 ? ' is-today' : '') + (i < 0 ? ' is-past' : ''));
+    dayCard.dataset.day = key;
     const head = el('div', 'su-day__head');
-    head.append(el('span', 'su-day__name', i === 0 ? 'Today' : i === 1 ? 'Tomorrow' : shortDay.format(d)), el('span', 'su-day__total', total ? dur(total * 60e3) : ''));
+    head.append(el('span', 'su-day__name', i === 0 ? 'Today' : i === 1 ? 'Tomorrow' : i === -1 ? 'Yesterday' : shortDay.format(d)), el('span', 'su-day__total', total ? dur(total * 60e3) : ''));
     dayCard.append(head, col);
     days.append(dayCard);
   }
   days.scrollLeft = keep[0];
   days.scrollTop = keep[1];
+  updateSetupRange();
   renderSheet();
 }
+
+// Header date range follows what's on screen.
+function updateSetupRange() {
+  const days = $('su-days');
+  const cards = [...days.querySelectorAll('.su-day')];
+  const r = days.getBoundingClientRect();
+  const seen = cards.filter((c) => {
+    const b = c.getBoundingClientRect();
+    return b.right > r.left + 20 && b.left < r.right - 20;
+  });
+  if (!seen.length) return;
+  const a = dateAt(seen[0].dataset.day, 12 * 60);
+  const z = dateAt(seen[seen.length - 1].dataset.day, 12 * 60);
+  $('su-range').textContent = `${rangeFmt.format(a)} – ${rangeFmt.format(z)}`;
+}
+$('su-days').addEventListener('scroll', () => requestAnimationFrame(updateSetupRange));
+
+// Week arrows and Today: scroll the day columns.
+function scrollDays(to) {
+  const days = $('su-days');
+  const cards = [...days.querySelectorAll('.su-day')];
+  const w = cards[1] ? cards[1].offsetLeft - cards[0].offsetLeft : 212;
+  if (to === 'today') {
+    const t = days.querySelector('.su-day.is-today');
+    if (t) days.scrollTo({ left: t.offsetLeft - cards[0].offsetLeft, behavior: 'smooth' });
+  } else days.scrollBy({ left: to * 7 * w, behavior: 'smooth' });
+}
+$('su-prev').addEventListener('click', () => scrollDays(-1));
+$('su-next').addEventListener('click', () => scrollDays(1));
+$('su-today').addEventListener('click', () => scrollDays('today'));
 
 function scrollSetupToNow() {
   const col = document.querySelector('.su-col');
   if (!col) return;
-  $('su-days').scrollTop = Math.max(0, (new Date().getHours() - +col.dataset.h0 - 1) * HOUR);
+  const days = $('su-days');
+  days.scrollTop = Math.max(0, (new Date().getHours() - +col.dataset.h0 - 1) * HOUR);
+  const t = days.querySelector('.su-day.is-today');
+  const firstCard = days.querySelector('.su-day');
+  if (t && firstCard) days.scrollLeft = t.offsetLeft - firstCard.offsetLeft;
+  updateSetupRange();
 }
 
 // Minutes since midnight at a pointer y inside a day column, snapped.
@@ -1557,7 +1606,8 @@ async function onDragEnd(e) {
   if (d.mode === 'resize') S = await save(d.start, d.mins);
   else {
     const t = targetAt(e.clientX, e.clientY);
-    if (t.col) S = await save(dateAt(t.col.dataset.day, colMinutes(t.col, e.clientY)).toISOString(), d.mins);
+    // Past days are view-only.
+    if (t.col && t.col.dataset.day >= S.todayDate) S = await save(dateAt(t.col.dataset.day, colMinutes(t.col, e.clientY)).toISOString(), d.mins);
     else if (t.head && d.mode === 'move') S = await save(null);
   }
   render();
@@ -1619,13 +1669,51 @@ function renderSheet() {
       p ? `${shortDay.format(new Date(p.start))} · ${hm(p.start)}–${hm(Date.parse(p.start) + p.mins * 60e3)}` : 'Not on the calendar yet. Drag it onto a day.'
     );
     const length = tabsRow(LENGTHS, (p && p.mins) || m.mins || 30, async (v) => ((S = await api.taskDetail(t.id, { mins: v })), render()));
-    const repeat = tabsRow([[null, 'Never'], ['daily', 'Daily'], ['weekdays', 'Weekdays'], ['weekly', 'Weekly']], m.repeat || null, async (v) => ((S = await api.taskDetail(t.id, { repeat: v })), render()));
+    // Repeat: presets, or Custom (every N days/weeks/months, chosen weekdays).
+    const isCustom = m.repeat && typeof m.repeat === 'object';
+    const setRepeat = async (v) => ((S = await api.taskDetail(t.id, { repeat: v })), render());
+    const repeat = tabsRow(
+      [[null, 'Never'], ['daily', 'Daily'], ['weekdays', 'Weekdays'], ['weekly', 'Weekly'], ['custom', 'Custom']],
+      isCustom ? 'custom' : m.repeat || null,
+      (v) => setRepeat(v === 'custom' ? { every: 1, unit: 'week', days: [dateAt(t.due || S.todayDate, 12 * 60).getDay()] } : v)
+    );
+    const custom = el('div', 'su-custom');
+    if (isCustom) {
+      const r = m.repeat;
+      const row = el('div', 'su-custom__row');
+      const minus = el('button', 'su-step', '−');
+      const plus = el('button', 'su-step', '+');
+      minus.addEventListener('click', () => r.every > 1 && setRepeat({ ...r, every: r.every - 1 }));
+      plus.addEventListener('click', () => setRepeat({ ...r, every: r.every + 1 }));
+      row.append(el('span', null, 'Every'), minus, el('span', 'su-every', String(r.every)), plus);
+      row.append(tabsRow([['day', r.every > 1 ? 'days' : 'day'], ['week', r.every > 1 ? 'weeks' : 'week'], ['month', r.every > 1 ? 'months' : 'month']], r.unit, (u) => setRepeat({ ...r, unit: u })));
+      custom.append(row);
+      if (r.unit === 'week') {
+        const dow = el('div', 'su-dow');
+        // Monday first, like the rest of the week.
+        for (const d of [1, 2, 3, 4, 5, 6, 0]) {
+          const b = el('button', 'su-dow__d', 'SMTWTFS'[d]);
+          b.title = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][d];
+          b.setAttribute('aria-pressed', String(r.days.includes(d)));
+          b.addEventListener('click', () => {
+            const days = r.days.includes(d) ? r.days.filter((x) => x !== d) : [...r.days, d];
+            if (days.length) setRepeat({ ...r, days });
+          });
+          dow.append(b);
+        }
+        custom.append(dow);
+      }
+      custom.append(el('p', 'hint', repeatLabel(r, t.due || S.todayDate)));
+    }
     const acts = el('div', 'acts-row');
     if (p) {
       const un = el('button', 'act', 'Take off calendar');
       un.addEventListener('click', async () => ((S = await api.plan(t.id, null)), render()));
       acts.append(un);
     }
+    const dup = el('button', 'act', 'Duplicate');
+    dup.addEventListener('click', () => openDuplicate(t));
+    acts.append(dup);
     const del = el('button', 'act', 'Delete task');
     del.addEventListener('click', async () => {
       suSheet = null;
@@ -1633,6 +1721,7 @@ function renderSheet() {
     });
     acts.append(del);
     sheet.append(sheetTop(name), notes, el('span', 'label', 'When'), when, el('span', 'label', 'Length'), length, el('span', 'label', 'Repeat'), repeat);
+    if (isCustom) sheet.append(custom);
     if (m.repeat) sheet.append(el('p', 'hint', 'When you finish it, the next one is added with the same time of day.'));
     sheet.append(acts);
     return;
@@ -1716,6 +1805,44 @@ function renderSheet() {
     wk,
     acts
   );
+}
+
+// Duplicate: a small window asking how many copies.
+function openDuplicate(t) {
+  document.querySelectorAll('.su-modal').forEach((m) => m.remove());
+  let n = 1;
+  const back = el('div', 'su-modal');
+  const box = el('div', 'su-modal__box');
+  const count = el('span', 'su-every', '1');
+  const minus = el('button', 'su-step', '−');
+  const plus = el('button', 'su-step', '+');
+  const paint = () => {
+    count.textContent = String(n);
+    go.textContent = n === 1 ? 'Duplicate once' : `Make ${n} copies`;
+  };
+  minus.addEventListener('click', () => n > 1 && (n--, paint()));
+  plus.addEventListener('click', () => n < 20 && (n++, paint()));
+  const row = el('div', 'su-custom__row');
+  row.append(el('span', null, 'Copies'), minus, count, plus);
+  const acts = el('div', 'su-modal__acts');
+  const cancel = el('button', 'btn btn--quiet', 'Cancel');
+  const go = el('button', 'btn', 'Duplicate once');
+  const close = () => back.remove();
+  cancel.addEventListener('click', close);
+  back.addEventListener('pointerdown', (e) => e.target === back && close());
+  go.addEventListener('click', async () => {
+    go.disabled = true;
+    go.textContent = 'Duplicating…';
+    const r = await api.duplicate(t.id, n);
+    if (r && r.error) return (go.textContent = r.error);
+    close();
+  });
+  acts.append(cancel, go);
+  box.append(el('span', 'su-sheet__name', 'Duplicate'), el('p', 'when', t.title), row, el('p', 'hint', 'Copies keep the length, repeat and day, and wait in the header to be planned.'), acts);
+  back.append(box);
+  $('view-setup').append(back);
+  back.addEventListener('keydown', (e) => e.key === 'Escape' && close());
+  go.focus();
 }
 
 $('su-structure').addEventListener('click', () => {

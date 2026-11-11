@@ -20,6 +20,7 @@ contextBridge.exposeInMainWorld('oneFocus', {
   shiftGoals: (ms) => ipcRenderer.invoke('goals:shift', ms),
   plan: (id, plan) => ipcRenderer.invoke('plan:set', id, plan),
   taskDetail: (id, patch) => ipcRenderer.invoke('task:detail', id, patch),
+  duplicate: (id, n) => ipcRenderer.invoke('task:duplicate', id, n),
   setBreak: (id, plan) => ipcRenderer.invoke('break:set', id, plan),
   openSetup: () => ipcRenderer.invoke('setup:open'),
   claimIdle: () => ipcRenderer.invoke('idle:claim'),

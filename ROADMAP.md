@@ -111,6 +111,12 @@
 - [x] Day structure: workday, work blocks, breaks as faint bands
 - [x] Map hidden; Later fixed (dates are now cleared reliably)
 
+## v0.18 — Setup range, custom repeat, duplicates
+- [x] Setup shows this week (past days view-only) through a month ahead; week arrows + Today
+- [x] Custom repeat: every N days/weeks/months, weekday circles
+- [x] Duplicate with a copies count; same-name tasks count up (2/5)
+- [x] No idle time before the workday starts (or on days off)
+
 ## Parked
 - [x] ~~Full-screen announcements~~ → became the v0.7 blur for "Still on this?" and end of day
 

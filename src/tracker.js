@@ -13,6 +13,7 @@ class Tracker {
     this.save = save;
     this.pauses = new Set(); // reasons nothing is timed: lock, sleep, quit
     this.away = false; // no input for a while: time goes to idle
+    this.idleOff = false; // before the workday starts: idle isn't counted (tasks still are)
   }
 
   // On launch: close a session left open by a crash at the last heartbeat.
@@ -25,6 +26,7 @@ class Tracker {
 
   _open(at = iso()) {
     if (this.pauses.size || this.s.open) return;
+    if (this.idleOff && (this.away || !this.s.current)) return;
     const { key, title, googleId } = (!this.away && this.s.current) || IDLE;
     this.s.open = { key, title, googleId, start: at };
   }
@@ -75,6 +77,15 @@ class Tracker {
     if (!this.s.current) return; // already idle: nothing to split
     this._close(at);
     this._open(at);
+    this.save();
+  }
+
+  // Outside the workday idle time isn't logged; a running task still is.
+  setIdleOff(on, at) {
+    if (on === this.idleOff) return;
+    this.idleOff = on;
+    if (on && this.s.open && this.s.open.key === 'idle') this._close(at);
+    if (!on) this._open(at);
     this.save();
   }
 

@@ -132,6 +132,10 @@ Panels are for the occasional look, not the resting state, so they can be denser
 - Day columns: hours down each at 48px per hour; sticky day header ("Today", "Tomorrow", "13 Fri" + planned total); a 2px now line.
 - Blocks: 16% ink, 8px radius, 13px title + 10px time; 15–20 minute blocks collapse to one line. Breaks are hatched. Repeating tasks show faint outlined previews on later days.
 - Day structure: hours outside the workday shaded darker; work blocks a faint band with a 2px left rule; breaks hatched with a tiny "break" label. Nothing moves: it's a guide under the blocks.
+- Range: Monday of this week to 30 days ahead; days already gone at 45% opacity and not droppable. Week arrows (32px round) and a "Today" pill in the header; the date range follows what's on screen.
+- Custom repeat: "Every [−] n [+]" with day/week/month tabs, then seven 30px weekday circles (Monday first); selected = primary-ink fill.
+- Duplicate: a 360px centred window over a 60% dim, "Copies [−] n [+]", Cancel / "Make n copies".
+- Same-name tasks: a 0.75em tertiary "2/5" after the title.
 - Details sheet: a 320px panel sliding in from the right over the columns: title field, notes, When, Length tabs, Repeat tabs, then actions at the bottom.
 
 ## Hop off

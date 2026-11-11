@@ -136,3 +136,18 @@ test('convert an idle stretch into task time', () => {
   assert.deepEqual([s.sessions[0].key, s.sessions[0].title, s.sessions[0].googleId], ['g:7', 'Write brief', '7']);
   assert.equal(t.convertSession(idle, { key: 'g:8', title: 'x' }), false); // no longer idle with that key
 });
+
+test('before the workday starts, idle is not logged but tasks are', () => {
+  const s = fresh();
+  const t = new Tracker(s, () => {});
+  t.setIdleOff(true);
+  t.recover();
+  assert.equal(s.open, null); // no idle before work starts
+  t.setCurrent({ key: 'g:1', title: 'Early start', googleId: '1' });
+  assert.equal(s.open.key, 'g:1'); // a task still counts
+  s.open.start = ago(60e3);
+  t.setCurrent(null);
+  assert.equal(s.open, null);
+  t.setIdleOff(false); // workday begins
+  assert.equal(s.open.key, 'idle');
+});

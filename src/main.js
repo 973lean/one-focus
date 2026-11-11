@@ -236,6 +236,16 @@ function closeCheck() {
   win.setAlwaysOnTop(!!state.settings.alwaysOnTop);
 }
 
+// With a day structure: is it before today's start (or a day off)?
+function beforeWorkday(d = new Date()) {
+  const ds = state.settings.dayStructure;
+  if (!ds) return false;
+  const weekend = d.getDay() === 0 || d.getDay() === 6;
+  if (weekend && !ds.weekends) return true;
+  const [h, m] = ds.start.split(':').map(Number);
+  return d.getHours() * 60 + d.getMinutes() < h * 60 + m;
+}
+
 function checkDue() {
   const cur = state.current;
   if (check || !cur || isHold(cur) || tracker.away || tracker.pauses.size) return;
@@ -521,6 +531,7 @@ ipcMain.handle('task:detail', async (_e, id, patch) => {
   const meta = (state.taskMeta[key] = { ...(state.taskMeta[key] || {}) });
   if ('repeat' in patch) {
     if (['daily', 'weekdays', 'weekly'].includes(patch.repeat)) meta.repeat = patch.repeat;
+    else if (patch.repeat && typeof patch.repeat === 'object') meta.repeat = planning.normalize(patch.repeat, localDate());
     else delete meta.repeat;
   }
   if ('mins' in patch) {
@@ -538,6 +549,31 @@ ipcMain.handle('task:detail', async (_e, id, patch) => {
   if (Object.keys(body).length && client && state.google.listId) await client.patch(state.google.listId, id, body).catch(() => {});
   await resync();
   return snapshot();
+});
+
+// Duplicate a task n times (same title, notes, date, length and repeat; not
+// placed on the calendar). Copies go right after the original.
+ipcMain.handle('task:duplicate', async (_e, id, raw) => {
+  const n = Math.min(Math.max(Math.round(+raw) || 1, 1), 20);
+  const t = today.open.find((x) => x.id === id);
+  if (!t || !client || !state.google.listId) return { error: 'Task not found.' };
+  const m = state.taskMeta['g:' + id] || {};
+  let previous = id;
+  try {
+    for (let i = 0; i < n; i++) {
+      const c = await client.insert(state.google.listId, { title: t.title, notes: t.notes || undefined, due: t.due ? t.due + 'T00:00:00.000Z' : undefined }, previous);
+      previous = c.id;
+      const meta = {};
+      if (m.mins) meta.mins = m.mins;
+      if (m.repeat) meta.repeat = m.repeat;
+      if (Object.keys(meta).length) state.taskMeta['g:' + c.id] = meta;
+    }
+    store.save(state);
+    await resync();
+    return { ok: true };
+  } catch (e) {
+    return { error: e.message };
+  }
 });
 
 // One-off breaks placed in Setup. plan null = remove.
@@ -876,6 +912,7 @@ ipcMain.handle('google:disconnect', () => {
 app.whenReady().then(() => {
   state = store.load();
   tracker = new Tracker(state, () => store.save(state));
+  tracker.idleOff = beforeWorkday(); // set before recover opens a session
   tracker.recover();
   makeClient();
   createWindow();
@@ -892,6 +929,7 @@ app.whenReady().then(() => {
     const awayAfter = (state.settings.awayMinutes || 10) * 60;
     if (idle >= awayAfter && !tracker.away) tracker.setAway(true, new Date(Date.now() - idle * 1000).toISOString());
     else if (idle < awayAfter && tracker.away) tracker.setAway(false);
+    tracker.setIdleOff(beforeWorkday());
     tracker.heartbeat();
     if (tracker.away && update.status === 'ready' && !check) installUpdate();
     checkDue();

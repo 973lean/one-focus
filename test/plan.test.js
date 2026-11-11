@@ -25,3 +25,17 @@ test('repeatsOn for previews', () => {
   assert.equal(repeatsOn('2026-11-11', 'weekly', '2026-11-17'), false);
   assert.equal(repeatsOn('2026-11-11', 'daily', '2026-11-11'), false);
 });
+
+const { describe: label } = require('../src/plan');
+
+test('custom repeats: every 2 days, every 2 weeks on Mon+Thu, monthly', () => {
+  assert.equal(nextDate('2026-11-11', { every: 2, unit: 'day' }), '2026-11-13');
+  const r = { every: 2, unit: 'week', days: [1, 4] }; // Mon, Thu
+  assert.equal(nextDate('2026-11-11', r), '2026-11-12'); // Wed -> Thu same week
+  assert.equal(nextDate('2026-11-12', r), '2026-11-23'); // Thu -> Mon two weeks on
+  assert.equal(nextDate('2026-01-31', { every: 1, unit: 'month' }), '2026-02-28'); // clamps
+  assert.equal(repeatsOn('2026-11-11', r, '2026-11-16'), false);
+  assert.equal(repeatsOn('2026-11-11', r, '2026-11-23'), true);
+  assert.equal(label(r), 'Every 2 weeks · Mon, Thu');
+  assert.equal(label({ every: 1, unit: 'month' }), 'Monthly');
+});
