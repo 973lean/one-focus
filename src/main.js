@@ -718,7 +718,10 @@ function watchCorners() {
 
 function applyShortcuts() {
   globalShortcut.unregisterAll();
-  if (light() || state.settings.shortcuts === false) return;
+  if (state.settings.shortcuts === false) return;
+  // Settings: here or on the main monitor, as set in Settings → Mode.
+  globalShortcut.register('CommandOrControl+Alt+S', () => openSetupWindow('settings'));
+  if (light()) return;
   globalShortcut.register('CommandOrControl+Alt+T', () => openSetupWindow('today'));
   globalShortcut.register('CommandOrControl+Alt+W', () => openSetupWindow('week'));
 }
