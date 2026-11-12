@@ -442,8 +442,8 @@ function createWindow() {
   // Dev mode: reload the window whenever a renderer file changes.
   if (process.argv.includes('--dev')) {
     let timer;
-    fs.watch(__dirname, (_event, file) => {
-      if (!file || !/\.(html|css)$|renderer\.js$/.test(file)) return;
+    fs.watch(__dirname, { recursive: true }, (_event, file) => {
+      if (!file || !/\.(html|css)$|^ui[\\/].+\.js$/.test(file)) return;
       clearTimeout(timer);
       timer = setTimeout(() => win.webContents.reloadIgnoringCache(), 80);
     });
