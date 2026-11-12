@@ -145,6 +145,11 @@
 - [x] One card per task: dashed plan until started, then a solid card for the real time with the plan as a faint outline behind it; overlaps go side by side.
 - [x] Windows on the main monitor fade in (no white blink) and hide instead of closing.
 
+## v0.24 — Popup styles, no click-through
+- [x] Reminder popup style: Corner (bottom right), Top bar (pill, top middle) or Centre.
+- [x] Break card removed from the Planner (day-structure breaks stay).
+- [x] Clicking outside the Planner only closes it: a backdrop behind it catches that click (light dim on the main monitor).
+
 ## Parked
 - [x] ~~Full-screen announcements~~ → became the v0.7 blur for "Still on this?" and end of day
 

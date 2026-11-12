@@ -1520,12 +1520,9 @@ function renderSetup() {
     api.getLog().then((d) => ((logData = d), renderSetup()));
   }
 
-  // Header cards: a Break to drag in, then every task not yet on the calendar.
+  // Header cards: every task not yet on the calendar.
   const tray = $('su-tray');
   tray.replaceChildren();
-  const br = card('is-break', 'Break', '15m · drag onto a day');
-  br.addEventListener('pointerdown', (e) => beginDrag(e, { kind: 'break', mode: 'new', mins: 15 }));
-  tray.append(br);
   if (!S.connected) tray.append(el('span', 'su-note', 'Connect Google Tasks in Settings to plan your tasks here.'));
   else {
     const unplanned = S.today.open.filter((t) => !planOf('g:' + t.id));
@@ -1639,17 +1636,6 @@ function dayCard(i, now, h0, h1, { wide }) {
     g.style.height = Math.max(m.plan.mins * (HOUR / 60) - 2, 16) + 'px';
     g.append(el('span', 't', t.title), el('span', 'w', '↻ ' + repeatLabel(m.repeat, ld(s))));
     col.append(g);
-  }
-  for (const b of (S.breaks || []).filter((x) => ld(new Date(x.start)) === key)) {
-    const s = new Date(b.start);
-    const blk = el('div', 'su-block is-break' + (b.mins <= 20 ? ' is-short' : ''));
-    blk.style.top = px(s.getHours() * 60 + s.getMinutes()) + 'px';
-    blk.style.height = Math.max(b.mins * (HOUR / 60) - 2, 16) + 'px';
-    blk.append(el('span', 't', 'Break'), el('span', 'w', b.mins <= 20 ? hm(s) : `${hm(s)}–${hm(s.getTime() + b.mins * 60e3)}`), el('span', 'h'));
-    blk.addEventListener('pointerdown', (e) =>
-      beginDrag(e, { kind: 'break', id: b.id, mode: e.target.classList.contains('h') ? 'resize' : 'move', mins: b.mins, start: b.start, block: blk })
-    );
-    col.append(blk);
   }
   // Planned tasks. Not started: the plan as a dashed outline you can drag.
   // Started: one solid card for when you really worked on it (title inside),
@@ -2449,6 +2435,7 @@ function renderSettings() {
   document.querySelectorAll('#s-setup-mode .tab').forEach((t) => t.setAttribute('aria-selected', String(t.dataset.v === (s.setupMode || 'modal'))));
   document.querySelectorAll('#s-app-mode .tab').forEach((t) => t.setAttribute('aria-selected', String(t.dataset.v === (s.appMode || 'full'))));
   document.querySelectorAll('#s-settings-mode .tab').forEach((t) => t.setAttribute('aria-selected', String(t.dataset.v === (s.settingsMode || 'inline'))));
+  document.querySelectorAll('#s-popup .tab').forEach((t) => t.setAttribute('aria-selected', String(t.dataset.v === (s.popupStyle || 'corner'))));
   $('s-blur-close').checked = s.plannerBlurClose !== false;
   $('s-shortcuts').checked = s.shortcuts !== false;
   $('s-remind-blocks').checked = s.remindBlocks !== false;
@@ -2542,6 +2529,9 @@ api.onPlannerTab((tab) => {
 $('st-close').addEventListener('click', () => setView(setupMode ? 'setup' : 'now'));
 document.querySelectorAll('#s-settings-mode .tab').forEach((t) =>
   t.addEventListener('click', async () => (S = await api.updateSettings({ settingsMode: t.dataset.v })) && render())
+);
+document.querySelectorAll('#s-popup .tab').forEach((t) =>
+  t.addEventListener('click', async () => (S = await api.updateSettings({ popupStyle: t.dataset.v })) && render())
 );
 // In the Planner window the gear appears only near the bottom-right corner.
 if (setupMode) {

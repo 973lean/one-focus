@@ -14,8 +14,9 @@
       --font: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
       --ease: cubic-bezier(0.2, 0, 0, 1);
     }
-    html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--fg); font-family: var(--font); -webkit-font-smoothing: antialiased; user-select: none; cursor: default; }
-    body { box-sizing: border-box; border: 1px solid var(--hairline); border-radius: 12px; padding: 16px 18px 14px; display: flex; flex-direction: column; gap: 12px; -webkit-app-region: drag; }
+    html { background: transparent; }
+    html, body { margin: 0; height: 100%; overflow: hidden; color: var(--fg); font-family: var(--font); -webkit-font-smoothing: antialiased; user-select: none; cursor: default; }
+    body { background: var(--bg); box-sizing: border-box; border: 1px solid var(--hairline); border-radius: 12px; padding: 16px 18px 14px; display: flex; flex-direction: column; gap: 12px; -webkit-app-region: drag; }
     body.in { animation: in 320ms var(--ease); }
     @keyframes in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
     .kind { font-size: 12px; color: var(--fg-secondary); font-variant-numeric: tabular-nums; }
@@ -25,10 +26,23 @@
     button:hover { color: var(--fg); border-color: var(--fg-tertiary); }
     button.main { color: var(--bg); background: var(--fg); border-color: var(--fg); }
     button.x { margin-left: auto; border: 0; padding: 5px 6px; color: var(--fg-tertiary); }
+    /* Top bar: one line, text left, actions right. */
+    body.is-bar { flex-direction: row; align-items: center; gap: 16px; padding: 0 10px 0 18px; border-radius: 999px; }
+    body.is-bar .text { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 10px; }
+    body.is-bar .title { margin: 0; font-size: 14px; }
+    body.is-bar .kind { flex-shrink: 0; }
+    body.is-bar .x { margin-left: 2px; }
+    body.is-bar.in { animation: drop 320ms var(--ease); }
+    @keyframes drop { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
+    /* Centre: a calm box, a little more air. */
+    body.is-center { padding: 24px 26px 20px; gap: 20px; border-radius: 16px; justify-content: space-between; }
+    body.is-center .title { font-size: 19px; margin-top: 6px; }
+    body.is-center.in { animation: pop 320ms var(--ease); }
+    @keyframes pop { from { opacity: 0; transform: scale(0.97); } to { opacity: 1; transform: none; } }
   </style>
 </head>
 <body>
-  <div><div class="kind" id="kind"></div><div class="title" id="title"></div></div>
+  <div class="text"><div class="kind" id="kind"></div><div class="title" id="title"></div></div>
   <div class="acts" id="acts"></div>
   <script src="toast.js"></script>
 </body>

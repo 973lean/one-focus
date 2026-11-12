@@ -521,6 +521,54 @@ function fadeIn(w, focus) {
   setTimeout(step, 50);
 }
 
+// While the Planner is open, a backdrop sits behind it on every monitor: the
+// click that closes the Planner lands on it and goes no further. Barely
+// visible; a light dim on the main monitor.
+let backdrops = [];
+function showBackdrop() {
+  if (backdrops.length || state.settings.plannerBlurClose === false) return;
+  const primary = screen.getPrimaryDisplay().id;
+  for (const d of screen.getAllDisplays()) {
+    const b = new BrowserWindow({
+      ...d.workArea,
+      frame: false,
+      show: false,
+      transparent: true,
+      backgroundColor: '#00000000',
+      hasShadow: false,
+      skipTaskbar: true,
+      focusable: false,
+      resizable: false,
+      movable: false,
+      minimizable: false,
+      maximizable: false,
+      fullscreenable: false,
+      webPreferences: { contextIsolation: true, nodeIntegration: false },
+    });
+    const tint = d.id === primary ? 'rgba(0,0,0,0.22)' : 'rgba(0,0,0,0.012)';
+    const html = `<!doctype html><html><head><style>html,body{margin:0;height:100%;background:transparent}body{background:${tint};animation:a 220ms cubic-bezier(.2,0,0,1)}@keyframes a{from{opacity:0}}</style></head><body><script>addEventListener('mousedown',(e)=>{e.preventDefault();document.title='close'});addEventListener('contextmenu',(e)=>e.preventDefault())</script></body></html>`;
+    b.on('page-title-updated', (e, t) => {
+      e.preventDefault();
+      if (t === 'close' && setupWin && !setupWin.isDestroyed()) setupWin.hide();
+    });
+    b.once('ready-to-show', () => {
+      if (b.isDestroyed()) return;
+      b.showInactive();
+      if (setupWin && !setupWin.isDestroyed() && setupWin.isVisible()) setupWin.moveTop();
+    });
+    b.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html));
+    backdrops.push(b);
+  }
+}
+function hideBackdrop() {
+  for (const b of backdrops) if (!b.isDestroyed()) b.destroy();
+  backdrops = [];
+}
+function showPlanner() {
+  showBackdrop();
+  fadeIn(setupWin, true);
+}
+
 function openSetupWindow(tab = 'week') {
   if (light() && tab !== 'settings') return;
   const inline = tab === 'settings' ? state.settings.settingsMode !== 'modal' : state.settings.setupMode === 'inline';
@@ -533,7 +581,7 @@ function openSetupWindow(tab = 'week') {
   if (setupWin && !setupWin.isDestroyed()) {
     setupWin.webContents.send('planner:tab', tab);
     // Kept alive while hidden, so it comes back instantly on the right tab.
-    if (!setupWin.isVisible()) setTimeout(() => fadeIn(setupWin, true), 30);
+    if (!setupWin.isVisible()) setTimeout(showPlanner, 30);
     else setupWin.focus();
     return;
   }
@@ -556,8 +604,9 @@ function openSetupWindow(tab = 'week') {
   });
   setupWin.loadFile(path.join(__dirname, 'index.html'), { query: { mode: 'setup', tab } });
   // Shown when the page says it has drawn (ui:ready), so it appears all at once.
-  setTimeout(() => setupWin && !setupWin.isDestroyed() && !setupWin.isVisible() && fadeIn(setupWin, true), 2500);
+  setTimeout(() => setupWin && !setupWin.isDestroyed() && !setupWin.isVisible() && showPlanner(), 2500);
   // Closing only hides it (until the app quits): reopening is instant, no reload.
+  setupWin.on('hide', hideBackdrop);
   setupWin.on('close', (e) => {
     if (quitting) return;
     e.preventDefault();
@@ -568,14 +617,14 @@ function openSetupWindow(tab = 'week') {
       if (setupWin && !setupWin.isDestroyed() && !setupWin.isFocused() && setupWin.isVisible() && state.settings.plannerBlurClose !== false) setupWin.hide();
     }, 200)
   );
-  setupWin.on('closed', () => (setupWin = null));
+  setupWin.on('closed', () => ((setupWin = null), hideBackdrop()));
 }
 ipcMain.handle('setup:open', (_e, tab) => openSetupWindow(['today', 'settings'].includes(tab) ? tab : 'week'));
 
 // A page has drawn its first frame: show its window now (no white blink).
 ipcMain.on('ui:ready', (e) => {
   const w = BrowserWindow.fromWebContents(e.sender);
-  if (w && !w.isVisible()) fadeIn(w, w === setupWin);
+  if (w && !w.isVisible()) w === setupWin ? showPlanner() : fadeIn(w, false);
 });
 
 // Re-plan several blocks at once ([{ id, start, mins }]); dates follow in the background.
@@ -704,9 +753,12 @@ let toastTimer = null;
 function setReminder(r) {
   reminder = r;
   const wa = screen.getPrimaryDisplay().workArea;
-  const W = 380;
-  const H = 118;
-  const bounds = { x: wa.x + wa.width - W - 16, y: wa.y + wa.height - H - 16, width: W, height: H };
+  const style = state.settings.popupStyle || 'corner';
+  const [W, H] = style === 'bar' ? [620, 52] : style === 'center' ? [440, 150] : [380, 118];
+  const x = style === 'corner' ? wa.x + wa.width - W - 16 : wa.x + Math.round((wa.width - W) / 2);
+  const y = style === 'corner' ? wa.y + wa.height - H - 16 : style === 'bar' ? wa.y + 14 : wa.y + Math.round((wa.height - H) / 2.4);
+  const bounds = { x, y, width: W, height: H };
+  r = { ...r, style };
   const send = () => {
     if (!toastWin || toastWin.isDestroyed()) return;
     toastWin.webContents.send('toast', r);
@@ -726,7 +778,9 @@ function setReminder(r) {
       fullscreenable: false,
       skipTaskbar: true,
       alwaysOnTop: true,
-      backgroundColor: '#0B0B0C',
+      transparent: true, // rounded / pill shapes without square corners
+      hasShadow: false,
+      backgroundColor: '#00000000',
       webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false },
     });
     toastWin.setAlwaysOnTop(true, 'pop-up-menu');
@@ -1168,6 +1222,7 @@ ipcMain.handle('settings:update', async (_e, patch) => {
   for (const k of allowed) if (k in patch) state.settings[k] = typeof patch[k] === 'string' ? patch[k].trim() : !!patch[k];
   for (const k of ['plannerBlurClose', 'shortcuts', 'remindBlocks', 'remindOver', 'colorTime'])
     if (k in patch) state.settings[k] = !!patch[k];
+  if ('popupStyle' in patch) state.settings.popupStyle = ['corner', 'bar', 'center'].includes(patch.popupStyle) ? patch.popupStyle : 'corner';
   if ('settingsMode' in patch) state.settings.settingsMode = patch.settingsMode === 'modal' ? 'modal' : 'inline';
   if ('appMode' in patch) state.settings.appMode = patch.appMode === 'light' ? 'light' : 'full';
   for (const k of ['cornerToday', 'cornerWeek'])

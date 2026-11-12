@@ -35,7 +35,7 @@ function show(next) {
   }
   btn('Open Today', 'plan');
   btn('×', 'dismiss', 'x');
-  document.body.classList.remove('in');
+  document.body.className = 'is-' + (r.style || 'corner');
   void document.body.offsetWidth;
   document.body.classList.add('in');
 }
