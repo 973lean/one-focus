@@ -146,10 +146,13 @@ Panels are for the occasional look, not the resting state, so they can be denser
 - Items: a checklist in the details sheet, 14px circles like Today rows, "Items · 2/4".
 - Reminder line on Now: 12px, takes the buttons' place under the task, text truncates; actions as text buttons, the main one in primary ink.
 
-## Plan vs actual (v0.20)
-- Plan: rgba fill .05 with a 1px .2 inset outline, no dash. Actual: solid .2 fill, no outline, inset 5px, drawn on top from first start to last stop.
-- Overrun: actual stays neutral until the planned end, then fades into red (.5); under 80% of the plan when done = static green.
-- Behind: amber inset on missed blocks with a ⚠️ mark; one chip in the header ("⚠️ N behind" / "⚠️ Xm over"). Choices open in the side sheet as cards.
+## Plan vs actual (v0.23)
+- Not started: the plan is a dashed outline (1px dashed .3, fill .03), draggable.
+- Started: one opaque solid card from first start to last stop, title inside ("1h 08m · 0h 08m over" or "0h 30m of 1h 00m"). The plan stays behind it as a faint dashed outline, so it only peeks out where the plan was longer.
+- Overrun: neutral until the planned end, then fades to a muted red; done under 80% = muted green.
+- Overlapping cards sit side by side in lanes, like a calendar. Never stack text on text.
+- Click an empty spot to type a new task right there (snaps to 15 min, 30 min long).
+- Behind: amber dashed outline with a ⚠️ mark; one chip in the header.
 
 ## Settings (v0.20)
 - Cards on a grid (min 420px), each with a title, rows separated by hairlines: name, optional one-line description, control on the right (switch or segmented pill).

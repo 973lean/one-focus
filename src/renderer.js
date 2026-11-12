@@ -1327,6 +1327,7 @@ document.querySelectorAll('#today-tabs .tab').forEach((t) =>
 const HOUR = 48; // px per hour
 const SNAP = 15; // minutes
 let suDrag = null;
+let suDraft = null; // an open "new task here" field: re-renders wait for it
 let suSheet = null; // { type: 'task', id } | { type: 'break', id } | { type: 'structure' }
 
 const ld = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -1467,8 +1468,42 @@ function replanFromNow(b) {
   return out;
 }
 
+function openDraft(col, day, min, px) {
+  const start = new Date(day);
+  start.setHours(0, min, 0, 0);
+  const mins = 30;
+  const box = el('div', 'su-draft');
+  box.style.top = px(min) + 'px';
+  box.style.height = mins * (HOUR / 60) - 2 + 'px';
+  const input = el('input');
+  input.type = 'text';
+  input.maxLength = 300;
+  input.placeholder = 'New task';
+  box.append(input, el('span', 'w', `${hm(start)}–${hm(start.getTime() + mins * 60e3)} · ${hLen(mins)}`));
+  col.append(box);
+  suDraft = { box };
+  const close = () => {
+    if (!suDraft || suDraft.box !== box) return;
+    suDraft = null;
+    box.remove();
+    renderSetup();
+  };
+  input.addEventListener('keydown', async (e) => {
+    e.stopPropagation();
+    if (e.key === 'Escape') return close();
+    if (e.key !== 'Enter' || !input.value.trim()) return;
+    const title = input.value.trim();
+    input.disabled = true;
+    box.classList.add('is-saving');
+    S = await api.addPlanned(title, { start: start.toISOString(), mins });
+    close();
+  });
+  input.addEventListener('blur', () => !input.disabled && setTimeout(close, 120));
+  requestAnimationFrame(() => input.focus());
+}
+
 function renderSetup() {
-  if (!S || suDrag) return;
+  if (!S || suDrag || suDraft) return;
   const behindNow = behindToday();
   $('su-behind').hidden = !(behindNow.ids.size || behindNow.by > 10 * 60e3) || S.settings.appMode === 'light';
   if (!$('su-behind').hidden)
@@ -1544,6 +1579,14 @@ function dayCard(i, now, h0, h1, { wide }) {
   col.dataset.day = key;
   col.dataset.h0 = h0;
   col.style.height = (h1 - h0) * HOUR + 'px';
+  // Click an empty spot: type a task right there (like a calendar).
+  col.addEventListener('click', (e) => {
+    if (suDraft || e.target.closest('.su-block, .su-break, .su-actual, .su-draft, button')) return;
+    if (S.settings.appMode === 'light' || !S.connected) return;
+    const y = e.clientY - col.getBoundingClientRect().top;
+    const min = Math.min(Math.max(h0 * 60 + Math.floor(((y / HOUR) * 60) / 15) * 15, h0 * 60), h1 * 60 - 15);
+    openDraft(col, d, min, px);
+  });
 
   if (ds) {
     const weekend = d.getDay() === 0 || d.getDay() === 6;
@@ -1608,9 +1651,13 @@ function dayCard(i, now, h0, h1, { wide }) {
     );
     col.append(blk);
   }
-  // Planned tasks: the plan is a soft outline; what really happened is a more
-  // solid layer on top that grows past the plan when you run over.
+  // Planned tasks. Not started: the plan as a dashed outline you can drag.
+  // Started: one solid card for when you really worked on it (title inside),
+  // with the plan left behind as a faint dashed outline in the same lane.
+  // Cards that overlap sit side by side, like a calendar.
   const behind = i === 0 ? behindToday() : { ids: new Set() };
+  const items = []; // { a, b (minutes), nodes }
+  const at = (ms) => { const x = new Date(ms); return Math.round((x.getTime() - d.getTime()) / 60e3); };
   for (const t of [...S.today.open, ...S.today.done.map((x) => ({ ...x, done: true }))]) {
     const p = planOf('g:' + t.id);
     if (!p || ld(new Date(p.start)) !== key) continue;
@@ -1619,50 +1666,94 @@ function dayCard(i, now, h0, h1, { wide }) {
     const pEnd = s.getTime() + p.mins * 60e3;
     const m = metaOf('g:' + t.id);
     const real = actualSpan('g:' + t.id, d);
-    const isBehind = behind.ids.has(t.id);
-    const cls = 'su-block is-plan' + (S.current && S.current.googleId === t.id ? ' is-running' : '') + (p.mins <= 20 ? ' is-short' : '') + (t.done ? ' is-done' : '') + (isBehind ? ' is-behind' : '');
-    const blk = el('div', cls);
-    blk.style.top = px(s.getHours() * 60 + s.getMinutes()) + 'px';
-    blk.style.height = Math.max(p.mins * (HOUR / 60) - 2, 16) + 'px';
-    blk.append(titleWithSeries(el('span', 't', t.title), t), el('span', 'w', (p.mins <= 20 ? hm(s) : `${hm(s)}–${hm(pEnd)}`) + ` · ${hLen(p.mins)}` + (m.repeat ? ' · ↻' : '')));
-    blk.title = t.title;
-    if (!t.done) {
-      blk.append(el('span', 'h'));
-      blk.addEventListener('pointerdown', (e) => {
-        if (e.target.classList.contains('su-warnmark')) return;
-        beginDrag(e, { kind: 'task', task: t, mode: e.target.classList.contains('h') ? 'resize' : 'move', mins: p.mins, start: p.start, block: blk });
-      });
-    }
-    if (isBehind) {
-      const w = el('span', 'su-warnmark', '⚠️');
-      w.title = 'Behind plan';
-      w.addEventListener('click', (e) => {
-        e.stopPropagation();
-        suSheet = { type: 'behind', id: t.id };
-        renderSetup();
-      });
-      blk.append(w);
-    }
-    col.append(blk);
-
-    if (real) {
-      const r = el('div', 'su-real' + (real.live ? ' is-live' : ''));
-      const a = new Date(real.start);
-      r.style.top = px(a.getHours() * 60 + a.getMinutes()) + 'px';
-      r.style.height = Math.max(((real.end - real.start) / 60e3) * (HOUR / 60) - 2, 4) + 'px';
-      const took = real.end - real.start;
-      if (S.settings.colorTime) {
-        if (real.end > pEnd) {
-          // Neutral until the planned end, then a fade into red.
-          const from = Math.max(0, Math.min(100, ((pEnd - real.start) / took) * 100));
-          r.style.background = `linear-gradient(to bottom, rgba(245,245,244,0.2) 0%, rgba(245,245,244,0.2) ${from}%, rgba(228,104,96,0.5) 100%)`;
-        } else if (t.done && took < p.mins * 60e3 * 0.8) r.classList.add('is-under');
+    const running = S.current && S.current.googleId === t.id;
+    const pa = at(s.getTime());
+    const pb = pa + p.mins;
+    if (!real) {
+      const isBehind = behind.ids.has(t.id);
+      const blk = el('div', 'su-block is-plan' + (running ? ' is-running' : '') + (p.mins <= 20 ? ' is-short' : '') + (t.done ? ' is-done' : '') + (isBehind ? ' is-behind' : ''));
+      blk.style.top = px(pa) + 'px';
+      blk.style.height = Math.max(p.mins * (HOUR / 60) - 2, 16) + 'px';
+      blk.append(titleWithSeries(el('span', 't', t.title), t), el('span', 'w', (p.mins <= 20 ? hm(s) : `${hm(s)}–${hm(pEnd)}`) + ` · ${hLen(p.mins)}` + (m.repeat ? ' · ↻' : '')));
+      blk.title = t.title;
+      if (!t.done) {
+        blk.append(el('span', 'h'));
+        blk.addEventListener('pointerdown', (e) => {
+          if (e.target.classList.contains('su-warnmark')) return;
+          beginDrag(e, { kind: 'task', task: t, mode: e.target.classList.contains('h') ? 'resize' : 'move', mins: p.mins, start: p.start, block: blk });
+        });
       }
-      if (took >= 15 * 60e3) r.append(el('span', null, (real.live ? 'so far ' : 'took ') + hLen(took / 60e3)));
-      r.title = `${hm(real.start)}–${real.live ? 'now' : hm(real.end)} · ${hLen(took / 60e3)}`;
-      col.append(r);
+      if (isBehind) {
+        const w = el('span', 'su-warnmark', '⚠️');
+        w.title = 'Behind plan';
+        w.addEventListener('click', (e) => {
+          e.stopPropagation();
+          suSheet = { type: 'behind', id: t.id };
+          renderSetup();
+        });
+        blk.append(w);
+      }
+      items.push({ a: pa, b: pb, nodes: [blk] });
+      continue;
     }
+    const ra = at(real.start);
+    const rb = Math.max(at(real.end), ra + 1);
+    const took = real.end - real.start;
+    const ghost = el('div', 'su-planghost');
+    ghost.style.top = px(pa) + 'px';
+    ghost.style.height = Math.max(p.mins * (HOUR / 60) - 2, 6) + 'px';
+    const short = took <= 35 * 60e3;
+    const blk = el('div', 'su-block is-real' + (real.live ? ' is-live' : '') + (running ? ' is-running' : '') + (short ? ' is-short' : '') + (t.done ? ' is-done' : ''));
+    blk.style.top = px(ra) + 'px';
+    blk.style.height = Math.max((took / 60e3) * (HOUR / 60) - 2, 14) + 'px';
+    const over = real.end - pEnd;
+    if (S.settings.colorTime) {
+      if (over > 60e3) {
+        // Neutral until the planned end, then a soft fade into red.
+        const from = Math.max(0, Math.min(100, ((pEnd - real.start) / took) * 100));
+        blk.style.background = `linear-gradient(to bottom, #2F2F2F 0%, #2F2F2F ${from}%, #592F2C 100%)`;
+      } else if (t.done && took < p.mins * 60e3 * 0.8) blk.classList.add('is-under');
+    }
+    const tail = (real.live ? 'so far ' : '') + hLen(took / 60e3) + (over > 60e3 ? ` · ${hLen(over / 60e3)} over` : ` of ${hLen(p.mins)}`);
+    blk.append(titleWithSeries(el('span', 't', t.title), t), el('span', 'w', short ? tail : `${hm(real.start)}–${real.live ? 'now' : hm(real.end)} · ${tail}`));
+    blk.title = `${t.title}\nPlanned ${hm(s)}–${hm(pEnd)} · ${hLen(p.mins)}\nActual ${hm(real.start)}–${real.live ? 'now' : hm(real.end)} · ${hLen(took / 60e3)}`;
+    items.push({ a: Math.min(pa, ra), b: Math.max(pb, rb), nodes: [ghost, blk] });
   }
+  for (const n of col.querySelectorAll('.su-block.is-break, .su-block.is-ghost')) {
+    const a = h0 * 60 + parseFloat(n.style.top) / (HOUR / 60);
+    items.push({ a, b: a + (parseFloat(n.style.height) + 2) / (HOUR / 60), nodes: [n], placed: true });
+  }
+  // Lanes: overlapping cards share the width.
+  items.sort((x, y) => x.a - y.a || y.b - x.b);
+  let group = [];
+  let groupEnd = -1;
+  const flush = () => {
+    const lanes = [];
+    for (const it of group) {
+      let l = lanes.findIndex((end) => end <= it.a);
+      if (l < 0) l = lanes.length;
+      lanes[l] = it.b;
+      it.lane = l;
+    }
+    const n = lanes.length;
+    const gutter = wide ? 14 : 0;
+    for (const it of group)
+      for (const node of it.nodes) {
+        if (n > 1) {
+          node.style.left = `calc((100% - ${gutter}px) * ${it.lane / n})`;
+          node.style.width = `calc((100% - ${gutter}px) / ${n} - 3px)`;
+          node.style.right = 'auto';
+        }
+        if (!it.placed) col.append(node);
+      }
+    group = [];
+  };
+  for (const it of items) {
+    if (group.length && it.a >= groupEnd) flush();
+    group.push(it);
+    groupEnd = Math.max(groupEnd, it.b);
+  }
+  if (group.length) flush();
 
   const card = el('section', 'su-day' + (i === 0 ? ' is-today' : '') + (i < 0 ? ' is-past' : '') + (wide ? ' is-wide' : ''));
   card.dataset.day = key;

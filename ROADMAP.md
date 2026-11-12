@@ -140,6 +140,11 @@
 - [x] The blur's Confirm / Done / Tomorrow can no longer be hidden by a reminder or prompt (screens could stay blurred).
 - [x] Settings cards pack into columns: no gaps under short cards.
 
+## v0.23 — Calendar-clean Planner
+- [x] Click an empty spot in the Planner to create a task right there.
+- [x] One card per task: dashed plan until started, then a solid card for the real time with the plan as a faint outline behind it; overlaps go side by side.
+- [x] Windows on the main monitor fade in (no white blink) and hide instead of closing.
+
 ## Parked
 - [x] ~~Full-screen announcements~~ → became the v0.7 blur for "Still on this?" and end of day
 

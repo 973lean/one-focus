@@ -704,20 +704,22 @@ label.st-row { cursor: pointer; }
 .mode-setup .panel--settings { inset: 0; padding: 28px 36px 28px; }
 
 /* ---------- Planner: plan vs what really happened ---------- */
-.su-block.is-plan { background: rgba(245, 245, 244, 0.05); box-shadow: inset 0 0 0 1px rgba(245, 245, 244, 0.2); }
-.su-block.is-plan:hover { background: rgba(245, 245, 244, 0.09); }
-.su-real {
-  position: absolute;
-  left: 5px;
-  right: 5px;
-  z-index: 2;
-  border-radius: 6px;
-  background: rgba(245, 245, 244, 0.2);
-  pointer-events: none;
-}
-.su-real span { position: absolute; right: 7px; bottom: 3px; font-size: 10px; color: var(--fg); opacity: 0.8; font-variant-numeric: tabular-nums; }
-.su-real.is-live { background: rgba(245, 245, 244, 0.26); }
-.su-real.is-under { background: rgba(110, 196, 140, 0.32); }
+.su-block.is-plan { background: rgba(245, 245, 244, 0.03); box-shadow: none; border: 1px dashed rgba(245, 245, 244, 0.3); padding: 4px 8px; }
+.su-block.is-plan:hover { background: rgba(245, 245, 244, 0.07); }
+.su-block.is-plan.is-done { opacity: 0.55; }
+/* What really happened: solid, no outline, the title lives here. */
+/* Opaque, so the plan outline only peeks out where the plan was longer. */
+.su-block.is-real { z-index: 2; background: #2F2F2F; box-shadow: none; cursor: default; }
+.su-block.is-real.is-done { opacity: 1; }
+.su-block.is-real.is-done .t { color: var(--fg-secondary); text-decoration: none; }
+.su-block.is-real:hover { filter: brightness(1.12); }
+.su-block.is-real.is-live { background: #3F3F3F; }
+.su-block.is-real.is-under { background: #25382C; }
+.su-block.is-real.is-running { box-shadow: inset 2px 0 0 var(--fg); }
+.su-block.is-real.is-short .t { font-size: 12px; }
+/* The plan a started task left behind: faint dashed, no text. */
+.su-planghost { position: absolute; left: 0; right: 0; z-index: 1; border: 1px dashed rgba(245, 245, 244, 0.18); border-radius: 8px; pointer-events: none; }
+.su-day.is-wide .su-planghost { right: 14px; }
 .su-warnmark { position: absolute; top: 3px; right: 6px; z-index: 3; font-size: 12px; line-height: 1; cursor: pointer; filter: grayscale(0.2); }
 .su-block.is-behind { box-shadow: inset 0 0 0 1px rgba(232, 178, 82, 0.55); }
 .su-warn { color: var(--fg); border-color: rgba(232, 178, 82, 0.45); }
@@ -885,3 +887,11 @@ input[type="time"]::-webkit-calendar-picker-indicator { opacity: 0.35; cursor: p
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; }
 }
+
+/* Click-to-create on the Planner: a field at the clicked time. */
+.su-col { cursor: default; }
+.su-draft { position: absolute; left: 0; right: 10px; z-index: 4; display: flex; flex-direction: column; justify-content: center; gap: 1px; padding: 0 10px; border-radius: 8px; background: var(--bg); box-shadow: inset 0 0 0 1px var(--fg-tertiary); animation: sheet-in 160ms var(--ease); }
+.su-draft input { font: inherit; font-size: 13px; color: var(--fg); background: transparent; border: 0; outline: 0; padding: 0; min-width: 0; }
+.su-draft input::placeholder { color: var(--fg-tertiary); }
+.su-draft .w { font-size: 11px; color: var(--fg-tertiary); font-variant-numeric: tabular-nums; }
+.su-draft.is-saving { opacity: 0.6; }

@@ -913,6 +913,22 @@ ipcMain.handle('plan:set', async (_e, id, plan) => {
   return snapshot();
 });
 
+// Click on an empty spot in the Planner: a new task, already planned there.
+ipcMain.handle('plan:add', async (_e, rawTitle, plan) => {
+  const title = String(rawTitle || '').trim().slice(0, 1024);
+  if (!title || !plan || Number.isNaN(Date.parse(plan.start)) || !client || !state.google.listId) return snapshot();
+  const start = new Date(plan.start);
+  const mins = Math.min(Math.max(Math.round(+plan.mins / 15) * 15 || 30, 15), 12 * 60);
+  try {
+    const last = today.open[today.open.length - 1];
+    const t = await client.insert(state.google.listId, { title, due: localDate(start) + 'T00:00:00.000Z' }, last && last.id);
+    state.taskMeta['g:' + t.id] = { plan: { start: start.toISOString(), mins }, goal: new Date(start.getTime() + mins * 60e3).toISOString() };
+    store.save(state);
+  } catch {}
+  await resync();
+  return snapshot();
+});
+
 // Running over: push the current goal and every goal planned after it.
 ipcMain.handle('goals:shift', (_e, raw) => {
   const ms = Number(raw);
