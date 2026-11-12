@@ -112,7 +112,6 @@ function tick() {
   clockEl.dateTime = now.toISOString();
   $('date').textContent = dateFmt.format(now);
   renderMeta();
-  if (S && S.reminder && !$('remind').hidden) remindText();
   maybeJolt();
   maybeGoalJolt();
 }
@@ -193,14 +192,20 @@ function renderNow() {
       ? 'Nothing scheduled today'
       : 'Your list is empty';
   taskEl.title = S.connected ? 'Open today’s list' : 'Click to type what you’re doing';
-  // Reminder (block starting / running over) takes the buttons' place.
+  // Reminders pop up on the main monitor; here they only jolt.
   renderReminder();
-  if (holdpick || picking || claim || (S.reminder && S.settings.appMode !== 'light')) return renderMeta();
-  if (S.check === 'still') confirmEl.hidden = false;
-  else if (S.check === 'eod') {
+  // The blur's answer always shows: nothing may hide it, or the screens stay blurred.
+  if (S.check === 'still') {
+    confirmEl.hidden = false;
+    return renderMeta();
+  }
+  if (S.check === 'eod') {
     eodDoneEl.hidden = !(cur && cur.googleId);
     eodTomorrowEl.hidden = false;
-  } else if (hold) {
+    return renderMeta();
+  }
+  if (holdpick || picking || claim) return renderMeta();
+  if (hold) {
     backEl.hidden = false;
     backEl.textContent = S.held ? 'Back to: ' + S.held.title : 'End hold';
     backEl.title = backEl.textContent;
@@ -2460,35 +2465,13 @@ if (setupMode) {
 
 // ---------- Reminders on Now: a planned block starts / running over ----------
 let shownReminder = null;
-// Over-time text counts up live from the goal, rounded up so it never says 0m.
-function remindText() {
-  const r = S && S.reminder;
-  if (!r) return;
-  const over = r.goal ? Date.now() - Date.parse(r.goal) : r.overMs;
-  $('remind-text').textContent = r.kind === 'block' ? `Planned now · ${r.title}` : over < 60e3 ? `Planned time’s up · ${r.title}` : `${dur(Math.ceil(over / 60e3) * 60e3)} over · ${r.title}`;
-}
 function renderReminder() {
   const r = S.settings.appMode !== 'light' && S.reminder;
-  $('remind').hidden = !r || view !== 'now';
+  $('remind').hidden = true;
   if (!r) return (shownReminder = null);
   if (shownReminder === r.id) return;
   shownReminder = r.id;
   jolt();
-  remindText();
-  const acts = $('remind-acts');
-  acts.replaceChildren();
-  const btn = (label, action, main) => {
-    const b = el('button', 'act' + (main ? ' is-main' : ''), label);
-    b.addEventListener('click', async () => ((S = await api.reminderAct(action)), render()));
-    acts.append(b);
-  };
-  if (r.kind === 'block') btn('Start', 'start', true);
-  else {
-    btn('Done', 'done', true);
-    btn('+15m', 'extend');
-  }
-  btn('Plan', 'plan');
-  btn('×', 'dismiss');
 }
 
 api.onState((s) => {

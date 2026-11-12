@@ -664,7 +664,9 @@ input::placeholder { color: var(--fg-tertiary); }
 .st-head { display: flex; justify-content: space-between; align-items: center; }
 .st-title { font-size: 22px; font-weight: 500; letter-spacing: -0.02em; color: var(--fg); }
 .app:not(.is-planner-win) .st-head .su-close { display: none; }
-.st-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 420px), 1fr)); gap: var(--space-3); align-items: start; }
+/* Cards pack into columns (no row gaps under short cards). */
+.st-grid { columns: 3 380px; column-gap: var(--space-3); }
+.st-grid > .st-card { break-inside: avoid; margin-bottom: var(--space-3); }
 .st-card { display: flex; flex-direction: column; gap: 4px; padding: 18px 20px 14px; border: 1px solid var(--hairline); border-radius: 14px; background: rgba(245, 245, 244, 0.02); }
 .st-h { font-size: 15px; font-weight: 500; color: var(--fg); margin-bottom: 6px; }
 .st-sub { font-size: 13px; color: var(--fg-secondary); line-height: 1.5; margin-bottom: 6px; }
@@ -694,7 +696,7 @@ label.st-row { cursor: pointer; }
 .st-row input[type="checkbox"]:checked { background: var(--fg-tertiary); }
 .st-row input[type="checkbox"]:checked::after { transform: translateX(14px); background: var(--fg); }
 /* Segmented control */
-.st-seg { display: inline-flex; flex-wrap: wrap; gap: 2px; padding: 2px; border: 1px solid var(--hairline); border-radius: 999px; }
+.st-seg { display: inline-flex; flex-wrap: nowrap; flex-shrink: 0; gap: 2px; padding: 2px; border: 1px solid var(--hairline); border-radius: 999px; }
 .st-seg .tab { font-size: 12px; padding: 5px 11px; border: 0; border-radius: 999px; color: var(--fg-secondary); }
 .st-seg .tab:hover { color: var(--fg); }
 .st-seg .tab[aria-selected="true"] { background: rgba(245, 245, 244, 0.12); color: var(--fg); border: 0; }

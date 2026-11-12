@@ -167,6 +167,7 @@ function push() {
 async function openCheck(kind) {
   if (check) return;
   check = kind;
+  if (reminder) answerReminder('dismiss');
   const displays = screen.getAllDisplays();
   let shots = [];
   try {
@@ -667,7 +668,50 @@ function checkAutoPlan() {
 
 // ---------- reminders: a planned block starts / the running task runs over ----------
 
-let reminder = null; // { id, kind: 'block' | 'over', taskId, title, overMs }
+let reminder = null; // { id, kind: 'block' | 'over', taskId, title, goal, overMs }
+let toastWin = null;
+
+// The reminder shows as a small popup in the bottom-right of the main monitor.
+// It never takes focus; it closes when answered, or by itself after 3 minutes.
+let toastTimer = null;
+function setReminder(r) {
+  reminder = r;
+  const wa = screen.getPrimaryDisplay().workArea;
+  const W = 380;
+  const H = 118;
+  const bounds = { x: wa.x + wa.width - W - 16, y: wa.y + wa.height - H - 16, width: W, height: H };
+  const send = () => toastWin && !toastWin.isDestroyed() && (toastWin.webContents.send('toast', r), toastWin.showInactive());
+  if (toastWin && !toastWin.isDestroyed()) {
+    toastWin.setBounds(bounds);
+    send();
+  } else {
+    toastWin = new BrowserWindow({
+      ...bounds,
+      frame: false,
+      show: false,
+      resizable: false,
+      minimizable: false,
+      maximizable: false,
+      fullscreenable: false,
+      skipTaskbar: true,
+      alwaysOnTop: true,
+      backgroundColor: '#0B0B0C',
+      webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false },
+    });
+    toastWin.setAlwaysOnTop(true, 'pop-up-menu');
+    toastWin.on('closed', () => (toastWin = null));
+    toastWin.webContents.once('did-finish-load', send);
+    toastWin.loadFile(path.join(__dirname, 'toast.html'));
+  }
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => reminder && reminder.id === r.id && answerReminder('dismiss'), 3 * 60e3);
+  return r;
+}
+function closeToast() {
+  clearTimeout(toastTimer);
+  if (toastWin && !toastWin.isDestroyed()) toastWin.destroy();
+  toastWin = null;
+}
 function remindFired(id) {
   const day = localDate();
   if (state.remindFired.date !== day) state.remindFired = { date: day, ids: [] };
@@ -681,7 +725,7 @@ function checkReminders() {
   if (state.settings.remindOver !== false && cm && cm.goal && now >= Date.parse(cm.goal)) {
     const slot = Math.floor((now - Date.parse(cm.goal)) / (15 * 60e3)); // again every 15 minutes
     const id = `over:${cur.key}:${cm.goal}:${slot}`;
-    if (!remindFired(id)) return (reminder = { id, kind: 'over', taskId: cur.googleId, title: cur.title, goal: cm.goal, overMs: now - Date.parse(cm.goal) });
+    if (!remindFired(id)) return setReminder({ id, kind: 'over', taskId: cur.googleId, title: cur.title, goal: cm.goal, overMs: now - Date.parse(cm.goal) });
   }
   if (state.settings.remindBlocks !== false)
     for (const t of today.open) {
@@ -689,13 +733,15 @@ function checkReminders() {
       if (!p || (cur && cur.googleId === t.id)) continue;
       const start = Date.parse(p.start);
       const id = `block:${t.id}:${p.start}`;
-      if (now >= start && now - start < 10 * 60e3 && !remindFired(id)) return (reminder = { id, kind: 'block', taskId: t.id, title: t.title });
+      if (now >= start && now - start < 10 * 60e3 && !remindFired(id)) return setReminder({ id, kind: 'block', taskId: t.id, title: t.title });
     }
 }
 
-ipcMain.handle('reminder:act', async (_e, action) => {
+ipcMain.handle('reminder:act', (_e, action) => answerReminder(action));
+async function answerReminder(action) {
   const r = reminder;
   reminder = null;
+  closeToast();
   if (!r) return snapshot();
   remindFired(r.id);
   state.remindFired.ids.push(r.id);
@@ -717,7 +763,7 @@ ipcMain.handle('reminder:act', async (_e, action) => {
   }
   push();
   return snapshot();
-});
+}
 
 // Items (Google subtasks) on a task: add, tick, rename, delete.
 ipcMain.handle('item:action', async (_e, parentId, action, itemId, value) => {

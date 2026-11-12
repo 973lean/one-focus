@@ -134,6 +134,12 @@
 - [x] No blink at start: windows show only after the first frame paints.
 - [x] Settings redesigned into roomy cards with switches; can open in the Planner window on the main monitor (gear in its bottom-right corner on hover).
 
+## v0.21–0.22 — Fixes
+- [x] Lengths on every card (Xh XXm); over-time counts up live.
+- [x] Reminders are a popup in the bottom-right of the main monitor (never steals focus; closes when answered or after 3 minutes). The Now screen only jolts, so the idle "Count it" prompt is never covered.
+- [x] The blur's Confirm / Done / Tomorrow can no longer be hidden by a reminder or prompt (screens could stay blurred).
+- [x] Settings cards pack into columns: no gaps under short cards.
+
 ## Parked
 - [x] ~~Full-screen announcements~~ → became the v0.7 blur for "Still on this?" and end of day
 
