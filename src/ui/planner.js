@@ -549,7 +549,10 @@ function dayCard(i, now, h0, h1, { wide }) {
       blk.style.cursor = 'grab';
       blk.addEventListener('pointerdown', (e) => beginDrag(e, { kind: 'task', task: t, mode: 'move', mins: p.mins, start: p.start, block: blk }));
     }
-    items.push({ a: Math.min(pa, ra), b: Math.max(pb, rb), nodes: [ghost, blk] });
+    // Finished: only what really happened. The leftover plan of a task done
+    // early would just look like time still booked.
+    if (t.done) items.push({ a: ra, b: rb, nodes: [blk] });
+    else items.push({ a: Math.min(pa, ra), b: Math.max(pb, rb), nodes: [ghost, blk] });
   }
   for (const n of col.querySelectorAll('.su-block.is-break, .su-block.is-ghost')) {
     const a = h0 * 60 + parseFloat(n.style.top) / (HOUR / 60);
