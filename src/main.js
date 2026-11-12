@@ -388,6 +388,8 @@ function createWindow() {
     },
   });
   win.loadFile(path.join(__dirname, 'index.html'));
+  // The Planner and the popup stay alive hidden; closing One Focus itself quits.
+  win.on('closed', () => app.quit());
   setTimeout(() => win && !win.isDestroyed() && !win.isVisible() && win.show(), 2500); // fallback
   win.on('focus', () => sync());
 
@@ -498,6 +500,27 @@ ipcMain.handle('review:open', () => {
 // clicking anywhere outside it closes it (setting).
 let setupWin = null;
 const light = () => state.settings.appMode === 'light';
+let quitting = false;
+
+// Windows paints a new or re-shown window for a frame before its content:
+// that's the white blink. Show it fully transparent, then fade it in.
+function fadeIn(w, focus) {
+  if (!w || w.isDestroyed()) return;
+  w.setOpacity(0);
+  if (focus) {
+    w.show();
+    w.focus();
+  } else w.showInactive();
+  let o = 0;
+  const step = () => {
+    if (w.isDestroyed()) return;
+    o = Math.min(1, o + 0.25);
+    w.setOpacity(o);
+    if (o < 1) setTimeout(step, 16);
+  };
+  setTimeout(step, 50);
+}
+
 function openSetupWindow(tab = 'week') {
   if (light() && tab !== 'settings') return;
   const inline = tab === 'settings' ? state.settings.settingsMode !== 'modal' : state.settings.setupMode === 'inline';
@@ -509,8 +532,9 @@ function openSetupWindow(tab = 'week') {
   }
   if (setupWin && !setupWin.isDestroyed()) {
     setupWin.webContents.send('planner:tab', tab);
-    setupWin.show();
-    setupWin.focus();
+    // Kept alive while hidden, so it comes back instantly on the right tab.
+    if (!setupWin.isVisible()) setTimeout(() => fadeIn(setupWin, true), 30);
+    else setupWin.focus();
     return;
   }
   const wa = screen.getPrimaryDisplay().workArea;
@@ -532,10 +556,16 @@ function openSetupWindow(tab = 'week') {
   });
   setupWin.loadFile(path.join(__dirname, 'index.html'), { query: { mode: 'setup', tab } });
   // Shown when the page says it has drawn (ui:ready), so it appears all at once.
-  setTimeout(() => setupWin && !setupWin.isDestroyed() && !setupWin.isVisible() && (setupWin.show(), setupWin.focus()), 2500);
+  setTimeout(() => setupWin && !setupWin.isDestroyed() && !setupWin.isVisible() && fadeIn(setupWin, true), 2500);
+  // Closing only hides it (until the app quits): reopening is instant, no reload.
+  setupWin.on('close', (e) => {
+    if (quitting) return;
+    e.preventDefault();
+    setupWin.hide();
+  });
   setupWin.on('blur', () =>
     setTimeout(() => {
-      if (setupWin && !setupWin.isDestroyed() && !setupWin.isFocused() && state.settings.plannerBlurClose !== false) setupWin.close();
+      if (setupWin && !setupWin.isDestroyed() && !setupWin.isFocused() && setupWin.isVisible() && state.settings.plannerBlurClose !== false) setupWin.hide();
     }, 200)
   );
   setupWin.on('closed', () => (setupWin = null));
@@ -545,10 +575,7 @@ ipcMain.handle('setup:open', (_e, tab) => openSetupWindow(['today', 'settings'].
 // A page has drawn its first frame: show its window now (no white blink).
 ipcMain.on('ui:ready', (e) => {
   const w = BrowserWindow.fromWebContents(e.sender);
-  if (w && !w.isVisible()) {
-    w.show();
-    if (w === setupWin) w.focus();
-  }
+  if (w && !w.isVisible()) fadeIn(w, w === setupWin);
 });
 
 // Re-plan several blocks at once ([{ id, start, mins }]); dates follow in the background.
@@ -680,7 +707,11 @@ function setReminder(r) {
   const W = 380;
   const H = 118;
   const bounds = { x: wa.x + wa.width - W - 16, y: wa.y + wa.height - H - 16, width: W, height: H };
-  const send = () => toastWin && !toastWin.isDestroyed() && (toastWin.webContents.send('toast', r), toastWin.showInactive());
+  const send = () => {
+    if (!toastWin || toastWin.isDestroyed()) return;
+    toastWin.webContents.send('toast', r);
+    if (!toastWin.isVisible()) setTimeout(() => fadeIn(toastWin, false), 30);
+  };
   if (toastWin && !toastWin.isDestroyed()) {
     toastWin.setBounds(bounds);
     send();
@@ -709,8 +740,7 @@ function setReminder(r) {
 }
 function closeToast() {
   clearTimeout(toastTimer);
-  if (toastWin && !toastWin.isDestroyed()) toastWin.destroy();
-  toastWin = null;
+  if (toastWin && !toastWin.isDestroyed()) toastWin.hide();
 }
 function remindFired(id) {
   const day = localDate();
@@ -1236,7 +1266,7 @@ app.whenReady().then(() => {
   });
 });
 
-app.on('before-quit', () => tracker && tracker.pause('quit'));
+app.on('before-quit', () => ((quitting = true), tracker && tracker.pause('quit')));
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
