@@ -150,6 +150,11 @@
 - [x] Break card removed from the Planner (day-structure breaks stay).
 - [x] Clicking outside the Planner only closes it: a backdrop behind it catches that click (light dim on the main monitor).
 
+## v0.25 — Features list, subtask times
+- [x] Settings → Features: every feature with its own switch (Planner, Click to create, Behind plan, Colour time, Reminder popups, Subtasks, Goal time, Hold, Log, Count idle time, Since/Elapsed, Jolt, Still on this?, End of day, Category/Rating after Done, Hop off).
+- [x] Subtasks (Google subtasks) each get an optional time; the Planner sheet totals them and Now shows time left on the remaining ones.
+- [x] Planner re-centres on the main monitor every time it opens.
+
 ## Parked
 - [x] ~~Full-screen announcements~~ → became the v0.7 blur for "Still on this?" and end of day
 

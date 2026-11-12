@@ -57,6 +57,7 @@ function snapshot() {
     todayDate: localDate(),
     goals: goalsFor([cur, held, ...today.open.map((t) => ({ key: 'g:' + t.id }))]),
     plans: plansFor([...today.open, ...today.done]),
+    itemMins: Object.fromEntries(Object.entries(state.taskMeta).filter(([k, m]) => k.startsWith('i:') && m.mins).map(([k, m]) => [k.slice(2), m.mins])),
     breaks: state.breaks,
     web: {
       on: !!state.web.token,
@@ -251,7 +252,7 @@ function beforeWorkday(d = new Date()) {
 function checkDue() {
   const cur = state.current;
   if (check || !cur || isHold(cur) || tracker.away || tracker.pauses.size) return;
-  const eod = state.settings.endOfDay;
+  const eod = feat('endOfDay') && state.settings.endOfDay;
   if (eod) {
     const [h, m] = eod.split(':').map(Number);
     const at = new Date();
@@ -265,7 +266,7 @@ function checkDue() {
   }
   const n = state.settings.checkMinutes;
   const from = Math.max(Date.parse(cur.since), Date.parse(state.checkFrom || 0) || 0);
-  if (n && Date.now() - from >= n * 60e3) openCheck('still');
+  if (n && feat('check') && Date.now() - from >= n * 60e3) openCheck('still');
 }
 
 // ---------- Google sync ----------
@@ -500,6 +501,9 @@ ipcMain.handle('review:open', () => {
 // clicking anywhere outside it closes it (setting).
 let setupWin = null;
 const light = () => state.settings.appMode === 'light';
+// Features you can switch off one by one (Settings → Features). On unless set false.
+const FEATURES = ['planner', 'log', 'hold', 'goals', 'items', 'reminders', 'behind', 'clickCreate', 'jolt', 'check', 'endOfDay', 'idleClaim', 'hopOff'];
+const feat = (k) => !(state.settings.features && state.settings.features[k] === false);
 let quitting = false;
 
 // Windows paints a new or re-shown window for a frame before its content:
@@ -564,13 +568,24 @@ function hideBackdrop() {
   for (const b of backdrops) if (!b.isDestroyed()) b.destroy();
   backdrops = [];
 }
+// Centred on the main monitor every time it opens. Set twice: Windows can
+// rescale a window's position when monitors use different scaling.
+function centerPlanner() {
+  if (!setupWin || setupWin.isDestroyed()) return;
+  const wa = screen.getPrimaryDisplay().workArea;
+  const width = Math.round(Math.min(wa.width * 0.88, 1560));
+  const height = Math.round(Math.min(wa.height * 0.88, 1000));
+  setupWin.setBounds({ x: wa.x + Math.round((wa.width - width) / 2), y: wa.y + Math.round((wa.height - height) / 2), width, height });
+}
 function showPlanner() {
+  centerPlanner();
   showBackdrop();
   fadeIn(setupWin, true);
+  setTimeout(centerPlanner, 0);
 }
 
 function openSetupWindow(tab = 'week') {
-  if (light() && tab !== 'settings') return;
+  if ((light() || !feat('planner')) && tab !== 'settings') return;
   const inline = tab === 'settings' ? state.settings.settingsMode !== 'modal' : state.settings.setupMode === 'inline';
   if (inline) {
     win.show();
@@ -802,7 +817,7 @@ function remindFired(id) {
   return state.remindFired.ids.includes(id);
 }
 function checkReminders() {
-  if (light() || reminder || check || tracker.away || tracker.pauses.size) return;
+  if (light() || !feat('reminders') || reminder || check || tracker.away || tracker.pauses.size) return;
   const now = Date.now();
   const cur = state.current && !isHold(state.current) ? state.current : null;
   const cm = cur && state.taskMeta[cur.key];
@@ -863,6 +878,15 @@ ipcMain.handle('item:action', async (_e, parentId, action, itemId, value) => {
       await client.patch(listId, itemId, it && it.done ? { status: 'needsAction', completed: null } : { status: 'completed' });
     } else if (action === 'rename' && String(value || '').trim()) await client.patch(listId, itemId, { title: String(value).trim() });
     else if (action === 'delete') await client.remove(listId, itemId);
+    else if (action === 'mins') {
+      // A time for this item: local only (Google subtasks have no duration).
+      const n = Math.round(+value);
+      if (n > 0 && n <= 480) state.taskMeta['i:' + itemId] = { mins: n };
+      else delete state.taskMeta['i:' + itemId];
+      store.save(state);
+      push();
+      return snapshot();
+    }
   } catch {}
   await resync();
   return snapshot();
@@ -1222,6 +1246,11 @@ ipcMain.handle('settings:update', async (_e, patch) => {
   for (const k of allowed) if (k in patch) state.settings[k] = typeof patch[k] === 'string' ? patch[k].trim() : !!patch[k];
   for (const k of ['plannerBlurClose', 'shortcuts', 'remindBlocks', 'remindOver', 'colorTime'])
     if (k in patch) state.settings[k] = !!patch[k];
+  if (patch.features && typeof patch.features === 'object') {
+    const f = { ...(state.settings.features || {}) };
+    for (const [k, v] of Object.entries(patch.features)) if (FEATURES.includes(k)) f[k] = !!v;
+    state.settings.features = f;
+  }
   if ('popupStyle' in patch) state.settings.popupStyle = ['corner', 'bar', 'center'].includes(patch.popupStyle) ? patch.popupStyle : 'corner';
   if ('settingsMode' in patch) state.settings.settingsMode = patch.settingsMode === 'modal' ? 'modal' : 'inline';
   if ('appMode' in patch) state.settings.appMode = patch.appMode === 'light' ? 'light' : 'full';

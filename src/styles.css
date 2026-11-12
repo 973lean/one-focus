@@ -895,3 +895,16 @@ input[type="time"]::-webkit-calendar-picker-indicator { opacity: 0.35; cursor: p
 .su-draft input::placeholder { color: var(--fg-tertiary); }
 .su-draft .w { font-size: 11px; color: var(--fg-tertiary); font-variant-numeric: tabular-nums; }
 .su-draft.is-saving { opacity: 0.6; }
+
+/* Features switched off (Settings → Features). */
+.no-planner .menu__item[data-view="setup"], .no-log .menu__item[data-view="log"],
+.no-hold #hold, .no-goals #goal, .no-goals #ring, .no-hopOff #hop,
+.no-behind #su-behind, .no-behind .su-warnmark { display: none !important; }
+#s-features .st-row:first-child { border-top: 0; }
+
+/* Subtask times: a quiet chip; tap to pick from a short row. */
+.su-items .it-time { margin-left: auto; font-size: 11px; color: var(--fg-tertiary); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.su-items .it-time.is-set { color: var(--fg-secondary); }
+.su-items .it-pick { margin-left: auto; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 2px; }
+.su-items .it-pick .act { font-size: 11px; padding: 2px 6px; color: var(--fg-tertiary); }
+.su-items .it-pick .act.is-on, .su-items .it-pick .act:hover { color: var(--fg); }

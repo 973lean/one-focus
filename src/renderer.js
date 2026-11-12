@@ -6,6 +6,8 @@ let S = null; // latest state from the main process
 let view = 'now';
 let logRange = 'today';
 let logData = null;
+// Features switched off in Settings → Features (on unless set false).
+const feat = (k) => !(S && S.settings.features && S.settings.features[k] === false);
 let logSig = '';
 
 // ---------- formatting ----------
@@ -112,7 +114,7 @@ function tick() {
   clockEl.dateTime = now.toISOString();
   $('date').textContent = dateFmt.format(now);
   renderMeta();
-  maybeJolt();
+  if (feat('jolt')) maybeJolt();
   maybeGoalJolt();
 }
 
@@ -142,7 +144,10 @@ function renderMeta() {
   if (S.settings.showSince) parts.push(hm(cur.since));
   if (S.settings.showElapsed) parts.push(dur(S.tracked + (S.open && S.open.key === cur.key ? live() : 0)));
   const ot = cur.googleId && S.today.open.find((x) => x.id === cur.googleId);
-  if (ot && ot.items && ot.items.length && S.settings.appMode !== 'light') parts.push(`${ot.items.filter((x) => x.done).length}/${ot.items.length} items`);
+  if (ot && ot.items && ot.items.length && S.settings.appMode !== 'light' && feat('items')) {
+    const left = ot.items.filter((x) => !x.done).reduce((a, x) => a + ((S.itemMins || {})[x.id] || 0), 0);
+    parts.push(`${ot.items.filter((x) => x.done).length}/${ot.items.length} items` + (left ? ` · ${hLen(left)} left` : ''));
+  }
   const g = goalOf(cur.key);
   const mode = S.settings.goalDisplay || 'ring';
   const left = g ? Date.parse(g) - Date.now() : 0;
@@ -266,7 +271,7 @@ async function startWithClaim(id) {
   const idleMs = S.open && S.open.key === 'idle' ? live() : 0;
   const r = await api.start(id);
   if (r && r.error) return r;
-  if (idleMs >= 5 * 60e3) {
+  if (idleMs >= 5 * 60e3 && feat('idleClaim')) {
     clearTimeout(claim && claim.timer);
     claim = { timer: setTimeout(endClaim, 20000) };
     $('claim-text').textContent = `Idle ${dur(idleMs)} before this. Count it as this task?`;
@@ -451,7 +456,7 @@ document.addEventListener('keydown', (e) => e.key === 'Escape' && wrap && view =
 
 // ---------- Goal: finish this task by a time, picked on a day timeline ----------
 
-const goalOf = (key) => (S && S.goals && key && S.goals[key]) || null;
+const goalOf = (key) => (S && feat('goals') && S.goals && key && S.goals[key]) || null;
 // The running task, or the queued one if nothing runs.
 const goalKey = () => (S.current && !isHold(S.current) ? S.current.key : S.next ? 'g:' + S.next.id : null);
 
@@ -1416,6 +1421,7 @@ function actualSpan(key, day) {
 // Behind plan today: blocks whose start has passed without being started, or
 // that the running task has already pushed past. Returns ids and how far behind.
 function behindToday() {
+  if (!feat('behind')) return { ids: new Set(), from: null, by: 0 };
   const now = Date.now();
   const ids = new Set();
   let from = null;
@@ -1529,7 +1535,7 @@ function renderSetup() {
     for (const t of unplanned) {
       const m = metaOf('g:' + t.id);
       const tag = t.due ? (t.due === S.todayDate ? 'today' : t.due < S.todayDate ? 'overdue' : shortDay.format(new Date(t.due + 'T12:00:00'))) : null;
-      const items = t.items && t.items.length ? `${t.items.filter((x) => x.done).length}/${t.items.length} items` : null;
+      const items = feat('items') && t.items && t.items.length ? `${t.items.filter((x) => x.done).length}/${t.items.length} items` : null;
       const bits = [hLen(m.mins || 30), m.repeat ? '↻ ' + repeatLabel(m.repeat, t.due || S.todayDate) : null, items, tag].filter(Boolean);
       const c = card('', t.title, bits.join(' · '));
       titleWithSeries(c.querySelector('.t'), t);
@@ -1578,7 +1584,7 @@ function dayCard(i, now, h0, h1, { wide }) {
   col.style.height = (h1 - h0) * HOUR + 'px';
   // Click an empty spot: type a task right there (like a calendar).
   col.addEventListener('click', (e) => {
-    if (suDraft || e.target.closest('.su-block, .su-break, .su-actual, .su-draft, button')) return;
+    if (suDraft || !feat('clickCreate') || e.target.closest('.su-block, .su-break, .su-actual, .su-draft, button')) return;
     if (S.settings.appMode === 'light' || !S.connected) return;
     const y = e.clientY - col.getBoundingClientRect().top;
     const min = Math.min(Math.max(h0 * 60 + Math.floor(((y / HOUR) * 60) / 15) * 15, h0 * 60), h1 * 60 - 15);
@@ -2063,12 +2069,25 @@ function renderSheet() {
       const x = el('button', 'act x', '×');
       x.title = 'Remove item';
       x.addEventListener('click', async () => ((S = await api.item(t.id, 'delete', it.id)), render()));
-      li.append(check, el('span', 't', it.title), x);
+      // A time for each item: tap to pick, tap the picked one again to clear.
+      const im = (S.itemMins || {})[it.id];
+      const time = el('button', 'act it-time' + (im ? ' is-set' : ''), im ? hLen(im) : '+ time');
+      time.title = 'Time for this item';
+      time.addEventListener('click', () => {
+        const pick = el('span', 'it-pick');
+        for (const n of [5, 10, 15, 20, 30, 45, 60, 90]) {
+          const c = el('button', 'act' + (n === im ? ' is-on' : ''), n < 60 ? n + 'm' : n / 60 + 'h' + (n % 60 ? ' ' + (n % 60) + 'm' : ''));
+          c.addEventListener('click', async () => ((S = await api.item(t.id, 'mins', it.id, n === im ? 0 : n)), render()));
+          pick.append(c);
+        }
+        time.replaceWith(pick);
+      });
+      li.append(check, el('span', 't', it.title), time, x);
       items.append(li);
     }
     const addItem = el('input');
     addItem.type = 'text';
-    addItem.placeholder = 'Add an item';
+    addItem.placeholder = 'Add a subtask';
     addItem.addEventListener('keydown', async (e) => {
       if (e.key !== 'Enter' || !addItem.value.trim()) return;
       const v = addItem.value.trim();
@@ -2076,12 +2095,14 @@ function renderSheet() {
       S = await api.item(t.id, 'add', null, v);
       render();
       setTimeout(() => {
-        const again = document.querySelector('#su-sheet input[placeholder="Add an item"]');
+        const again = document.querySelector('#su-sheet input[placeholder="Add a subtask"]');
         if (again) again.focus();
       }, 50);
     });
     const doneItems = (t.items || []).filter((x) => x.done).length;
-    sheet.append(el('span', 'label', t.items && t.items.length ? `Items · ${doneItems}/${t.items.length}` : 'Items'), items, addItem);
+    const itemsTime = (t.items || []).reduce((a, x) => a + ((S.itemMins || {})[x.id] || 0), 0);
+    if (feat('items'))
+      sheet.append(el('span', 'label', (t.items && t.items.length ? `Subtasks · ${doneItems}/${t.items.length}` : 'Subtasks') + (itemsTime ? ` · ${hLen(itemsTime)}` : '')), items, addItem);
     if (m.repeat) sheet.append(el('p', 'hint', 'When you finish it, the next one is added with the same time of day.'));
     sheet.append(acts);
     return;
@@ -2425,7 +2446,50 @@ $('g-disconnect').addEventListener('click', async () => {
   render();
 });
 
+const FEATURE_LIST = [
+  ['planner', 'Planner', 'Plan Today and Week on your main monitor.'],
+  ['clickCreate', 'Click to create', 'Click an empty spot in the Planner to add a task there.'],
+  ['behind', 'Behind plan', '⚠️ marks and re-plan when the day slips.'],
+  ['=colorTime', 'Colour time', 'Overrun fades to red; done under time stays green.'],
+  ['reminders', 'Reminder popups', 'When a planned block starts or you run over.'],
+  ['items', 'Subtasks', 'Checklist steps inside a task, each with its own time.'],
+  ['goals', 'Goal time', 'A finish-by time with a ring.'],
+  ['hold', 'Hold', 'Pause a task for a call or an interruption.'],
+  ['log', 'Log', 'Where your time went.'],
+  ['idleClaim', 'Count idle time', 'Offer to add forgotten idle time to the task you start.'],
+  ['=showSince', 'When the task started', 'Under the task on Now.'],
+  ['=showElapsed', 'Time on task', 'Under the task on Now.'],
+  ['jolt', 'Jolt', 'A blue flash every so often so your eye comes back.'],
+  ['check', 'Still on this?', 'Screens blur after a long run until you confirm.'],
+  ['endOfDay', 'End of day check', 'Done or Tomorrow for a task still running.'],
+  ['=askCategory', 'Category after Done', 'Pick what kind of work it was.'],
+  ['=askRating', 'Rating after Done', 'Focus and vibe, 1–5.'],
+  ['hopOff', 'Hop off', 'A clean exit when the day’s tasks are done.'],
+];
+function renderFeatures() {
+  const box = $('s-features');
+  if (!box || box.contains(document.activeElement)) return;
+  box.replaceChildren();
+  for (const [k, name, desc] of FEATURE_LIST) {
+    const own = k.startsWith('=');
+    const key = own ? k.slice(1) : k;
+    const row = el('label', 'st-row');
+    const l = el('div', 'st-l');
+    l.append(el('span', 'st-name', name), el('span', 'st-desc', desc));
+    const input = el('input');
+    input.type = 'checkbox';
+    input.checked = own ? !!S.settings[key] : feat(key);
+    input.addEventListener('change', async () => {
+      S = await api.updateSettings(own ? { [key]: input.checked } : { features: { [key]: input.checked } });
+      render();
+    });
+    row.append(l, input);
+    box.append(row);
+  }
+}
+
 function renderSettings() {
+  renderFeatures();
   if (!S) return;
   const s = S.settings;
   for (const [id, key] of Object.entries(fields)) if (document.activeElement !== $(id)) $(id).value = s[key] || '';
@@ -2555,8 +2619,12 @@ function renderReminder() {
   jolt();
 }
 
+function featureClasses() {
+  for (const [k] of FEATURE_LIST) if (!k.startsWith('=')) document.body.classList.toggle('no-' + k, !feat(k));
+}
 api.onState((s) => {
   S = s;
+  featureClasses();
   document.body.classList.toggle('is-light', s.settings.appMode === 'light');
   render();
   if (view === 'log' || (view === 'today' && todayTab === 'map')) loadLog();
@@ -2564,6 +2632,7 @@ api.onState((s) => {
 
 api.getState().then((s) => {
   S = s;
+  featureClasses();
   document.body.classList.toggle('is-light', s.settings.appMode === 'light');
   const bootTab = new URLSearchParams(location.search).get('tab');
   setView(setupMode ? (bootTab === 'settings' ? 'settings' : 'setup') : 'now');
