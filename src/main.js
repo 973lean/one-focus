@@ -681,7 +681,7 @@ function checkReminders() {
   if (state.settings.remindOver !== false && cm && cm.goal && now >= Date.parse(cm.goal)) {
     const slot = Math.floor((now - Date.parse(cm.goal)) / (15 * 60e3)); // again every 15 minutes
     const id = `over:${cur.key}:${cm.goal}:${slot}`;
-    if (!remindFired(id)) return (reminder = { id, kind: 'over', taskId: cur.googleId, title: cur.title, overMs: now - Date.parse(cm.goal) });
+    if (!remindFired(id)) return (reminder = { id, kind: 'over', taskId: cur.googleId, title: cur.title, goal: cm.goal, overMs: now - Date.parse(cm.goal) });
   }
   if (state.settings.remindBlocks !== false)
     for (const t of today.open) {

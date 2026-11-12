@@ -6,6 +6,7 @@ let S = null; // latest state from the main process
 let view = 'now';
 let logRange = 'today';
 let logData = null;
+let logSig = '';
 
 // ---------- formatting ----------
 
@@ -111,6 +112,7 @@ function tick() {
   clockEl.dateTime = now.toISOString();
   $('date').textContent = dateFmt.format(now);
   renderMeta();
+  if (S && S.reminder && !$('remind').hidden) remindText();
   maybeJolt();
   maybeGoalJolt();
 }
@@ -145,7 +147,7 @@ function renderMeta() {
   const g = goalOf(cur.key);
   const mode = S.settings.goalDisplay || 'ring';
   const left = g ? Date.parse(g) - Date.now() : 0;
-  if (g && mode === 'text') parts.push(left >= 0 ? dur(left) + ' left' : dur(-left) + ' over');
+  if (g && mode === 'text') parts.push(left >= 0 ? dur(left) + ' left' : dur(Math.max(60e3, Math.ceil(-left / 60e3) * 60e3)) + ' over');
   metaText.textContent = parts.join(' · ');
   if (g) metaEl.title = `Goal ${hm(g)} · ${left >= 0 ? dur(left) + ' left' : dur(-left) + ' over'}`;
   if (g && mode !== 'text') {
@@ -1334,6 +1336,8 @@ const toMin = (hhmm) => {
   const [h, m] = hhmm.split(':').map(Number);
   return h * 60 + m;
 };
+// Card lengths read the same everywhere: 0h 45m, 2h 15m.
+const hLen = (mins) => `${Math.floor(Math.round(mins) / 60)}h ${String(Math.round(mins) % 60).padStart(2, '0')}m`;
 const lenLabel = (m) => (m % 60 ? (m > 60 ? Math.floor(m / 60) + 'h ' + (m % 60) + 'm' : m + 'm') : m / 60 + 'h');
 const dateAt = (dayKey, minutes) => {
   const [y, mo, d] = dayKey.split('-').map(Number);
@@ -1469,8 +1473,10 @@ function renderSetup() {
   $('view-setup').classList.toggle('is-modal', setupMode);
   $('view-setup').dataset.tab = planTab;
   document.querySelectorAll('.su-tab').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === planTab)));
-  if (Date.now() - logFetched > 30e3) {
+  const workSig = (S.current ? S.current.key + S.current.since : '') + '|' + S.today.done.length;
+  if (Date.now() - logFetched > 30e3 || workSig !== logSig) {
     logFetched = Date.now();
+    logSig = workSig;
     api.getLog().then((d) => ((logData = d), renderSetup()));
   }
 
@@ -1487,7 +1493,7 @@ function renderSetup() {
       const m = metaOf('g:' + t.id);
       const tag = t.due ? (t.due === S.todayDate ? 'today' : t.due < S.todayDate ? 'overdue' : shortDay.format(new Date(t.due + 'T12:00:00'))) : null;
       const items = t.items && t.items.length ? `${t.items.filter((x) => x.done).length}/${t.items.length} items` : null;
-      const bits = [lenLabel(m.mins || 30), m.repeat ? '↻ ' + repeatLabel(m.repeat, t.due || S.todayDate) : null, items, tag].filter(Boolean);
+      const bits = [hLen(m.mins || 30), m.repeat ? '↻ ' + repeatLabel(m.repeat, t.due || S.todayDate) : null, items, tag].filter(Boolean);
       const c = card('', t.title, bits.join(' · '));
       titleWithSeries(c.querySelector('.t'), t);
       c.addEventListener('pointerdown', (e) => beginDrag(e, { kind: 'task', task: t, mode: 'new', mins: m.mins || 30 }));
@@ -1613,7 +1619,7 @@ function dayCard(i, now, h0, h1, { wide }) {
     const blk = el('div', cls);
     blk.style.top = px(s.getHours() * 60 + s.getMinutes()) + 'px';
     blk.style.height = Math.max(p.mins * (HOUR / 60) - 2, 16) + 'px';
-    blk.append(titleWithSeries(el('span', 't', t.title), t), el('span', 'w', (p.mins <= 20 ? hm(s) : `${hm(s)}–${hm(pEnd)}`) + (m.repeat ? ' · ↻' : '')));
+    blk.append(titleWithSeries(el('span', 't', t.title), t), el('span', 'w', (p.mins <= 20 ? hm(s) : `${hm(s)}–${hm(pEnd)}`) + ` · ${hLen(p.mins)}` + (m.repeat ? ' · ↻' : '')));
     blk.title = t.title;
     if (!t.done) {
       blk.append(el('span', 'h'));
@@ -1647,8 +1653,8 @@ function dayCard(i, now, h0, h1, { wide }) {
           r.style.background = `linear-gradient(to bottom, rgba(245,245,244,0.2) 0%, rgba(245,245,244,0.2) ${from}%, rgba(228,104,96,0.5) 100%)`;
         } else if (t.done && took < p.mins * 60e3 * 0.8) r.classList.add('is-under');
       }
-      if (took >= 20 * 60e3) r.append(el('span', null, (real.live ? '' : 'took ') + dur(took)));
-      r.title = `${hm(real.start)}–${real.live ? 'now' : hm(real.end)} · ${dur(took)}`;
+      if (took >= 15 * 60e3) r.append(el('span', null, (real.live ? 'so far ' : 'took ') + hLen(took / 60e3)));
+      r.title = `${hm(real.start)}–${real.live ? 'now' : hm(real.end)} · ${hLen(took / 60e3)}`;
       col.append(r);
     }
   }
@@ -2454,6 +2460,13 @@ if (setupMode) {
 
 // ---------- Reminders on Now: a planned block starts / running over ----------
 let shownReminder = null;
+// Over-time text counts up live from the goal, rounded up so it never says 0m.
+function remindText() {
+  const r = S && S.reminder;
+  if (!r) return;
+  const over = r.goal ? Date.now() - Date.parse(r.goal) : r.overMs;
+  $('remind-text').textContent = r.kind === 'block' ? `Planned now · ${r.title}` : over < 60e3 ? `Planned time’s up · ${r.title}` : `${dur(Math.ceil(over / 60e3) * 60e3)} over · ${r.title}`;
+}
 function renderReminder() {
   const r = S.settings.appMode !== 'light' && S.reminder;
   $('remind').hidden = !r || view !== 'now';
@@ -2461,7 +2474,7 @@ function renderReminder() {
   if (shownReminder === r.id) return;
   shownReminder = r.id;
   jolt();
-  $('remind-text').textContent = r.kind === 'block' ? `Planned now · ${r.title}` : `${dur(r.overMs)} over · ${r.title}`;
+  remindText();
   const acts = $('remind-acts');
   acts.replaceChildren();
   const btn = (label, action, main) => {
