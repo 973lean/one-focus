@@ -155,6 +155,11 @@
 - [x] Subtasks (Google subtasks) each get an optional time; the Planner sheet totals them and Now shows time left on the remaining ones.
 - [x] Planner re-centres on the main monitor every time it opens.
 
+## v0.26 — Tidy, off-hours marks
+- [x] Tidy (Planner header): blocks not started yet keep their order and pack back to back inside the work windows of the Day structure, around started/done work and never before now. Today tab: today; Week tab: the next 7 days. Undo for 12 seconds.
+- [x] Blocks planned outside your work hours (or on a day off) are hatched and say "off hours".
+- [x] Ctrl+Alt+S opens Settings. Started tasks can be re-planned; a drag never opens the new-task field.
+
 ## Parked
 - [x] ~~Full-screen announcements~~ → became the v0.7 blur for "Still on this?" and end of day
 

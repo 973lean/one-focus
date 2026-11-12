@@ -150,6 +150,83 @@ function replanFromNow(b) {
   return out;
 }
 
+// Work windows for a day in minutes ([[from, to]]), from the day structure.
+// null = no structure set; [] = a day off.
+function workWindows(d) {
+  const ds = S.settings.dayStructure;
+  if (!ds) return null;
+  if ((d.getDay() === 0 || d.getDay() === 6) && !ds.weekends) return [];
+  const w = ds.work && ds.work.length ? ds.work : [[ds.start, ds.end]];
+  return w.map(([a, b]) => [toMin(a), toMin(b)]).filter(([a, b]) => b > a).sort((x, y) => x[0] - y[0]);
+}
+const outsideWork = (win, a, b) => feat('offHours') && !!win && !win.some(([x, y]) => a >= x && b <= y);
+
+// Tidy a day: blocks not started yet keep their order and pack back to back
+// into the work windows, around anything already started or done and never
+// before now. Whatever doesn't fit goes after the last window (marked off hours).
+function tidyDay(key) {
+  const d = new Date(key + 'T00:00:00');
+  const at = (ms) => Math.round((ms - d.getTime()) / 60e3);
+  const isToday = key === S.todayDate;
+  const cur = S.current && S.current.googleId;
+  const busy = [];
+  const movable = [];
+  for (const t of [...S.today.open, ...S.today.done.map((x) => ({ ...x, done: true }))]) {
+    const p = planOf('g:' + t.id);
+    if (!p || ld(new Date(p.start)) !== key) continue;
+    const a = at(Date.parse(p.start));
+    const real = actualSpan('g:' + t.id, d);
+    if (t.done || real || t.id === cur) {
+      busy.push([a, a + p.mins]);
+      if (real) busy.push([at(real.start), at(real.end) + (real.live ? p.mins : 0)]);
+    } else movable.push({ t, p, a });
+  }
+  if (!movable.length) return [];
+  movable.sort((x, y) => x.a - y.a);
+  let win = workWindows(d);
+  if (!win || !win.length) win = [[Math.min(...movable.map((x) => x.a)), 24 * 60]];
+  let cursor = isToday ? Math.ceil(at(Date.now()) / 5) * 5 : 0;
+  const out = [];
+  for (const x of movable) {
+    const len = x.p.mins;
+    let placed = null;
+    for (const [wa, wb] of win) {
+      let t0 = Math.max(wa, cursor);
+      for (let guard = 0; guard < 50 && t0 + len <= wb; guard++) {
+        const hit = busy.find(([ba, bb]) => t0 < bb && t0 + len > ba);
+        if (!hit) {
+          placed = t0;
+          break;
+        }
+        t0 = Math.ceil(hit[1] / 5) * 5;
+      }
+      if (placed !== null) break;
+    }
+    if (placed === null) placed = Math.max(cursor, ...busy.map(([, bb]) => bb), win[win.length - 1][1]);
+    busy.push([placed, placed + len]);
+    cursor = placed + len;
+    if (placed !== x.a) out.push({ id: x.t.id, start: new Date(d.getTime() + placed * 60e3).toISOString(), mins: len });
+  }
+  return out;
+}
+
+let tidyUndo = null; // { list, timer }
+async function tidy() {
+  const days = planTab === 'today' ? [S.todayDate] : Array.from({ length: 7 }, (_, i) => { const x = new Date(); x.setDate(x.getDate() + i); return ld(x); });
+  const list = days.flatMap(tidyDay);
+  if (!list.length) return flashTool($('su-tidy'), 'Already tidy');
+  const before = list.map((x) => ({ id: x.id, ...planOf('g:' + x.id) }));
+  S = await api.planMany(list);
+  clearTimeout(tidyUndo && tidyUndo.timer);
+  tidyUndo = { list: before, timer: setTimeout(() => ((tidyUndo = null), renderSetup()), 12000) };
+  render();
+}
+function flashTool(b, text) {
+  const was = b.textContent;
+  b.textContent = text;
+  setTimeout(() => (b.textContent = was), 1400);
+}
+
 function openDraft(col, day, min, px) {
   const start = new Date(day);
   start.setHours(0, min, 0, 0);
@@ -187,6 +264,7 @@ function openDraft(col, day, min, px) {
 function renderSetup() {
   if (!S || suDrag || suDraft) return;
   const behindNow = behindToday();
+  $('su-undo').hidden = !tidyUndo;
   $('su-behind').hidden = !(behindNow.ids.size || behindNow.by > 10 * 60e3) || S.settings.appMode === 'light';
   if (!$('su-behind').hidden)
     $('su-behind').textContent = behindNow.ids.size ? `⚠️ ${behindNow.ids.size} behind` : `⚠️ ${dur(Math.ceil(behindNow.by / (5 * 60e3)) * 5 * 60e3)} over`;
@@ -324,6 +402,7 @@ function dayCard(i, now, h0, h1, { wide }) {
   // with the plan left behind as a faint dashed outline in the same lane.
   // Cards that overlap sit side by side, like a calendar.
   const behind = i === 0 ? behindToday() : { ids: new Set() };
+  const dayWin = workWindows(d);
   const items = []; // { a, b (minutes), nodes }
   const at = (ms) => { const x = new Date(ms); return Math.round((x.getTime() - d.getTime()) / 60e3); };
   for (const t of [...S.today.open, ...S.today.done.map((x) => ({ ...x, done: true }))]) {
@@ -339,11 +418,12 @@ function dayCard(i, now, h0, h1, { wide }) {
     const pb = pa + p.mins;
     if (!real) {
       const isBehind = behind.ids.has(t.id);
-      const blk = el('div', 'su-block is-plan' + (running ? ' is-running' : '') + (p.mins <= 20 ? ' is-short' : '') + (t.done ? ' is-done' : '') + (isBehind ? ' is-behind' : ''));
+      const offHours = !t.done && outsideWork(dayWin, pa, pb);
+      const blk = el('div', 'su-block is-plan' + (running ? ' is-running' : '') + (p.mins <= 20 ? ' is-short' : '') + (t.done ? ' is-done' : '') + (isBehind ? ' is-behind' : '') + (offHours ? ' is-off' : ''));
       blk.style.top = px(pa) + 'px';
       blk.style.height = Math.max(p.mins * (HOUR / 60) - 2, 16) + 'px';
-      blk.append(titleWithSeries(el('span', 't', t.title), t), el('span', 'w', (p.mins <= 20 ? hm(s) : `${hm(s)}–${hm(pEnd)}`) + ` · ${hLen(p.mins)}` + (m.repeat ? ' · ↻' : '')));
-      blk.title = t.title;
+      blk.append(titleWithSeries(el('span', 't', t.title), t), el('span', 'w', (p.mins <= 20 ? hm(s) : `${hm(s)}–${hm(pEnd)}`) + ` · ${hLen(p.mins)}` + (m.repeat ? ' · ↻' : '') + (offHours ? ' · off hours' : '')));
+      blk.title = t.title + (offHours ? '\nOutside your work hours (Day structure). Tidy moves it in.' : '');
       if (!t.done) {
         blk.append(el('span', 'h'));
         blk.addEventListener('pointerdown', (e) => {
@@ -949,6 +1029,15 @@ function openDuplicate(t) {
 $('su-behind').addEventListener('click', () => {
   suSheet = { type: 'behind', id: null };
   renderSetup();
+});
+$('su-tidy').addEventListener('click', () => tidy());
+$('su-undo').addEventListener('click', async () => {
+  if (!tidyUndo) return;
+  const list = tidyUndo.list.filter((x) => x.start);
+  clearTimeout(tidyUndo.timer);
+  tidyUndo = null;
+  S = await api.planMany(list);
+  render();
 });
 $('su-structure').addEventListener('click', () => {
   suSheet = suSheet && suSheet.type === 'structure' ? null : { type: 'structure' };

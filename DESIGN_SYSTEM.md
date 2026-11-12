@@ -153,6 +153,7 @@ Panels are for the occasional look, not the resting state, so they can be denser
 - Overlapping cards sit side by side in lanes, like a calendar. Never stack text on text.
 - Click an empty spot to type a new task right there (snaps to 15 min, 30 min long).
 - Behind: amber dashed outline with a ⚠️ mark; one chip in the header.
+- Off hours: a block outside the Day structure's work windows is hatched with quieter text and "off hours". Tidy (header) packs blocks into the windows; Undo tidy stays for 12s.
 
 ## Settings (v0.20)
 - Cards on a grid (min 420px), each with a title, rows separated by hairlines: name, optional one-line description, control on the right (switch or segmented pill).

@@ -502,7 +502,7 @@ ipcMain.handle('review:open', () => {
 let setupWin = null;
 const light = () => state.settings.appMode === 'light';
 // Features you can switch off one by one (Settings → Features). On unless set false.
-const FEATURES = ['planner', 'log', 'hold', 'goals', 'items', 'reminders', 'behind', 'clickCreate', 'jolt', 'check', 'endOfDay', 'idleClaim', 'hopOff'];
+const FEATURES = ['planner', 'log', 'hold', 'goals', 'items', 'reminders', 'behind', 'clickCreate', 'tidy', 'offHours', 'jolt', 'check', 'endOfDay', 'idleClaim', 'hopOff'];
 const feat = (k) => !(state.settings.features && state.settings.features[k] === false);
 let quitting = false;
 

@@ -112,6 +112,8 @@ const FEATURE_LIST = [
   ['planner', 'Planner', 'Plan Today and Week on your main monitor.'],
   ['clickCreate', 'Click to create', 'Click an empty spot in the Planner to add a task there.'],
   ['behind', 'Behind plan', '⚠️ marks and re-plan when the day slips.'],
+  ['tidy', 'Tidy', 'One tap packs messy blocks back to back inside your work hours.'],
+  ['offHours', 'Off-hours marks', 'Blocks planned outside your work hours are marked.'],
   ['=colorTime', 'Colour time', 'Overrun fades to red; done under time stays green.'],
   ['reminders', 'Reminder popups', 'When a planned block starts or you run over.'],
   ['items', 'Subtasks', 'Checklist steps inside a task, each with its own time.'],
