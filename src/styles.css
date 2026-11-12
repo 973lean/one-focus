@@ -505,7 +505,8 @@ input::placeholder { color: var(--fg-tertiary); }
 .su-titles { display: flex; align-items: baseline; gap: 14px; }
 .su-title { font-size: 26px; font-weight: 500; letter-spacing: -0.02em; color: var(--fg); }
 .su-range { font-size: 13px; color: var(--fg-tertiary); font-variant-numeric: tabular-nums; }
-.su-tools { display: flex; align-items: center; gap: var(--space-3); }
+.su-tools { display: flex; align-items: center; justify-content: flex-end; gap: 12px; min-width: 0; }
+.su-tool { white-space: nowrap; }
 .su-tool { font-size: 13px; color: var(--fg-secondary); padding: 6px 12px; border: 1px solid var(--hairline); border-radius: 999px; transition: color var(--dur) var(--ease), border-color var(--dur) var(--ease); }
 .su-tool:hover, .su-tool[aria-pressed="true"] { color: var(--fg); border-color: var(--fg-tertiary); }
 .su-close { width: 32px; height: 32px; padding: 0; display: grid; place-items: center; }
@@ -915,7 +916,7 @@ input[type="time"]::-webkit-calendar-picker-indicator { opacity: 0.35; cursor: p
 .no-tidy #su-tidy, .no-tidy #su-undo { display: none !important; }
 
 /* Planner: the running task, with Done and Hold. */
-.su-live { position: relative; display: flex; align-items: center; gap: 8px; padding: 3px 4px 3px 12px; border: 1px solid var(--hairline); border-radius: 999px; font-size: 13px; max-width: 460px; }
+.su-live { position: relative; flex: 0 1 auto; min-width: 150px; display: flex; align-items: center; gap: 8px; padding: 3px 4px 3px 12px; border: 1px solid var(--hairline); border-radius: 999px; font-size: 13px; max-width: 460px; }
 .su-live .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--fg); flex-shrink: 0; animation: now-pulse 2.4s var(--ease) infinite; }
 .su-live.is-hold .dot { background: var(--fg-tertiary); animation: none; }
 @keyframes now-pulse { 50% { opacity: 0.35; } }
@@ -926,3 +927,14 @@ input[type="time"]::-webkit-calendar-picker-indicator { opacity: 0.35; cursor: p
 .su-live__b.is-main { color: var(--bg); background: var(--fg); }
 .su-live__pick { position: absolute; top: calc(100% + 6px); right: 0; z-index: 30; display: flex; flex-wrap: wrap; gap: 4px; align-items: center; padding: 8px; background: var(--bg); border: 1px solid var(--hairline); border-radius: 12px; box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45); min-width: 280px; animation: sheet-in 160ms var(--ease); }
 .su-live__pick input { flex: 1; min-width: 160px; font: inherit; font-size: 12px; color: var(--fg); background: transparent; border: 0; border-bottom: 1px solid var(--hairline); outline: 0; padding: 4px 2px; }
+
+/* Planner: nudge to set a Day structure. */
+.su-dshint { display: inline-flex; align-items: center; gap: 2px; }
+.su-dshint .su-tool { border-style: dashed; }
+.su-dshint__x { font-size: 13px; color: var(--fg-tertiary); padding: 4px 6px; }
+.su-dshint__x:hover { color: var(--fg); }
+.su-dshint[hidden] { display: none; }
+
+/* Mini previews beside a few choices: tiny, quiet. */
+.st-mini { display: block; margin-top: 6px; color: var(--fg-tertiary); line-height: 0; }
+.st-mini svg text { font-family: var(--font); }

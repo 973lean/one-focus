@@ -165,6 +165,13 @@
 - [x] Planner header shows the running task with Done and Hold (recent reasons + type one); on Hold, Back.
 - [x] Tidy also moves what's left of started-and-paused tasks; the work so far stays as a record. With no Day structure, today packs from now.
 
+## v0.28 — Tidy that actually fills the day, auto-open that fires
+- [x] Tidy fills each block into the earliest gap that fits (shorter tasks can use earlier gaps), around the stretches really worked, never before now. The running task now holds only the rest of its time from now (it used to block everything up to its planned end).
+- [x] Started tasks draw one card per stretch of work instead of one card from first start to last stop.
+- [x] Auto-open: the day start opens the Planner the first time you're at the computer before day end; other slots hold until the next one. Also checked right after unlock or wake.
+- [x] Planner nudges "Set day start & end" until a Day structure exists ("×" hides it for the day).
+- [x] Tiny previews beside Reminder style, corners, where Settings/Planner open, and Goal progress.
+
 ## Parked
 - [x] ~~Full-screen announcements~~ → became the v0.7 blur for "Still on this?" and end of day
 

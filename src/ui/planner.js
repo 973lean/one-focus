@@ -74,6 +74,33 @@ function trackedOn(key) {
 
 
 // First start to last stop of a task's sessions on a day (live = still running).
+// The real work sessions of a task on a day, merged when less than 10 minutes
+// apart: [{ start, end, live }]. Separate stretches stay separate.
+function actualSessions(key, day) {
+  if (!logData) return [];
+  const a0 = new Date(day).setHours(0, 0, 0, 0);
+  const a1 = a0 + 86400e3;
+  const all = [...logData.sessions, ...(logData.open && logData.open.key === key ? [{ ...logData.open, end: null }] : [])];
+  const segs = [];
+  for (const x of all) {
+    if (x.key !== key) continue;
+    const st = Math.max(Date.parse(x.start), a0);
+    const en = Math.min(x.end ? Date.parse(x.end) : Date.now(), a1);
+    if (en - st < 30e3) continue;
+    segs.push({ start: st, end: en, live: !x.end });
+  }
+  segs.sort((x, y) => x.start - y.start);
+  const out = [];
+  for (const g of segs) {
+    const last = out[out.length - 1];
+    if (last && g.start - last.end < 10 * 60e3) {
+      last.end = Math.max(last.end, g.end);
+      last.live = last.live || g.live;
+    } else out.push({ ...g });
+  }
+  return out;
+}
+
 function actualSpan(key, day) {
   if (!logData) return null;
   const a0 = new Date(day).setHours(0, 0, 0, 0);
@@ -161,9 +188,9 @@ function workWindows(d) {
 }
 const outsideWork = (win, a, b) => feat('offHours') && !!win && !win.some(([x, y]) => a >= x && b <= y);
 
-// Tidy a day: blocks not started yet keep their order and pack back to back
-// into the work windows, around anything already started or done and never
-// before now. Whatever doesn't fit goes after the last window (marked off hours).
+// Tidy a day: in their current order, each block not started yet takes the
+// earliest gap in the work windows that fits it, around real work and never
+// before now. Whatever doesn't fit goes after the last window (off hours).
 function tidyDay(key) {
   const d = new Date(key + 'T00:00:00');
   const at = (ms) => Math.round((ms - d.getTime()) / 60e3);
@@ -175,16 +202,24 @@ function tidyDay(key) {
     const p = planOf('g:' + t.id);
     if (!p || ld(new Date(p.start)) !== key) continue;
     const a = at(Date.parse(p.start));
-    const real = actualSpan('g:' + t.id, d);
+    const segs = actualSessions('g:' + t.id, d);
+    const real = segs.length ? { start: segs[0].start, end: segs[segs.length - 1].end } : null;
+    const worked = segs.reduce((x, g) => x + (g.end - g.start), 0);
+    // Only the stretches really worked are taken, not the gaps between them.
+    for (const g of segs) busy.push([at(g.start), at(g.end)]);
     if (t.done || t.id === cur) {
-      // Fixed: done, or running right now (its plan holds the rest of its time).
-      busy.push(real ? [at(real.start), Math.max(at(real.end), a + p.mins)] : [a, a + p.mins]);
+      // Fixed. A done task without tracked time keeps its planned slot; the
+      // running one keeps the rest of its planned time from now.
+      if (!segs.length) busy.push([a, a + p.mins]);
+      if (t.id === cur) {
+        const nowM = at(Date.now());
+        busy.push([nowM, nowM + Math.max(0, p.mins - Math.round(worked / 60e3))]);
+      }
       continue;
     }
     if (real) {
       // Started earlier and paused: that work stays put; what's left moves.
-      busy.push([at(real.start), at(real.end)]);
-      const left = Math.max(15, Math.round((p.mins - (real.end - real.start) / 60e3) / 5) * 5);
+      const left = Math.max(15, Math.round((p.mins - worked / 60e3) / 5) * 5);
       const startedHere = a < at(real.end) - 1;
       movable.push({ t, p: { ...p, mins: startedHere ? left : p.mins }, a: startedHere ? -1 : a });
     } else movable.push({ t, p, a });
@@ -216,7 +251,7 @@ function tidyDay(key) {
     }
     if (placed === null) placed = Math.max(cursor, ...busy.map(([, bb]) => bb), win[win.length - 1][1]);
     busy.push([placed, placed + len]);
-    cursor = placed + len;
+    // No running cursor: a later, shorter task can still fill an earlier gap.
     if (placed !== x.a) out.push({ id: x.t.id, start: new Date(d.getTime() + placed * 60e3).toISOString(), mins: len });
   }
   return out;
@@ -330,6 +365,11 @@ function renderSetup() {
   if (!S || suDrag || suDraft) return;
   const behindNow = behindToday();
   renderNowStrip();
+  // Until a Day structure is set: a quiet nudge (Tidy, off-hours marks and
+  // opening by itself all lean on it). "Not now" hides it for the day.
+  let dsLater = null;
+  try { dsLater = localStorage.getItem('dsHintLater'); } catch {}
+  $('su-dshint').hidden = !!S.settings.dayStructure || dsLater === S.todayDate || S.settings.appMode === 'light';
   $('su-undo').hidden = !tidyUndo;
   $('su-behind').hidden = !(behindNow.ids.size || behindNow.by > 10 * 60e3) || S.settings.appMode === 'light';
   if (!$('su-behind').hidden)
@@ -478,7 +518,8 @@ function dayCard(i, now, h0, h1, { wide }) {
     const s = new Date(p.start);
     const pEnd = s.getTime() + p.mins * 60e3;
     const m = metaOf('g:' + t.id);
-    const real = actualSpan('g:' + t.id, d);
+    const segs = actualSessions('g:' + t.id, d);
+    const real = segs.length ? { start: segs[0].start, end: segs[segs.length - 1].end, live: segs.some((g) => g.live) } : null;
     const running = S.current && S.current.googleId === t.id;
     const pa = at(s.getTime());
     const pb = pa + p.mins;
@@ -486,14 +527,16 @@ function dayCard(i, now, h0, h1, { wide }) {
     // plain record, and the rest is a normal dashed block you can move.
     const later = real && !t.done && !running && pa >= at(real.end) - 1;
     if (later) {
-      const ra0 = at(real.start);
-      const took0 = real.end - real.start;
-      const rec = el('div', 'su-block is-real' + (took0 <= 35 * 60e3 ? ' is-short' : ''));
-      rec.style.top = px(ra0) + 'px';
-      rec.style.height = Math.max((took0 / 60e3) * (HOUR / 60) - 2, 14) + 'px';
-      rec.append(titleWithSeries(el('span', 't', t.title), t), el('span', 'w', `${hLen(took0 / 60e3)} so far`));
-      rec.title = `${t.title}\nWorked ${hm(real.start)}–${hm(real.end)} · ${hLen(took0 / 60e3)}`;
-      items.push({ a: ra0, b: Math.max(at(real.end), ra0 + 1), nodes: [rec] });
+      for (const g of segs) {
+        const ga = at(g.start);
+        const len = g.end - g.start;
+        const rec = el('div', 'su-block is-real' + (len <= 35 * 60e3 ? ' is-short' : ''));
+        rec.style.top = px(ga) + 'px';
+        rec.style.height = Math.max((len / 60e3) * (HOUR / 60) - 2, 14) + 'px';
+        rec.append(titleWithSeries(el('span', 't', t.title), t), el('span', 'w', `${hm(g.start)}–${hm(g.end)} · ${hLen(len / 60e3)}`));
+        rec.title = `${t.title}\nWorked ${hm(g.start)}–${hm(g.end)} · ${hLen(len / 60e3)}`;
+        items.push({ a: ga, b: Math.max(at(g.end), ga + 1), nodes: [rec] });
+      }
     }
     if (!real || later) {
       const isBehind = behind.ids.has(t.id);
@@ -523,36 +566,51 @@ function dayCard(i, now, h0, h1, { wide }) {
       items.push({ a: pa, b: pb, nodes: [blk] });
       continue;
     }
-    const ra = at(real.start);
-    const rb = Math.max(at(real.end), ra + 1);
-    const took = real.end - real.start;
-    const ghost = el('div', 'su-planghost');
-    ghost.style.top = px(pa) + 'px';
-    ghost.style.height = Math.max(p.mins * (HOUR / 60) - 2, 6) + 'px';
-    const short = took <= 35 * 60e3;
-    const blk = el('div', 'su-block is-real' + (real.live ? ' is-live' : '') + (running ? ' is-running' : '') + (short ? ' is-short' : '') + (t.done ? ' is-done' : ''));
-    blk.style.top = px(ra) + 'px';
-    blk.style.height = Math.max((took / 60e3) * (HOUR / 60) - 2, 14) + 'px';
-    const over = real.end - pEnd;
-    if (S.settings.colorTime) {
-      if (over > 60e3) {
-        // Neutral until the planned end, then a soft fade into red.
-        const from = Math.max(0, Math.min(100, ((pEnd - real.start) / took) * 100));
+    // One solid card per stretch you really worked on it; the title and the
+    // totals sit on the last one. Colour follows the running total: neutral
+    // until the planned time is used up, then a fade into red.
+    const worked = segs.reduce((x, g) => x + (g.end - g.start), 0);
+    const planMs = p.mins * 60e3;
+    const overMs = worked - planMs;
+    const under = S.settings.colorTime && t.done && worked < planMs * 0.8;
+    const tail = (real.live ? 'so far ' : '') + hLen(worked / 60e3) + (overMs > 60e3 ? ` · ${hLen(overMs / 60e3)} over` : ` of ${hLen(p.mins)}`);
+    let before = 0;
+    const cards = [];
+    segs.forEach((g, gi) => {
+      const len = g.end - g.start;
+      const ga = at(g.start);
+      const last = gi === segs.length - 1;
+      const short = len <= 35 * 60e3;
+      const blk = el('div', 'su-block is-real' + (g.live ? ' is-live' : '') + (running && g.live ? ' is-running' : '') + (short ? ' is-short' : '') + (t.done ? ' is-done' : '') + (under ? ' is-under' : ''));
+      blk.style.top = px(ga) + 'px';
+      blk.style.height = Math.max((len / 60e3) * (HOUR / 60) - 2, 14) + 'px';
+      if (S.settings.colorTime && before + len > planMs + 60e3) {
+        const from = Math.max(0, Math.min(100, ((planMs - before) / len) * 100));
         blk.style.background = `linear-gradient(to bottom, #2F2F2F 0%, #2F2F2F ${from}%, #592F2C 100%)`;
-      } else if (t.done && took < p.mins * 60e3 * 0.8) blk.classList.add('is-under');
-    }
-    const tail = (real.live ? 'so far ' : '') + hLen(took / 60e3) + (over > 60e3 ? ` · ${hLen(over / 60e3)} over` : ` of ${hLen(p.mins)}`);
-    blk.append(titleWithSeries(el('span', 't', t.title), t), el('span', 'w', short ? tail : `${hm(real.start)}–${real.live ? 'now' : hm(real.end)} · ${tail}`));
-    blk.title = `${t.title}\nPlanned ${hm(s)}–${hm(pEnd)} · ${hLen(p.mins)}\nActual ${hm(real.start)}–${real.live ? 'now' : hm(real.end)} · ${hLen(took / 60e3)}`;
+      }
+      before += len;
+      const span = `${hm(g.start)}–${g.live ? 'now' : hm(g.end)}`;
+      blk.append(titleWithSeries(el('span', 't', t.title), t), el('span', 'w', last ? (short ? tail : `${span} · ${tail}`) : `${span} · ${hLen(len / 60e3)}`));
+      blk.title = `${t.title}\nPlanned ${hm(s)}–${hm(pEnd)} · ${hLen(p.mins)}\nWorked ${segs.map((x) => `${hm(x.start)}–${x.live ? 'now' : hm(x.end)}`).join(', ')} · ${hLen(worked / 60e3)}`;
+      if (!t.done) {
+        // Not done: click for details (Length is there), drag to move the plan.
+        blk.style.cursor = 'grab';
+        blk.addEventListener('pointerdown', (e) => beginDrag(e, { kind: 'task', task: t, mode: 'move', mins: p.mins, start: p.start, block: blk }));
+      }
+      cards.push({ a: ga, b: Math.max(at(g.end), ga + 1), nodes: [blk] });
+    });
+    // The plan outline (unfinished tasks only) rides with the stretch it overlaps most.
     if (!t.done) {
-      // Started but not done: click for details (Length is there), drag to move the plan.
-      blk.style.cursor = 'grab';
-      blk.addEventListener('pointerdown', (e) => beginDrag(e, { kind: 'task', task: t, mode: 'move', mins: p.mins, start: p.start, block: blk }));
+      const ghost = el('div', 'su-planghost');
+      ghost.style.top = px(pa) + 'px';
+      ghost.style.height = Math.max(p.mins * (HOUR / 60) - 2, 6) + 'px';
+      const ov = (c) => Math.max(0, Math.min(c.b, pb) - Math.max(c.a, pa));
+      const host = cards.reduce((x, c) => (ov(c) > ov(x) ? c : x), cards[0]);
+      host.nodes.unshift(ghost);
+      host.a = Math.min(host.a, pa);
+      host.b = Math.max(host.b, pb);
     }
-    // Finished: only what really happened. The leftover plan of a task done
-    // early would just look like time still booked.
-    if (t.done) items.push({ a: ra, b: rb, nodes: [blk] });
-    else items.push({ a: Math.min(pa, ra), b: Math.max(pb, rb), nodes: [ghost, blk] });
+    items.push(...cards);
   }
   for (const n of col.querySelectorAll('.su-block.is-break, .su-block.is-ghost')) {
     const a = h0 * 60 + parseFloat(n.style.top) / (HOUR / 60);
@@ -1113,6 +1171,11 @@ $('su-behind').addEventListener('click', () => {
   renderSetup();
 });
 $('su-tidy').addEventListener('click', () => tidy());
+$('su-dshint-go').addEventListener('click', () => $('su-structure').click());
+$('su-dshint-x').addEventListener('click', () => {
+  try { localStorage.setItem('dsHintLater', S.todayDate); } catch {}
+  renderSetup();
+});
 $('su-undo').addEventListener('click', async () => {
   if (!tidyUndo) return;
   const list = tidyUndo.list.filter((x) => x.start);

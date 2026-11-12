@@ -153,9 +153,58 @@ function renderFeatures() {
   }
 }
 
+// Tiny line drawings beside a few choices, so you can see what each one does.
+// Added next to the existing controls; nothing else moves.
+const MON = (inner) => `<svg viewBox="0 0 34 22" width="34" height="22" aria-hidden="true"><rect x="1" y="1" width="32" height="18" rx="2.5" fill="none" stroke="currentColor" stroke-opacity=".45"/>${inner}</svg>`;
+function miniSvg(kind, v) {
+  const f = 'fill="currentColor"';
+  if (kind === 'popup')
+    return MON(v === 'bar' ? `<rect x="10" y="3.5" width="14" height="2.6" rx="1.3" ${f}/>` : v === 'center' ? `<rect x="11" y="7" width="12" height="6" rx="1.2" ${f}/>` : `<rect x="22" y="12.5" width="9" height="4.5" rx="1" ${f}/>`);
+  if (kind === 'corner') {
+    if (v === 'off') return MON('');
+    const x = v === 'tl' || v === 'bl' ? 4 : 30;
+    const y = v === 'tl' || v === 'tr' ? 4 : 16;
+    return MON(`<circle cx="${x}" cy="${y}" r="2" ${f}/>`);
+  }
+  if (kind === 'where') {
+    // Two monitors: the main one on the left, One Focus's on the right.
+    const main = v === 'modal';
+    return `<svg viewBox="0 0 44 22" width="44" height="22" aria-hidden="true"><rect x="1" y="2" width="24" height="15" rx="2" fill="${main ? 'currentColor' : 'none'}" fill-opacity="${main ? '.35' : '0'}" stroke="currentColor" stroke-opacity=".45"/><rect x="29" y="5" width="14" height="10" rx="1.6" fill="${main ? 'none' : 'currentColor'}" fill-opacity="${main ? '0' : '.35'}" stroke="currentColor" stroke-opacity=".45"/></svg>`;
+  }
+  if (kind === 'goal') {
+    const ring = '<circle cx="9" cy="11" r="6" fill="none" stroke="currentColor" stroke-opacity=".25" stroke-width="1.6"/><path d="M9 5a6 6 0 0 1 5.2 9" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>';
+    if (v === 'text') return '<svg viewBox="0 0 44 22" width="44" height="22" aria-hidden="true"><text x="1" y="15" font-size="10" fill="currentColor">12m left</text></svg>';
+    return `<svg viewBox="0 0 44 22" width="44" height="22" aria-hidden="true">${ring}${v === 'ringPct' ? '<text x="18" y="15" font-size="10" fill="currentColor">62%</text>' : ''}</svg>`;
+  }
+  return '';
+}
+function renderMinis() {
+  const s = S.settings;
+  const minis = [
+    ['s-popup', 'popup', s.popupStyle || 'corner'],
+    ['s-corner-today', 'corner', s.cornerToday || 'off'],
+    ['s-corner-week', 'corner', s.cornerWeek || 'off'],
+    ['s-settings-mode', 'where', s.settingsMode === 'modal' ? 'modal' : 'inline'],
+    ['s-setup-mode', 'where', s.setupMode === 'inline' ? 'inline' : 'modal'],
+    ['s-goal-display', 'goal', s.goalDisplay || 'ring'],
+  ];
+  for (const [id, kind, v] of minis) {
+    const row = $(id) && $(id).closest('.st-row');
+    const l = row && row.querySelector('.st-l');
+    if (!l) continue;
+    let m = l.querySelector('.st-mini');
+    if (!m) l.append((m = el('span', 'st-mini')));
+    if (m.dataset.v !== kind + v) {
+      m.dataset.v = kind + v;
+      m.innerHTML = miniSvg(kind, v);
+    }
+  }
+}
+
 function renderSettings() {
   renderFeatures();
   if (!S) return;
+  renderMinis();
   const s = S.settings;
   for (const [id, key] of Object.entries(fields)) if (document.activeElement !== $(id)) $(id).value = s[key] || '';
   for (const [id, key] of Object.entries(toggles)) $(id).checked = !!s[key];

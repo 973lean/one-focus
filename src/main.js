@@ -740,23 +740,26 @@ function autoPlanSlots(d = new Date()) {
   if ((d.getDay() === 0 || d.getDay() === 6) && !ds.weekends) return [];
   const hhmm = (min) => `${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`;
   const toMin = (v) => +v.slice(0, 2) * 60 + +v.slice(3, 5);
-  if (ap.mode === 'startEnd') return [{ at: ds.start, tab: 'today' }, { at: ds.end, tab: 'week' }];
+  // Each slot has a window it can still fire in: you might sit down at 9:40
+  // for a 9:00 start, or unlock after lunch. The day start holds all day.
+  if (ap.mode === 'startEnd') return [{ at: ds.start, tab: 'today', until: toMin(ds.end) }, { at: ds.end, tab: 'week', until: toMin(ds.end) + 120 }];
+  const withUntil = (list) => list.map((x, i) => ({ ...x, until: i + 1 < list.length ? toMin(list[i + 1].at) : toMin(x.at) + 90 }));
   if (ap.mode === 'every') {
     const out = [];
     for (let m = toMin(ds.start); m < toMin(ds.end); m += (ap.every || 3) * 60) out.push({ at: hhmm(m), tab: 'today' });
-    return out;
+    return withUntil(out);
   }
-  return (ap.times || []).map((at) => ({ at, tab: 'today' }));
+  return withUntil([...(ap.times || [])].sort().map((at) => ({ at, tab: 'today' })));
 }
 function checkAutoPlan() {
-  if (tracker.away || tracker.pauses.size || check) return;
+  if (tracker.away || tracker.pauses.size || check || !feat('planner')) return;
   const d = new Date();
   const day = localDate(d);
   if (state.autoPlanFired.date !== day) state.autoPlanFired = { date: day, at: [] };
   const nowMin = d.getHours() * 60 + d.getMinutes();
   for (const s of autoPlanSlots(d)) {
     const m = +s.at.slice(0, 2) * 60 + +s.at.slice(3, 5);
-    if (nowMin >= m && nowMin < m + 30 && !state.autoPlanFired.at.includes(s.at)) {
+    if (nowMin >= m && nowMin < Math.max(s.until, m + 30) && !state.autoPlanFired.at.includes(s.at)) {
       state.autoPlanFired.at.push(s.at);
       store.save(state);
       openSetupWindow(s.tab);
@@ -1365,9 +1368,9 @@ app.whenReady().then(() => {
   }, HEARTBEAT_MS);
 
   powerMonitor.on('lock-screen', () => (tracker.pause('lock'), push()));
-  powerMonitor.on('unlock-screen', () => (tracker.resume('lock'), sync()));
+  powerMonitor.on('unlock-screen', () => (tracker.resume('lock'), sync(), setTimeout(checkAutoPlan, 4000)));
   powerMonitor.on('suspend', () => (tracker.pause('sleep'), push()));
-  powerMonitor.on('resume', () => (tracker.resume('sleep'), sync()));
+  powerMonitor.on('resume', () => (tracker.resume('sleep'), sync(), setTimeout(checkAutoPlan, 4000)));
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
