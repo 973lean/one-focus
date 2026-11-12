@@ -176,15 +176,27 @@ function tidyDay(key) {
     if (!p || ld(new Date(p.start)) !== key) continue;
     const a = at(Date.parse(p.start));
     const real = actualSpan('g:' + t.id, d);
-    if (t.done || real || t.id === cur) {
-      busy.push([a, a + p.mins]);
-      if (real) busy.push([at(real.start), at(real.end) + (real.live ? p.mins : 0)]);
+    if (t.done || t.id === cur) {
+      // Fixed: done, or running right now (its plan holds the rest of its time).
+      busy.push(real ? [at(real.start), Math.max(at(real.end), a + p.mins)] : [a, a + p.mins]);
+      continue;
+    }
+    if (real) {
+      // Started earlier and paused: that work stays put; what's left moves.
+      busy.push([at(real.start), at(real.end)]);
+      const left = Math.max(15, Math.round((p.mins - (real.end - real.start) / 60e3) / 5) * 5);
+      const startedHere = a < at(real.end) - 1;
+      movable.push({ t, p: { ...p, mins: startedHere ? left : p.mins }, a: startedHere ? -1 : a });
     } else movable.push({ t, p, a });
   }
   if (!movable.length) return [];
   movable.sort((x, y) => x.a - y.a);
   let win = workWindows(d);
-  if (!win || !win.length) win = [[Math.min(...movable.map((x) => x.a)), 24 * 60]];
+  if (!win || !win.length) {
+    // No day structure: today from now, other days from the earliest block, to midnight.
+    const starts = movable.map((x) => x.a).filter((x) => x >= 0);
+    win = [[isToday ? Math.ceil(at(Date.now()) / 5) * 5 : starts.length ? Math.min(...starts) : 9 * 60, 24 * 60]];
+  }
   let cursor = isToday ? Math.ceil(at(Date.now()) / 5) * 5 : 0;
   const out = [];
   for (const x of movable) {
@@ -261,9 +273,63 @@ function openDraft(col, day, min, px) {
   requestAnimationFrame(() => input.focus());
 }
 
+// The running task, at the top of the Planner: Done or Hold without leaving.
+let nowHoldOpen = false;
+function renderNowStrip() {
+  const box = $('su-live');
+  const cur = S.current;
+  box.hidden = !cur || S.settings.appMode === 'light';
+  const typing = document.activeElement && document.activeElement.matches('input') && box.contains(document.activeElement);
+  if (box.hidden || typing) return;
+  box.replaceChildren();
+  const hold = cur.key && cur.key.startsWith('hold:');
+  const spent = S.tracked + (S.open && S.open.key === cur.key ? Date.now() - Date.parse(S.open.start) : 0);
+  box.classList.toggle('is-hold', !!hold);
+  box.append(el('span', 'dot'), el('span', 'su-live__t', (hold ? 'Hold: ' : '') + cur.title), el('span', 'su-live__d', hLen(spent / 60e3)));
+  const btn = (label, title, fn, cls) => {
+    const b = el('button', 'su-live__b' + (cls ? ' ' + cls : ''), label);
+    b.title = title;
+    b.addEventListener('click', fn);
+    box.append(b);
+    return b;
+  };
+  if (hold) {
+    btn(S.held ? 'Back' : 'End hold', S.held ? 'Back to: ' + S.held.title : 'End hold', async () => ((S = await api.endHold()), render()), 'is-main');
+    return;
+  }
+  if (cur.googleId) btn('Done', 'Done (the questions show on One Focus)', () => api.nowAction('done'), 'is-main');
+  if (feat('hold')) btn('Hold', 'Pause this for something else', () => ((nowHoldOpen = !nowHoldOpen), renderNowStrip()));
+  if (nowHoldOpen && feat('hold')) {
+    const pick = el('div', 'su-live__pick');
+    const go = async (name) => {
+      nowHoldOpen = false;
+      if (document.activeElement) document.activeElement.blur();
+      S = await api.hold(name);
+      render();
+    };
+    for (const n of (S.holdNames || []).slice(0, 3)) {
+      const c = el('button', 'su-live__b', n);
+      c.addEventListener('click', () => go(n));
+      pick.append(c);
+    }
+    const input = el('input');
+    input.placeholder = 'What pulled you away?';
+    input.maxLength = 60;
+    input.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Escape') return (nowHoldOpen = false), renderNowStrip();
+      if (e.key === 'Enter' && input.value.trim()) go(input.value.trim());
+    });
+    pick.append(input);
+    box.append(pick);
+    setTimeout(() => input.focus(), 30);
+  }
+}
+
 function renderSetup() {
   if (!S || suDrag || suDraft) return;
   const behindNow = behindToday();
+  renderNowStrip();
   $('su-undo').hidden = !tidyUndo;
   $('su-behind').hidden = !(behindNow.ids.size || behindNow.by > 10 * 60e3) || S.settings.appMode === 'light';
   if (!$('su-behind').hidden)
@@ -416,7 +482,20 @@ function dayCard(i, now, h0, h1, { wide }) {
     const running = S.current && S.current.googleId === t.id;
     const pa = at(s.getTime());
     const pb = pa + p.mins;
-    if (!real) {
+    // Started, paused, and the rest planned for later: the work so far is a
+    // plain record, and the rest is a normal dashed block you can move.
+    const later = real && !t.done && !running && pa >= at(real.end) - 1;
+    if (later) {
+      const ra0 = at(real.start);
+      const took0 = real.end - real.start;
+      const rec = el('div', 'su-block is-real' + (took0 <= 35 * 60e3 ? ' is-short' : ''));
+      rec.style.top = px(ra0) + 'px';
+      rec.style.height = Math.max((took0 / 60e3) * (HOUR / 60) - 2, 14) + 'px';
+      rec.append(titleWithSeries(el('span', 't', t.title), t), el('span', 'w', `${hLen(took0 / 60e3)} so far`));
+      rec.title = `${t.title}\nWorked ${hm(real.start)}–${hm(real.end)} · ${hLen(took0 / 60e3)}`;
+      items.push({ a: ra0, b: Math.max(at(real.end), ra0 + 1), nodes: [rec] });
+    }
+    if (!real || later) {
       const isBehind = behind.ids.has(t.id);
       const offHours = !t.done && outsideWork(dayWin, pa, pb);
       const blk = el('div', 'su-block is-plan' + (running ? ' is-running' : '') + (p.mins <= 20 ? ' is-short' : '') + (t.done ? ' is-done' : '') + (isBehind ? ' is-behind' : '') + (offHours ? ' is-off' : ''));

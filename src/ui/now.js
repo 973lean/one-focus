@@ -280,6 +280,25 @@ doneEl.addEventListener('click', () =>
   })
 );
 
+api.onNowAction((a) => {
+  if (a !== 'done' || setupMode) return;
+  if (view !== 'now') setView('now');
+  if (!doneEl.hidden || (S.current && S.current.googleId)) doneEl.click();
+});
+
+// Back to Now: another tab left open and untouched for 2 minutes returns to
+// the time screen (not while you're mid-typing).
+if (!setupMode) {
+  let touched = Date.now();
+  for (const ev of ['pointermove', 'pointerdown', 'keydown', 'wheel']) document.addEventListener(ev, () => (touched = Date.now()), { passive: true });
+  setInterval(() => {
+    if (view === 'now' || !feat('autoNow') || Date.now() - touched < 120e3) return;
+    const a = document.activeElement;
+    if (a && a.matches('input, textarea') && a.value && a.value.trim()) return;
+    setView('now');
+  }, 5000);
+}
+
 // ---------- After Done: category + rating (both optional) ----------
 
 const wrapEl = $('wrap');

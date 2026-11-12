@@ -502,7 +502,7 @@ ipcMain.handle('review:open', () => {
 let setupWin = null;
 const light = () => state.settings.appMode === 'light';
 // Features you can switch off one by one (Settings → Features). On unless set false.
-const FEATURES = ['planner', 'log', 'hold', 'goals', 'items', 'reminders', 'behind', 'clickCreate', 'tidy', 'offHours', 'jolt', 'check', 'endOfDay', 'idleClaim', 'hopOff'];
+const FEATURES = ['planner', 'log', 'hold', 'goals', 'items', 'reminders', 'behind', 'clickCreate', 'tidy', 'offHours', 'autoNow', 'jolt', 'check', 'endOfDay', 'idleClaim', 'hopOff'];
 const feat = (k) => !(state.settings.features && state.settings.features[k] === false);
 let quitting = false;
 
@@ -634,6 +634,11 @@ function openSetupWindow(tab = 'week') {
   );
   setupWin.on('closed', () => ((setupWin = null), hideBackdrop()));
 }
+// Done from the Planner runs on the One Focus window, so its after-Done
+// questions show where they always do.
+ipcMain.on('now:action', (_e, a) => {
+  if (a === 'done' && win && !win.isDestroyed()) win.webContents.send('now:action', 'done');
+});
 ipcMain.handle('setup:open', (_e, tab) => openSetupWindow(['today', 'settings'].includes(tab) ? tab : 'week'));
 
 // A page has drawn its first frame: show its window now (no white blink).

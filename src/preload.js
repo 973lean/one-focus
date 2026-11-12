@@ -25,6 +25,8 @@ contextBridge.exposeInMainWorld('oneFocus', {
   setBreak: (id, plan) => ipcRenderer.invoke('break:set', id, plan),
   openSetup: (tab) => ipcRenderer.invoke('setup:open', tab),
   onPlannerTab: (cb) => ipcRenderer.on('planner:tab', (_e, tab) => cb(tab)),
+  nowAction: (a) => ipcRenderer.send('now:action', a),
+  onNowAction: (cb) => ipcRenderer.on('now:action', (_e, a) => cb(a)),
   ready: () => ipcRenderer.send('ui:ready'),
   shiftPlan: (fromIso, ms) => ipcRenderer.invoke('plan:shift', fromIso, ms),
   planMany: (list) => ipcRenderer.invoke('plan:many', list),

@@ -120,6 +120,7 @@ const FEATURE_LIST = [
   ['goals', 'Goal time', 'A finish-by time with a ring.'],
   ['hold', 'Hold', 'Pause a task for a call or an interruption.'],
   ['log', 'Log', 'Where your time went.'],
+  ['autoNow', 'Back to Now', 'One Focus returns to the time screen after 2 minutes untouched on another tab.'],
   ['idleClaim', 'Count idle time', 'Offer to add forgotten idle time to the task you start.'],
   ['=showSince', 'When the task started', 'Under the task on Now.'],
   ['=showElapsed', 'Time on task', 'Under the task on Now.'],

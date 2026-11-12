@@ -160,6 +160,11 @@
 - [x] Blocks planned outside your work hours (or on a day off) are hatched and say "off hours".
 - [x] Ctrl+Alt+S opens Settings. Started tasks can be re-planned; a drag never opens the new-task field.
 
+## v0.27 — Back to Now, Done/Hold in the Planner, Tidy for started work
+- [x] One Focus returns to the time screen after 2 minutes untouched on another tab (Features → Back to Now).
+- [x] Planner header shows the running task with Done and Hold (recent reasons + type one); on Hold, Back.
+- [x] Tidy also moves what's left of started-and-paused tasks; the work so far stays as a record. With no Day structure, today packs from now.
+
 ## Parked
 - [x] ~~Full-screen announcements~~ → became the v0.7 blur for "Still on this?" and end of day
 
