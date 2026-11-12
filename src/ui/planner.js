@@ -260,7 +260,7 @@ function dayCard(i, now, h0, h1, { wide }) {
   col.style.height = (h1 - h0) * HOUR + 'px';
   // Click an empty spot: type a task right there (like a calendar).
   col.addEventListener('click', (e) => {
-    if (suDraft || !feat('clickCreate') || e.target.closest('.su-block, .su-break, .su-actual, .su-draft, button')) return;
+    if (suDraft || suDrag || Date.now() - suDragEnded < 500 || !feat('clickCreate') || e.target.closest('.su-block, .su-break, .su-actual, .su-draft, button')) return;
     if (S.settings.appMode === 'light' || !S.connected) return;
     const y = e.clientY - col.getBoundingClientRect().top;
     const min = Math.min(Math.max(h0 * 60 + Math.floor(((y / HOUR) * 60) / 15) * 15, h0 * 60), h1 * 60 - 15);
@@ -385,6 +385,11 @@ function dayCard(i, now, h0, h1, { wide }) {
     const tail = (real.live ? 'so far ' : '') + hLen(took / 60e3) + (over > 60e3 ? ` · ${hLen(over / 60e3)} over` : ` of ${hLen(p.mins)}`);
     blk.append(titleWithSeries(el('span', 't', t.title), t), el('span', 'w', short ? tail : `${hm(real.start)}–${real.live ? 'now' : hm(real.end)} · ${tail}`));
     blk.title = `${t.title}\nPlanned ${hm(s)}–${hm(pEnd)} · ${hLen(p.mins)}\nActual ${hm(real.start)}–${real.live ? 'now' : hm(real.end)} · ${hLen(took / 60e3)}`;
+    if (!t.done) {
+      // Started but not done: click for details (Length is there), drag to move the plan.
+      blk.style.cursor = 'grab';
+      blk.addEventListener('pointerdown', (e) => beginDrag(e, { kind: 'task', task: t, mode: 'move', mins: p.mins, start: p.start, block: blk }));
+    }
     items.push({ a: Math.min(pa, ra), b: Math.max(pb, rb), nodes: [ghost, blk] });
   }
   for (const n of col.querySelectorAll('.su-block.is-break, .su-block.is-ghost')) {
@@ -554,6 +559,7 @@ function colMinutes(col, clientY) {
   return Math.max(0, Math.min(24 * 60 - SNAP, Math.round(m / SNAP) * SNAP));
 }
 
+let suDragEnded = 0;
 function beginDrag(e, d) {
   if (e.button !== 0) return;
   e.preventDefault();
@@ -609,6 +615,8 @@ async function onDragEnd(e) {
   if (d && d.ghost) d.ghost.remove();
   suDrag = null;
   if (!d) return;
+  // The release after a drag also fires a click on the column: not a "new task here".
+  if (d.moved) suDragEnded = Date.now();
   if (!d.moved) {
     // A click, not a drag: open details.
     if (d.kind === 'task') suSheet = { type: 'task', id: d.task.id };
