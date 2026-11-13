@@ -1361,7 +1361,10 @@ app.whenReady().then(() => {
   setInterval(() => {
     const idle = powerMonitor.getSystemIdleTime();
     const awayAfter = (state.settings.awayMinutes || 10) * 60;
-    if (idle >= awayAfter && !tracker.away) tracker.setAway(true, new Date(Date.now() - idle * 1000).toISOString());
+    // A Hold is time away from the keyboard on purpose (a break, a call): it
+    // keeps counting while you're idle.
+    const holding = isHold(state.current);
+    if (idle >= awayAfter && !tracker.away && !holding) tracker.setAway(true, new Date(Date.now() - idle * 1000).toISOString());
     else if (idle < awayAfter && tracker.away) tracker.setAway(false);
     tracker.setIdleOff(beforeWorkday());
     tracker.heartbeat();
@@ -1372,7 +1375,8 @@ app.whenReady().then(() => {
     push();
   }, HEARTBEAT_MS);
 
-  powerMonitor.on('lock-screen', () => (tracker.pause('lock'), push()));
+  // Locking the screen for a break doesn't stop a Hold (sleep still does).
+  powerMonitor.on('lock-screen', () => (isHold(state.current) || tracker.pause('lock'), push()));
   powerMonitor.on('unlock-screen', () => (tracker.resume('lock'), sync(), setTimeout(checkAutoPlan, 4000)));
   powerMonitor.on('suspend', () => (tracker.pause('sleep'), push()));
   powerMonitor.on('resume', () => (tracker.resume('sleep'), sync(), setTimeout(checkAutoPlan, 4000)));
