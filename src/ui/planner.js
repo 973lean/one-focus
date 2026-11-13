@@ -303,31 +303,131 @@ function openDraft(col, day, min, px) {
 }
 
 // The running task, at the top of the Planner: Done or Hold without leaving.
+// Done finishes it here and asks category + rating right below (as on Now).
 let nowHoldOpen = false;
+let suWrap = null; // { key, title, ms, category, rating, timer }
+const ICON_DONE = '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 6.4 5 8.8l4.6-5.3"/></svg>';
+const ICON_HOLD = '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M4.25 3v6M7.75 3v6"/></svg>';
+
+function closeSuWrap() {
+  if (!suWrap) return;
+  clearTimeout(suWrap.timer);
+  suWrap = null;
+  renderNowStrip();
+}
+function touchSuWrap() {
+  clearTimeout(suWrap.timer);
+  const answered = (!S.settings.askCategory || suWrap.category) && (!S.settings.askRating || suWrap.rating);
+  suWrap.timer = setTimeout(closeSuWrap, answered ? 900 : 25000);
+}
+async function doneHere() {
+  const cur = S.current;
+  if (!cur || !cur.googleId) return;
+  const ms = S.tracked + (S.open && S.open.key === cur.key ? Date.now() - Date.parse(S.open.start) : 0);
+  nowHoldOpen = false;
+  if (S.settings.askCategory || S.settings.askRating) suWrap = { key: cur.key, title: cur.title, ms, category: null, rating: null, timer: null };
+  if (suWrap) touchSuWrap();
+  renderNowStrip();
+  await api.task('complete', cur.googleId);
+}
+
+function wrapPanel() {
+  const w = suWrap;
+  const pane = el('div', 'su-live__pick su-live__wrap');
+  if (S.settings.askCategory) {
+    const row = el('div', 'su-live__cats');
+    const draw = (q) => {
+      row.replaceChildren();
+      const all = S.categories || [];
+      for (const n of (q ? all.filter((c) => c.toLowerCase().includes(q.toLowerCase())) : all).slice(0, 4)) {
+        const c = el('button', 'su-live__b' + (w.category === n ? ' is-on' : ''), n);
+        c.addEventListener('click', () => pick(n));
+        row.append(c);
+      }
+    };
+    const pick = async (n) => {
+      w.category = n;
+      S = await api.setMeta(w.key, { category: n });
+      input.value = '';
+      draw('');
+      touchSuWrap();
+    };
+    const input = el('input');
+    input.placeholder = 'Category';
+    input.maxLength = 40;
+    input.addEventListener('input', () => (draw(input.value.trim()), touchSuWrap()));
+    input.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Escape') return closeSuWrap();
+      if (e.key !== 'Enter' || !input.value.trim()) return;
+      const q = input.value.trim();
+      const all = S.categories || [];
+      pick(all.find((c) => c.toLowerCase() === q.toLowerCase()) || all.find((c) => c.toLowerCase().includes(q.toLowerCase())) || q);
+    });
+    draw('');
+    pane.append(row, input);
+  }
+  if (S.settings.askRating) {
+    const stars = el('div', 'stars su-live__stars');
+    const paint = (n) => [...stars.children].forEach((b, k) => b.classList.toggle('is-on', k < n));
+    for (let r = 1; r <= 5; r++) {
+      const b = el('button', null, '★');
+      b.title = `Focus and vibe: ${r}`;
+      b.addEventListener('mouseenter', () => paint(r));
+      b.addEventListener('click', async () => {
+        w.rating = r;
+        S = await api.setMeta(w.key, { rating: r });
+        paint(r);
+        touchSuWrap();
+      });
+      stars.append(b);
+    }
+    stars.addEventListener('mouseleave', () => paint(w.rating || 0));
+    paint(w.rating || 0);
+    pane.append(stars);
+  }
+  return pane;
+}
+
 function renderNowStrip() {
   const box = $('su-live');
   const cur = S.current;
-  box.hidden = !cur || S.settings.appMode === 'light';
   const typing = document.activeElement && document.activeElement.matches('input') && box.contains(document.activeElement);
+  box.hidden = (!cur && !suWrap) || S.settings.appMode === 'light';
   if (box.hidden || typing) return;
   box.replaceChildren();
+  if (suWrap) {
+    // Just finished: what was it, and how did it go?
+    box.classList.remove('is-hold');
+    box.append(el('span', 'su-live__ok', '✓'), el('span', 'su-live__t', suWrap.title), el('span', 'su-live__d', hLen(suWrap.ms / 60e3)));
+    const x = el('button', 'su-live__b su-live__icon', '×');
+    x.title = 'Skip';
+    x.addEventListener('click', closeSuWrap);
+    box.append(x, wrapPanel());
+    return;
+  }
   const hold = cur.key && cur.key.startsWith('hold:');
   const spent = S.tracked + (S.open && S.open.key === cur.key ? Date.now() - Date.parse(S.open.start) : 0);
   box.classList.toggle('is-hold', !!hold);
   box.append(el('span', 'dot'), el('span', 'su-live__t', (hold ? 'Hold: ' : '') + cur.title), el('span', 'su-live__d', hLen(spent / 60e3)));
-  const btn = (label, title, fn, cls) => {
-    const b = el('button', 'su-live__b' + (cls ? ' ' + cls : ''), label);
+  const btn = (html, title, fn, cls) => {
+    const b = el('button', 'su-live__b su-live__icon' + (cls ? ' ' + cls : ''));
+    b.innerHTML = html;
     b.title = title;
+    b.setAttribute('aria-label', title);
     b.addEventListener('click', fn);
     box.append(b);
     return b;
   };
   if (hold) {
-    btn(S.held ? 'Back' : 'End hold', S.held ? 'Back to: ' + S.held.title : 'End hold', async () => ((S = await api.endHold()), render()), 'is-main');
+    const back = el('button', 'su-live__b is-main', S.held ? 'Back' : 'End hold');
+    back.title = S.held ? 'Back to: ' + S.held.title : 'End hold';
+    back.addEventListener('click', async () => ((S = await api.endHold()), render()));
+    box.append(back);
     return;
   }
-  if (cur.googleId) btn('Done', 'Done (the questions show on One Focus)', () => api.nowAction('done'), 'is-main');
-  if (feat('hold')) btn('Hold', 'Pause this for something else', () => ((nowHoldOpen = !nowHoldOpen), renderNowStrip()));
+  if (cur.googleId) btn(ICON_DONE, 'Done', doneHere, 'is-main');
+  if (feat('hold')) btn(ICON_HOLD, 'Hold', () => ((nowHoldOpen = !nowHoldOpen), renderNowStrip()));
   if (nowHoldOpen && feat('hold')) {
     const pick = el('div', 'su-live__pick');
     const go = async (name) => {
