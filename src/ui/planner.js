@@ -188,84 +188,78 @@ function workWindows(d) {
 }
 const outsideWork = (win, a, b) => feat('offHours') && !!win && !win.some(([x, y]) => a >= x && b <= y);
 
-// Tidy a day: in their current order, each block not started yet takes the
-// earliest gap in the work windows that fits it, around real work and never
-// before now. Whatever doesn't fit goes after the last window (off hours).
-function tidyDay(key) {
+// Fit a day. The order of the blocks never changes and nothing moves later:
+// each block not started yet (and not pinned) moves up into the earliest gap
+// that fits, after the block before it, inside the work windows, around real
+// work, and never before now. If there's no earlier gap, it stays put.
+function fitDay(key) {
   const d = new Date(key + 'T00:00:00');
   const at = (ms) => Math.round((ms - d.getTime()) / 60e3);
   const isToday = key === S.todayDate;
+  const nowM = isToday ? Math.ceil(at(Date.now()) / 5) * 5 : 0;
   const cur = S.current && S.current.googleId;
   const busy = [];
-  const movable = [];
+  const seq = []; // every planned block of the day, in its current order
   for (const t of [...S.today.open, ...S.today.done.map((x) => ({ ...x, done: true }))]) {
     const p = planOf('g:' + t.id);
     if (!p || ld(new Date(p.start)) !== key) continue;
     const a = at(Date.parse(p.start));
     const segs = actualSessions('g:' + t.id, d);
-    const real = segs.length ? { start: segs[0].start, end: segs[segs.length - 1].end } : null;
     const worked = segs.reduce((x, g) => x + (g.end - g.start), 0);
     // Only the stretches really worked are taken, not the gaps between them.
     for (const g of segs) busy.push([at(g.start), at(g.end)]);
     if (t.done || t.id === cur) {
-      // Fixed. A done task without tracked time keeps its planned slot; the
-      // running one keeps the rest of its planned time from now.
+      // Fixed. Done without tracked time keeps its slot; the running task
+      // keeps the rest of its planned time from now.
       if (!segs.length) busy.push([a, a + p.mins]);
-      if (t.id === cur) {
-        const nowM = at(Date.now());
-        busy.push([nowM, nowM + Math.max(0, p.mins - Math.round(worked / 60e3))]);
-      }
+      if (t.id === cur) busy.push([nowM, nowM + Math.max(0, p.mins - Math.round(worked / 60e3))]);
       continue;
     }
-    if (real) {
-      // Started earlier and paused: that work stays put; what's left moves.
-      const left = Math.max(15, Math.round((p.mins - worked / 60e3) / 5) * 5);
-      const startedHere = a < at(real.end) - 1;
-      movable.push({ t, p: { ...p, mins: startedHere ? left : p.mins }, a: startedHere ? -1 : a });
-    } else movable.push({ t, p, a });
+    const pinned = !!metaOf('g:' + t.id).pinned;
+    // Started earlier and paused: what's left is the block (its plan, as drawn).
+    seq.push({ t, p, a, b: a + p.mins, fixed: pinned });
   }
-  if (!movable.length) return [];
-  movable.sort((x, y) => x.a - y.a);
+  seq.sort((x, y) => x.a - y.a || x.b - y.b);
+  for (const x of seq) if (x.fixed) busy.push([x.a, x.b]);
+  if (!seq.some((x) => !x.fixed)) return [];
   let win = workWindows(d);
-  if (!win || !win.length) {
-    // No day structure: today from now, other days from the earliest block, to midnight.
-    const starts = movable.map((x) => x.a).filter((x) => x >= 0);
-    win = [[isToday ? Math.ceil(at(Date.now()) / 5) * 5 : starts.length ? Math.min(...starts) : 9 * 60, 24 * 60]];
-  }
-  let cursor = isToday ? Math.ceil(at(Date.now()) / 5) * 5 : 0;
+  if (!win || !win.length) win = [[0, 24 * 60]];
+  const free = (t0, len) => !busy.some(([ba, bb]) => t0 < bb && t0 + len > ba);
   const out = [];
-  for (const x of movable) {
+  let after = nowM; // the end of the block before, as placed
+  for (const x of seq) {
+    if (x.fixed) {
+      after = Math.max(after, x.b);
+      continue;
+    }
     const len = x.p.mins;
     let placed = null;
     for (const [wa, wb] of win) {
-      let t0 = Math.max(wa, cursor);
-      for (let guard = 0; guard < 50 && t0 + len <= wb; guard++) {
-        const hit = busy.find(([ba, bb]) => t0 < bb && t0 + len > ba);
-        if (!hit) {
+      for (let t0 = Math.max(wa, after); t0 + len <= wb && t0 < x.a; t0 += 5) {
+        if (free(t0, len)) {
           placed = t0;
           break;
         }
-        t0 = Math.ceil(hit[1] / 5) * 5;
       }
       if (placed !== null) break;
     }
-    if (placed === null) placed = Math.max(cursor, ...busy.map(([, bb]) => bb), win[win.length - 1][1]);
+    if (placed === null) placed = x.a; // nothing earlier: stays where it is
     busy.push([placed, placed + len]);
-    // No running cursor: a later, shorter task can still fill an earlier gap.
+    after = Math.max(after, placed + len);
     if (placed !== x.a) out.push({ id: x.t.id, start: new Date(d.getTime() + placed * 60e3).toISOString(), mins: len });
   }
   return out;
 }
 
-let tidyUndo = null; // { list, timer }
-async function tidy() {
+let fitUndo = null; // { list, timer }
+async function fit() {
   const days = planTab === 'today' ? [S.todayDate] : Array.from({ length: 7 }, (_, i) => { const x = new Date(); x.setDate(x.getDate() + i); return ld(x); });
-  const list = days.flatMap(tidyDay);
-  if (!list.length) return flashTool($('su-tidy'), 'Already tidy');
+  const list = days.flatMap(fitDay);
+  if (!list.length) return flashTool($('su-fit'), 'Nothing to move up');
   const before = list.map((x) => ({ id: x.id, ...planOf('g:' + x.id) }));
   S = await api.planMany(list);
-  clearTimeout(tidyUndo && tidyUndo.timer);
-  tidyUndo = { list: before, timer: setTimeout(() => ((tidyUndo = null), renderSetup()), 12000) };
+  clearTimeout(fitUndo && fitUndo.timer);
+  fitUndo = { list: before, timer: setTimeout(() => ((fitUndo = null), renderSetup()), 12000) };
   render();
 }
 function flashTool(b, text) {
@@ -365,12 +359,12 @@ function renderSetup() {
   if (!S || suDrag || suDraft) return;
   const behindNow = behindToday();
   renderNowStrip();
-  // Until a Day structure is set: a quiet nudge (Tidy, off-hours marks and
+  // Until a Day structure is set: a quiet nudge (Fit, off-hours marks and
   // opening by itself all lean on it). "Not now" hides it for the day.
   let dsLater = null;
   try { dsLater = localStorage.getItem('dsHintLater'); } catch {}
   $('su-dshint').hidden = !!S.settings.dayStructure || dsLater === S.todayDate || S.settings.appMode === 'light';
-  $('su-undo').hidden = !tidyUndo;
+  $('su-fit-undo').hidden = !fitUndo;
   $('su-behind').hidden = !(behindNow.ids.size || behindNow.by > 10 * 60e3) || S.settings.appMode === 'light';
   if (!$('su-behind').hidden)
     $('su-behind').textContent = behindNow.ids.size ? `⚠️ ${behindNow.ids.size} behind` : `⚠️ ${dur(Math.ceil(behindNow.by / (5 * 60e3)) * 5 * 60e3)} over`;
@@ -545,7 +539,7 @@ function dayCard(i, now, h0, h1, { wide }) {
       blk.style.top = px(pa) + 'px';
       blk.style.height = Math.max(p.mins * (HOUR / 60) - 2, 16) + 'px';
       blk.append(titleWithSeries(el('span', 't', t.title), t), el('span', 'w', (p.mins <= 20 ? hm(s) : `${hm(s)}–${hm(pEnd)}`) + ` · ${hLen(p.mins)}` + (m.repeat ? ' · ↻' : '') + (offHours ? ' · off hours' : '')));
-      blk.title = t.title + (offHours ? '\nOutside your work hours (Day structure). Tidy moves it in.' : '');
+      blk.title = t.title + (offHours ? '\nOutside your work hours (Day structure).' : '');
       if (!t.done) {
         blk.append(el('span', 'h'));
         blk.addEventListener('pointerdown', (e) => {
@@ -963,6 +957,11 @@ function renderSheet() {
     acts.append(del);
     sheet.append(sheetTop(name), notes, el('span', 'label', 'When'), when, el('span', 'label', 'Length'), length, el('span', 'label', 'Repeat'), repeat);
     if (isCustom) sheet.append(custom);
+    // Fit: by default a block moves up into free time; pinned ones stay put.
+    if (feat('fit')) {
+      const pin = tabsRow([[false, 'Moves up'], [true, 'Stays put']], !!m.pinned, async (v) => ((S = await api.setMeta('g:' + t.id, { pinned: v })), render()));
+      sheet.append(el('span', 'label', 'Fit'), pin);
+    }
     // Items: Google subtasks, as a checklist.
     const items = el('ul', 'su-items');
     for (const it of t.items || []) {
@@ -1170,17 +1169,17 @@ $('su-behind').addEventListener('click', () => {
   suSheet = { type: 'behind', id: null };
   renderSetup();
 });
-$('su-tidy').addEventListener('click', () => tidy());
+$('su-fit').addEventListener('click', () => fit());
 $('su-dshint-go').addEventListener('click', () => $('su-structure').click());
 $('su-dshint-x').addEventListener('click', () => {
   try { localStorage.setItem('dsHintLater', S.todayDate); } catch {}
   renderSetup();
 });
-$('su-undo').addEventListener('click', async () => {
-  if (!tidyUndo) return;
-  const list = tidyUndo.list.filter((x) => x.start);
-  clearTimeout(tidyUndo.timer);
-  tidyUndo = null;
+$('su-fit-undo').addEventListener('click', async () => {
+  if (!fitUndo) return;
+  const list = fitUndo.list.filter((x) => x.start);
+  clearTimeout(fitUndo.timer);
+  fitUndo = null;
   S = await api.planMany(list);
   render();
 });

@@ -172,6 +172,10 @@
 - [x] Planner nudges "Set day start & end" until a Day structure exists ("×" hides it for the day).
 - [x] Tiny previews beside Reminder style, corners, where Settings/Planner open, and Goal progress.
 
+## v0.29 — Fit
+- [x] Tidy renamed Fit. It never changes the order and never moves anything later: each block moves up into the earliest free gap after the block before it (work windows, real work, now). No earlier gap: it stays.
+- [x] Task details → Fit: "Moves up" or "Stays put" (pinned tasks are left alone, and nothing jumps over them).
+
 ## Parked
 - [x] ~~Full-screen announcements~~ → became the v0.7 blur for "Still on this?" and end of day
 

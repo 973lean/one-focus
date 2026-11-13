@@ -913,7 +913,7 @@ input[type="time"]::-webkit-calendar-picker-indicator { opacity: 0.35; cursor: p
 /* Planned outside work hours (Day structure): hatched and quieter. */
 .su-block.is-plan.is-off { background: repeating-linear-gradient(135deg, rgba(245,245,244,0.05) 0 4px, transparent 4px 9px); border-color: rgba(245, 245, 244, 0.22); color: var(--fg-secondary); }
 .su-block.is-plan.is-off .w { color: var(--fg-tertiary); }
-.no-tidy #su-tidy, .no-tidy #su-undo { display: none !important; }
+.no-fit #su-fit, .no-fit #su-fit-undo { display: none !important; }
 
 /* Planner: the running task, with Done and Hold. */
 .su-live { position: relative; flex: 0 1 auto; min-width: 150px; display: flex; align-items: center; gap: 8px; padding: 3px 4px 3px 12px; border: 1px solid var(--hairline); border-radius: 999px; font-size: 13px; max-width: 460px; }

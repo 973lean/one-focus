@@ -79,8 +79,8 @@ function plansFor(open) {
   const out = {};
   for (const t of open) {
     const m = state.taskMeta['g:' + t.id];
-    if (m && (m.plan || m.repeat || m.mins))
-      out['g:' + t.id] = { plan: m.plan || null, repeat: m.repeat || null, mins: m.mins || null };
+    if (m && (m.plan || m.repeat || m.mins || m.pinned))
+      out['g:' + t.id] = { plan: m.plan || null, repeat: m.repeat || null, mins: m.mins || null, pinned: !!m.pinned };
   }
   return out;
 }
@@ -502,7 +502,7 @@ ipcMain.handle('review:open', () => {
 let setupWin = null;
 const light = () => state.settings.appMode === 'light';
 // Features you can switch off one by one (Settings → Features). On unless set false.
-const FEATURES = ['planner', 'log', 'hold', 'goals', 'items', 'reminders', 'behind', 'clickCreate', 'tidy', 'offHours', 'autoNow', 'jolt', 'check', 'endOfDay', 'idleClaim', 'hopOff'];
+const FEATURES = ['planner', 'log', 'hold', 'goals', 'items', 'reminders', 'behind', 'clickCreate', 'fit', 'offHours', 'autoNow', 'jolt', 'check', 'endOfDay', 'idleClaim', 'hopOff'];
 const feat = (k) => !(state.settings.features && state.settings.features[k] === false);
 let quitting = false;
 
@@ -1245,6 +1245,11 @@ ipcMain.handle('task:meta', (_e, key, patch) => {
   if ('goal' in patch) {
     if (patch.goal && !Number.isNaN(Date.parse(patch.goal))) meta.goal = new Date(patch.goal).toISOString();
     else delete meta.goal;
+  }
+  // Pinned: Fit leaves this task where it is.
+  if ('pinned' in patch) {
+    if (patch.pinned) meta.pinned = true;
+    else delete meta.pinned;
   }
   store.save(state);
   push();
