@@ -155,6 +155,9 @@ Panels are for the occasional look, not the resting state, so they can be denser
 - Behind: amber dashed outline with a ⚠️ mark; one chip in the header.
 - Off hours: a block outside the Day structure's work windows is hatched with quieter text and "off hours". Fit (header) moves blocks up into free time in the work windows, never later and never out of order; pinned tasks ("Stays put") are left alone. Undo fit stays for 12s.
 
+## Planner clock (v0.29)
+- Top left of the Planner: the time (30px, weight 300, tabular; AM/PM small and tertiary) with the date beneath (12px, tertiary), a hairline, then Today / Week. The Today tab's date lives only in the clock. When the header is narrow the tools drop to a second row, right-aligned.
+
 ## Settings (v0.20)
 - Cards on a grid (min 420px), each with a title, rows separated by hairlines: name, optional one-line description, control on the right (switch or segmented pill).
 - Opens here or in the Planner window; there the gear sits in the bottom-right corner and appears only when the pointer is near.

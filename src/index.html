@@ -76,11 +76,15 @@
         <header class="su-head">
           <div class="su-top">
             <div class="su-titles">
-              <div class="su-tabs" role="tablist">
-                <button class="su-tab" data-tab="today">Today</button>
-                <button class="su-tab" data-tab="week">Week</button>
+              <div class="su-clock" aria-live="off"><time class="su-clock__t" id="su-clock-t"></time><span class="su-clock__d" id="su-clock-d"></span></div>
+              <span class="su-sep" aria-hidden="true"></span>
+              <div class="su-tabline">
+                <div class="su-tabs" role="tablist">
+                  <button class="su-tab" data-tab="today">Today</button>
+                  <button class="su-tab" data-tab="week">Week</button>
+                </div>
+                <span class="su-range" id="su-range"></span>
               </div>
-              <span class="su-range" id="su-range"></span>
             </div>
             <div class="su-tools">
               <div class="su-live" id="su-live" hidden></div>

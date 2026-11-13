@@ -21,8 +21,26 @@ const hopEl = $('hop');
 const isHold = (t) => !!(t && t.key && t.key.startsWith('hold:'));
 let editing = false;
 
+// The Planner's clock (time + date), same format as Now.
+const plannerDateFmt = new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+function plannerClock(now) {
+  const t = $('su-clock-t');
+  if (!t) return;
+  const parts = timeFmt.formatToParts(now);
+  const period = parts.find((x) => x.type === 'dayPeriod');
+  const text = parts.filter((x) => x.type !== 'dayPeriod').map((x) => x.value).join('').trim();
+  if (t.dataset.v !== text + (period ? period.value : '')) {
+    t.dataset.v = text + (period ? period.value : '');
+    t.textContent = text;
+    if (period) t.append(el('span', 'p', period.value));
+    t.dateTime = now.toISOString();
+  }
+  $('su-clock-d').textContent = plannerDateFmt.format(now);
+}
+
 function tick() {
   const now = new Date();
+  if (setupMode || view === 'setup') plannerClock(now);
   const parts = timeFmt.formatToParts(now);
   const period = parts.find((x) => x.type === 'dayPeriod');
   clockEl.textContent = parts.filter((x) => x.type !== 'dayPeriod').map((x) => x.value).join('').trim();

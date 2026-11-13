@@ -726,7 +726,7 @@ function todaySummary() {
 
 // Header date range follows what's on screen.
 function updateSetupRange() {
-  if (planTab === 'today') return ($('su-range').textContent = new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'long', day: 'numeric' }).format(new Date()));
+  if (planTab === 'today') return ($('su-range').textContent = ''); // the clock shows the date
   const days = $('su-days');
   const cards = [...days.querySelectorAll('.su-day')];
   const r = days.getBoundingClientRect();
