@@ -251,7 +251,16 @@
             <div class="st-l"><span class="st-name">Week corner</span></div>
             <div class="tabs st-seg" id="s-corner-week"></div>
           </div>
-          <label class="st-row"><div class="st-l"><span class="st-name">Keyboard shortcuts</span><span class="st-desc">Ctrl+Alt+T Today, Ctrl+Alt+W Week, Ctrl+Alt+S Settings.</span></div><input type="checkbox" id="s-shortcuts" /></label>
+          <label class="st-row"><div class="st-l"><span class="st-name">Keyboard shortcuts</span><span class="st-desc" id="s-shortcuts-desc">Ctrl+Alt+T Today, Ctrl+Alt+W Week, Ctrl+Alt+S Settings.</span></div><input type="checkbox" id="s-shortcuts" /></label>
+          <div class="st-row st-row--wrap" id="s-keys-row">
+            <div class="st-l"><span class="st-name">Keys</span><span class="st-desc">Hold the pair, press the letter. Ctrl+Shift+T/W also mean things in browsers.</span></div>
+            <div class="st-keys">
+              <div class="tabs st-seg" id="s-shortcut-mod"><button class="tab" data-v="ctrlAlt">Ctrl+Alt</button><button class="tab" data-v="ctrlShift">Ctrl+Shift</button><button class="tab" data-v="altShift">Alt+Shift</button></div>
+              <label class="st-key"><input id="s-key-today" maxlength="1" spellcheck="false" /><span>Today</span></label>
+              <label class="st-key"><input id="s-key-week" maxlength="1" spellcheck="false" /><span>Week</span></label>
+              <label class="st-key"><input id="s-key-settings" maxlength="1" spellcheck="false" /><span>Settings</span></label>
+            </div>
+          </div>
           <div class="st-row st-row--wrap">
             <div class="st-l"><span class="st-name">Open by itself</span><span class="st-desc" id="s-autoplan-hint"></span></div>
             <div class="tabs st-seg" id="s-autoplan"></div>

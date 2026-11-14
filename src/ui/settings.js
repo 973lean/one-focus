@@ -216,6 +216,16 @@ function renderSettings() {
   document.querySelectorAll('#s-popup .tab').forEach((t) => t.setAttribute('aria-selected', String(t.dataset.v === (s.popupStyle || 'corner'))));
   $('s-blur-close').checked = s.plannerBlurClose !== false;
   $('s-shortcuts').checked = s.shortcuts !== false;
+  {
+    const mods = { ctrlAlt: 'Ctrl+Alt', ctrlShift: 'Ctrl+Shift', altShift: 'Alt+Shift' };
+    const mod = mods[s.shortcutMod] || mods.ctrlAlt;
+    const k = { today: 'T', week: 'W', settings: 'S', ...(s.shortcutKeys || {}) };
+    const taken = (S.shortcutTaken || []).length;
+    $('s-shortcuts-desc').textContent = `${mod}+${k.today} Today, ${mod}+${k.week} Week, ${mod}+${k.settings} Settings.` + (taken ? ` ${taken > 1 ? 'Some are' : 'One is'} taken by another app: pick another letter.` : '');
+    $('s-keys-row').hidden = s.shortcuts === false;
+    document.querySelectorAll('#s-shortcut-mod .tab').forEach((t) => t.setAttribute('aria-selected', String(t.dataset.v === (s.shortcutMod || 'ctrlAlt'))));
+    for (const n of ['today', 'week', 'settings']) if (document.activeElement !== $('s-key-' + n)) $('s-key-' + n).value = k[n];
+  }
   $('s-remind-blocks').checked = s.remindBlocks !== false;
   $('s-remind-over').checked = s.remindOver !== false;
   $('s-color-time').checked = !!s.colorTime;
@@ -278,4 +288,21 @@ function renderSettings() {
   $('g-status').textContent = S.connected
     ? S.today.error || `Connected. The first unfinished task in “${s.listName}” waits for you to start it.`
     : 'Not connected. One Focus will use one Google Tasks list and create it if it doesn’t exist.';
+}
+
+// Shortcut keys: the modifier pair and one letter per action.
+document.querySelectorAll('#s-shortcut-mod .tab').forEach((t) =>
+  t.addEventListener('click', async () => (S = await api.updateSettings({ shortcutMod: t.dataset.v })) && render())
+);
+for (const n of ['today', 'week', 'settings']) {
+  const input = $('s-key-' + n);
+  input.addEventListener('focus', () => input.select());
+  input.addEventListener('input', async () => {
+    const v = input.value.trim().toUpperCase();
+    if (!/^[A-Z0-9]$/.test(v)) return;
+    input.value = v;
+    S = await api.updateSettings({ shortcutKeys: { [n]: v } });
+    input.blur();
+    render();
+  });
 }

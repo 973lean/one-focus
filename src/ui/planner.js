@@ -307,6 +307,8 @@ function openDraft(col, day, min, px) {
 let nowHoldOpen = false;
 let suWrap = null; // { key, title, ms, category, rating, timer }
 const ICON_DONE = '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 6.4 5 8.8l4.6-5.3"/></svg>';
+const ICON_MORE = '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M6 2.5v7M2.5 6h7"/></svg>';
+let nowMoreOpen = false;
 const ICON_HOLD = '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M4.25 3v6M7.75 3v6"/></svg>';
 
 function closeSuWrap() {
@@ -427,7 +429,31 @@ function renderNowStrip() {
     return;
   }
   if (cur.googleId) btn(ICON_DONE, 'Done', doneHere, 'is-main');
-  if (feat('hold')) btn(ICON_HOLD, 'Hold', () => ((nowHoldOpen = !nowHoldOpen), renderNowStrip()));
+  if (cur.googleId) btn(ICON_MORE, 'More time (pushes the rest of today down)', () => ((nowMoreOpen = !nowMoreOpen), (nowHoldOpen = false), renderNowStrip()));
+  if (feat('hold')) btn(ICON_HOLD, 'Hold', () => ((nowHoldOpen = !nowHoldOpen), (nowMoreOpen = false), renderNowStrip()));
+  if (nowMoreOpen && cur.googleId) {
+    // Deliberate extra time. After +30m (or half the plan) it asks for the
+    // good-enough version first; more time is still there, just quieter.
+    const pm = metaOf(cur.key);
+    const added = pm.added || 0;
+    const orig = pm.plan ? pm.plan.mins - added : 0;
+    const nudge = added > 0 && (added >= 30 || (orig > 0 && added >= orig * 0.5));
+    const pick = el('div', 'su-live__pick su-live__more');
+    if (nudge) pick.append(el('p', 'su-live__nudge', `Already +${dur(added * 60e3)} on this. What's the good-enough version you can finish now?`));
+    const go = async (n) => {
+      nowMoreOpen = false;
+      S = await api.extend(n);
+      render();
+    };
+    const opts = nudge ? [[10, '10m to wrap up', 'is-main'], [15, '+15m'], [30, '+30m']] : [[10, '+10m'], [15, '+15m'], [30, '+30m'], [60, '+1h']];
+    for (const [n, label, cls] of opts) {
+      const c = el('button', 'su-live__b' + (cls ? ' ' + cls : nudge ? ' is-quiet' : ''), label);
+      c.title = `${hLen(n)} more on this; later blocks today move down ${hLen(n)}`;
+      c.addEventListener('click', () => go(n));
+      pick.append(c);
+    }
+    box.append(pick);
+  }
   if (nowHoldOpen && feat('hold')) {
     const pick = el('div', 'su-live__pick');
     const go = async (name) => {

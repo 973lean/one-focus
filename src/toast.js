@@ -8,9 +8,12 @@ function dur(ms) {
   return m < 60 ? m + 'm' : Math.floor(m / 60) + 'h ' + String(m % 60).padStart(2, '0') + 'm';
 }
 
+// Added a lot of time already? Then ask for the good-enough version.
+const nudged = (x) => !!x && x.kind === 'over' && x.added > 0 && (x.added >= 30 || (x.planMins > 0 && x.added >= (x.planMins - x.added) * 0.5));
 function kindText() {
   if (!r) return '';
   if (r.kind === 'block') return 'Planned to start now';
+  if (nudged(r)) return `+${dur(r.added * 60e3)} added already · good enough to ship?`;
   const over = Date.now() - Date.parse(r.goal);
   return over < 60e3 ? 'Planned time’s up' : `${dur(over)} over the plan`;
 }
@@ -29,9 +32,14 @@ function show(next) {
     acts.append(b);
   };
   if (r.kind === 'block') btn('Start', 'start', 'main');
-  else {
+  else if (nudged(r)) {
+    btn('Done', 'done', 'main');
+    btn('10m to wrap up', 'wrap');
+    btn('+15m', 'extend', 'quiet');
+  } else {
     btn('Done', 'done', 'main');
     btn('+15m', 'extend');
+    btn('+30m', 'extend30');
   }
   btn('Open Today', 'plan');
   btn('×', 'dismiss', 'x');

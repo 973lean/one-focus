@@ -21,7 +21,9 @@ const DEFAULTS = {
     plannerBlurClose: true, // clicking outside the Planner closes it
     cornerToday: 'tl', // screen corner (main monitor) to triple-bump for Planner · Today; off | tl | tr | bl | br
     cornerWeek: 'tr', // …and for Planner · Week
-    shortcuts: true, // Ctrl+Alt+T (Today), Ctrl+Alt+W (Week)
+    shortcuts: true, // global shortcuts for Today / Week / Settings
+    shortcutMod: 'ctrlAlt', // ctrlAlt | ctrlShift | altShift
+    shortcutKeys: { today: 'T', week: 'W', settings: 'S' },
     autoPlan: { mode: 'startEnd', every: 3, times: ['09:00', '13:30'] }, // off | startEnd | every | times
     remindBlocks: true, // when a planned block starts
     remindOver: true, // when the running task passes its planned end
@@ -50,6 +52,7 @@ const DEFAULTS = {
   holdNames: [], // { name, lastUsed }
   checkFrom: null, // last "Still on this?" confirm
   eodDate: null, // day the end-of-day check last ran
+  workedOn: null, // last day you started anything (idle counts from then, even before day start)
   web: { token: null, gistId: null, publishedAt: null, error: null }, // private web view (secret Gist)
   breaks: [], // one-off breaks placed in Setup: { id, start, mins }
   autoPlanFired: { date: null, at: [] }, // Planner auto-opens already done today

@@ -176,6 +176,12 @@
 - [x] Tidy renamed Fit. It never changes the order and never moves anything later: each block moves up into the earliest free gap after the block before it (work windows, real work, now). No earlier gap: it stays.
 - [x] Task details → Fit: "Moves up" or "Stays put" (pinned tasks are left alone, and nothing jumps over them).
 
+## v0.30 — More time on purpose, idle fix, custom shortcuts
+- [x] Idle counted nothing on days off (or before day start) once a Day structure was set; now idle counts from the moment you start anything that day.
+- [x] More time on the running task (Planner strip "+", or the over-time popup): its plan grows and the rest of today moves down by the same amount; pinned tasks stay.
+- [x] Good-enough nudge: after +30m (or half the original plan) the prompts lead with "10m to wrap up" and ask for the good-enough version; more time is still there, quieter.
+- [x] Shortcuts: pick the modifier pair (Ctrl+Alt, Ctrl+Shift, Alt+Shift) and the letter for Today, Week and Settings; shortcuts another app owns are flagged.
+
 ## Parked
 - [x] ~~Full-screen announcements~~ → became the v0.7 blur for "Still on this?" and end of day
 

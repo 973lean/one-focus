@@ -57,6 +57,7 @@ function snapshot() {
     todayDate: localDate(),
     goals: goalsFor([cur, held, ...today.open.map((t) => ({ key: 'g:' + t.id }))]),
     plans: plansFor([...today.open, ...today.done]),
+    shortcutTaken,
     itemMins: Object.fromEntries(Object.entries(state.taskMeta).filter(([k, m]) => k.startsWith('i:') && m.mins).map(([k, m]) => [k.slice(2), m.mins])),
     breaks: state.breaks,
     web: {
@@ -80,7 +81,7 @@ function plansFor(open) {
   for (const t of open) {
     const m = state.taskMeta['g:' + t.id];
     if (m && (m.plan || m.repeat || m.mins || m.pinned))
-      out['g:' + t.id] = { plan: m.plan || null, repeat: m.repeat || null, mins: m.mins || null, pinned: !!m.pinned };
+      out['g:' + t.id] = { plan: m.plan || null, repeat: m.repeat || null, mins: m.mins || null, pinned: !!m.pinned, added: m.added || 0 };
   }
   return out;
 }
@@ -240,9 +241,13 @@ function closeCheck() {
 }
 
 // With a day structure: is it before today's start (or a day off)?
+// No idle before the workday starts (or on a day off) — unless you've already
+// started something today: then you're working, and idle counts from there.
 function beforeWorkday(d = new Date()) {
   const ds = state.settings.dayStructure;
   if (!ds) return false;
+  if (state.current) state.workedOn = localDate(d);
+  if (state.workedOn === localDate(d)) return false;
   const weekend = d.getDay() === 0 || d.getDay() === 6;
   if (weekend && !ds.weekends) return true;
   const [h, m] = ds.start.split(':').map(Number);
@@ -721,14 +726,29 @@ function watchCorners() {
   }, 40);
 }
 
+// Global shortcuts: a modifier pair you pick plus one letter each (Settings →
+// Planner). Electron can't do two-key sequences, so it's always mod + key.
+const SHORTCUT_MODS = { ctrlAlt: 'CommandOrControl+Alt', ctrlShift: 'CommandOrControl+Shift', altShift: 'Alt+Shift' };
+let shortcutTaken = []; // accelerators another app already owns
 function applyShortcuts() {
   globalShortcut.unregisterAll();
+  shortcutTaken = [];
   if (state.settings.shortcuts === false) return;
+  const mod = SHORTCUT_MODS[state.settings.shortcutMod] || SHORTCUT_MODS.ctrlAlt;
+  const keys = { today: 'T', week: 'W', settings: 'S', ...(state.settings.shortcutKeys || {}) };
+  const reg = (k, fn) => {
+    const acc = `${mod}+${k}`;
+    try {
+      if (!globalShortcut.register(acc, fn)) shortcutTaken.push(acc);
+    } catch {
+      shortcutTaken.push(acc);
+    }
+  };
   // Settings: here or on the main monitor, as set in Settings → Mode.
-  globalShortcut.register('CommandOrControl+Alt+S', () => openSetupWindow('settings'));
+  reg(keys.settings, () => openSetupWindow('settings'));
   if (light()) return;
-  globalShortcut.register('CommandOrControl+Alt+T', () => openSetupWindow('today'));
-  globalShortcut.register('CommandOrControl+Alt+W', () => openSetupWindow('week'));
+  reg(keys.today, () => openSetupWindow('today'));
+  reg(keys.week, () => openSetupWindow('week'));
 }
 
 // ---------- the Planner opens itself at chosen times ----------
@@ -835,7 +855,7 @@ function checkReminders() {
   if (state.settings.remindOver !== false && cm && cm.goal && now >= Date.parse(cm.goal)) {
     const slot = Math.floor((now - Date.parse(cm.goal)) / (15 * 60e3)); // again every 15 minutes
     const id = `over:${cur.key}:${cm.goal}:${slot}`;
-    if (!remindFired(id)) return setReminder({ id, kind: 'over', taskId: cur.googleId, title: cur.title, goal: cm.goal, overMs: now - Date.parse(cm.goal) });
+    if (!remindFired(id)) return setReminder({ id, kind: 'over', taskId: cur.googleId, title: cur.title, goal: cm.goal, overMs: now - Date.parse(cm.goal), added: cm.added || 0, planMins: cm.plan ? cm.plan.mins : 0 });
   }
   if (state.settings.remindBlocks !== false)
     for (const t of today.open) {
@@ -863,14 +883,9 @@ async function answerReminder(action) {
   } else if (action === 'done' && client && state.google.listId) {
     await client.patch(state.google.listId, r.taskId, { status: 'completed' }).catch(() => {});
     await resync();
-  } else if (action === 'extend') {
-    const m = state.taskMeta['g:' + r.taskId];
-    if (m && m.goal) {
-      m.goal = new Date(Math.max(Date.parse(m.goal), Date.now()) + 15 * 60e3).toISOString();
-      if (m.plan) m.plan.mins = Math.round((Date.parse(m.goal) - Date.parse(m.plan.start)) / 60e3);
-      store.save(state);
-    }
-  }
+  } else if (action === 'extend') extendCurrent(15);
+  else if (action === 'extend30') extendCurrent(30);
+  else if (action === 'wrap') extendCurrent(10);
   push();
   return snapshot();
 }
@@ -1019,6 +1034,36 @@ ipcMain.handle('plan:add', async (_e, rawTitle, plan) => {
 });
 
 // Running over: push the current goal and every goal planned after it.
+// More time on the running task, on purpose: its plan grows and the rest of
+// today's blocks move down by the same amount (pinned ones stay). How much was
+// added is kept, so the app can ask "good enough?" before it becomes a habit.
+function extendCurrent(rawMins) {
+  const mins = Math.min(Math.max(Math.round(+rawMins) || 0, 5), 120);
+  const cur = state.current && !isHold(state.current) ? state.current : null;
+  if (!cur || !cur.googleId) return;
+  const m = (state.taskMeta[cur.key] = { ...(state.taskMeta[cur.key] || {}) });
+  const now = Date.now();
+  const oldEnd = m.goal ? Date.parse(m.goal) : now;
+  const newEnd = Math.max(oldEnd, now) + mins * 60e3;
+  const shift = newEnd - oldEnd;
+  m.goal = new Date(newEnd).toISOString();
+  if (m.plan) m.plan.mins = Math.min(12 * 60, Math.round((newEnd - Date.parse(m.plan.start)) / 60e3));
+  m.added = (m.added || 0) + mins;
+  const day = localDate();
+  for (const t of today.open) {
+    if (t.id === cur.googleId) continue;
+    const tm = state.taskMeta['g:' + t.id];
+    if (!tm || !tm.plan || tm.pinned) continue;
+    const st = Date.parse(tm.plan.start);
+    if (localDate(new Date(st)) !== day || st < oldEnd - 60e3) continue;
+    tm.plan.start = new Date(st + shift).toISOString();
+    tm.goal = new Date(st + shift + tm.plan.mins * 60e3).toISOString();
+  }
+  store.save(state);
+  push();
+}
+ipcMain.handle('current:extend', (_e, mins) => (extendCurrent(mins), snapshot()));
+
 ipcMain.handle('goals:shift', (_e, raw) => {
   const ms = Number(raw);
   if (!ms || Math.abs(ms) > 12 * 3600e3) return snapshot();
@@ -1280,7 +1325,16 @@ ipcMain.handle('settings:update', async (_e, patch) => {
       times: (Array.isArray(a.times) ? a.times : []).filter((x) => /^\d{2}:\d{2}$/.test(x)).slice(0, 6),
     };
   }
-  if ('appMode' in patch || 'shortcuts' in patch) applyShortcuts();
+  if ('shortcutMod' in patch && SHORTCUT_MODS[patch.shortcutMod]) state.settings.shortcutMod = patch.shortcutMod;
+  if (patch.shortcutKeys && typeof patch.shortcutKeys === 'object') {
+    const k = { today: 'T', week: 'W', settings: 'S', ...(state.settings.shortcutKeys || {}) };
+    for (const [name, v] of Object.entries(patch.shortcutKeys)) {
+      const key = String(v || '').trim().toUpperCase();
+      if (['today', 'week', 'settings'].includes(name) && /^[A-Z0-9]$/.test(key)) k[name] = key;
+    }
+    state.settings.shortcutKeys = k;
+  }
+  if ('appMode' in patch || 'shortcuts' in patch || 'shortcutMod' in patch || 'shortcutKeys' in patch) applyShortcuts();
   if ('setupMode' in patch) state.settings.setupMode = patch.setupMode === 'inline' ? 'inline' : 'modal';
   if ('dayStructure' in patch) state.settings.dayStructure = cleanStructure(patch.dayStructure);
   if ('logView' in patch) state.settings.logView = patch.logView === 'sessions' ? 'sessions' : 'summary';
