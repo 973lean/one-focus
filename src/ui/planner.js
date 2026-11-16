@@ -278,8 +278,9 @@ function openDraft(col, day, min, px) {
   const input = el('input');
   input.type = 'text';
   input.maxLength = 300;
-  input.placeholder = 'New task';
-  box.append(input, el('span', 'w', `${hm(start)}–${hm(start.getTime() + mins * 60e3)} · ${hLen(mins)}`));
+  input.placeholder = `New task · ${hm(start)}`;
+  box.title = `${hm(start)}–${hm(start.getTime() + mins * 60e3)} · ${hLen(mins)}`;
+  box.append(input);
   col.append(box);
   suDraft = { box };
   const close = () => {
@@ -567,7 +568,9 @@ function dayCard(i, now, h0, h1, { wide }) {
     if (suDraft || suDrag || Date.now() - suDragEnded < 500 || !feat('clickCreate') || e.target.closest('.su-block, .su-break, .su-actual, .su-draft, button')) return;
     if (S.settings.appMode === 'light' || !S.connected) return;
     const y = e.clientY - col.getBoundingClientRect().top;
-    const min = Math.min(Math.max(h0 * 60 + Math.floor(((y / HOUR) * 60) / 15) * 15, h0 * 60), h1 * 60 - 15);
+    const raw = h0 * 60 + (y / HOUR) * 60;
+    const now = snapNow(col, raw);
+    const min = now !== null ? now : Math.min(Math.max(h0 * 60 + Math.floor(((y / HOUR) * 60) / 15) * 15, h0 * 60), h1 * 60 - 15);
     openDraft(col, d, min, px);
   });
 
@@ -661,11 +664,11 @@ function dayCard(i, now, h0, h1, { wide }) {
     if (!real || later) {
       const isBehind = behind.ids.has(t.id);
       const offHours = !t.done && outsideWork(dayWin, pa, pb);
-      const blk = el('div', 'su-block is-plan' + (running ? ' is-running' : '') + (p.mins <= 20 ? ' is-short' : '') + (t.done ? ' is-done' : '') + (isBehind ? ' is-behind' : '') + (offHours ? ' is-off' : ''));
+      const blk = el('div', 'su-block is-plan' + (running ? ' is-running' : '') + (p.mins <= 30 ? ' is-short' : '') + (t.done ? ' is-done' : '') + (isBehind ? ' is-behind' : '') + (offHours ? ' is-off' : ''));
       blk.style.top = px(pa) + 'px';
       blk.style.height = Math.max(p.mins * (HOUR / 60) - 2, 16) + 'px';
       blk.append(titleWithSeries(el('span', 't', t.title), t), el('span', 'w', (p.mins <= 20 ? hm(s) : `${hm(s)}–${hm(pEnd)}`) + ` · ${hLen(p.mins)}` + (m.repeat ? ' · ↻' : '') + (offHours ? ' · off hours' : '')));
-      blk.title = t.title + (offHours ? '\nOutside your work hours (Day structure).' : '');
+      blk.title = `${t.title}\n${hm(s)}–${hm(pEnd)} · ${hLen(p.mins)}` + (offHours ? '\nOutside your work hours (Day structure).' : '');
       if (!t.done) {
         blk.append(el('span', 'h'));
         blk.addEventListener('pointerdown', (e) => {
@@ -903,9 +906,19 @@ function scrollSetupToNow() {
 }
 
 // Minutes since midnight at a pointer y inside a day column, snapped.
+// Minutes at a point in a day column, snapped to 15 — or to the now-line
+// itself when you're within a few minutes of it on today.
+function snapNow(col, raw) {
+  if (col.dataset.day !== S.todayDate) return null;
+  const n = new Date();
+  const nowMin = n.getHours() * 60 + n.getMinutes();
+  return Math.abs(raw - nowMin) <= 8 ? nowMin : null;
+}
 function colMinutes(col, clientY) {
   const r = col.getBoundingClientRect();
   const m = +col.dataset.h0 * 60 + ((clientY - r.top) / HOUR) * 60;
+  const now = snapNow(col, m);
+  if (now !== null) return now;
   return Math.max(0, Math.min(24 * 60 - SNAP, Math.round(m / SNAP) * SNAP));
 }
 
@@ -954,7 +967,7 @@ function onDragMove(e) {
     const p = el('div', 'su-preview');
     p.style.top = (m - +t.col.dataset.h0 * 60) * (HOUR / 60) + 'px';
     p.style.height = d.mins * (HOUR / 60) - 2 + 'px';
-    p.append(el('span', null, `${hm(new Date(2000, 0, 1, 0, m))} · ${lenLabel(d.mins)}`));
+    p.append(el('span', null, `${snapNow(t.col, m) === m && m % SNAP ? 'Now' : hm(new Date(2000, 0, 1, 0, m))} · ${lenLabel(d.mins)}`));
     t.col.append(p);
   } else if (t.head && d.mode === 'move') $('su-tray').classList.add('is-drop');
 }
@@ -1079,6 +1092,17 @@ function renderSheet() {
       custom.append(el('p', 'hint', repeatLabel(r, t.due || S.todayDate)));
     }
     const acts = el('div', 'acts-row');
+    if (!t.done) {
+      // Plan it from the now-line exactly (not the 15-minute grid).
+      const nowBtn = el('button', 'act', 'Move to now');
+      nowBtn.addEventListener('click', async () => {
+        const n = new Date();
+        n.setSeconds(0, 0);
+        S = await api.plan(t.id, { start: n.toISOString(), mins: (p && p.mins) || m.mins || 30 });
+        render();
+      });
+      acts.append(nowBtn);
+    }
     if (p) {
       const un = el('button', 'act', 'Take off calendar');
       un.addEventListener('click', async () => ((S = await api.plan(t.id, null)), render()));

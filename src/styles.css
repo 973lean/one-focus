@@ -977,3 +977,7 @@ input[type="time"]::-webkit-calendar-picker-indicator { opacity: 0.35; cursor: p
 .su-planghost .w { display: none; }
 .su-planghost.is-resizing { z-index: 5; border-color: var(--fg-tertiary); background: rgba(11, 11, 12, 0.6); }
 .su-planghost.is-resizing .w { display: block; position: absolute; bottom: 4px; left: 9px; font-size: 10px; color: var(--fg); font-variant-numeric: tabular-nums; }
+
+/* Short planned blocks (30 min or less): just the name; times on hover. */
+.su-block.is-plan.is-short .w { display: none; }
+.su-block.is-plan.is-short .t { font-size: 12.5px; }
