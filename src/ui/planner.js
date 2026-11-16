@@ -523,7 +523,7 @@ function renderSetup() {
       c.addEventListener('pointerdown', (e) => beginDrag(e, { kind: 'task', task: t, mode: 'new', mins: m.mins || 30 }));
       tray.append(c);
     }
-    if (!unplanned.length) tray.append(el('span', 'su-note', 'Everything is planned. Add a task above.'));
+    if (!unplanned.length) tray.append(el('span', 'su-note', 'Everything is planned. Click a free spot in a day to add one.'));
   }
 
   const [h0, h1] = suHours();
@@ -1092,6 +1092,19 @@ function renderSheet() {
       custom.append(el('p', 'hint', repeatLabel(r, t.due || S.todayDate)));
     }
     const acts = el('div', 'acts-row');
+    if (!t.done && !(S.current && S.current.googleId === t.id)) {
+      // Start it now: begin tracking and move its plan to now (same length).
+      const go = el('button', 'act is-main', 'Start now');
+      go.addEventListener('click', async () => {
+        const n = new Date();
+        n.setSeconds(0, 0);
+        suSheet = null;
+        if (p || m.mins) S = await api.plan(t.id, { start: n.toISOString(), mins: (p && p.mins) || m.mins || 30 });
+        await startWithClaim(t.id);
+        render();
+      });
+      acts.append(go);
+    }
     if (!t.done) {
       // Plan it from the now-line exactly (not the 15-minute grid).
       const nowBtn = el('button', 'act', 'Move to now');
@@ -1350,12 +1363,7 @@ $('su-structure').addEventListener('click', () => {
   renderSetup();
 });
 $('su-close').addEventListener('click', () => (setupMode ? api.windowAction('close') : setView('now')));
-$('su-add').addEventListener('keydown', async (e) => {
-  if (e.key !== 'Enter' || !e.target.value.trim()) return;
-  const title = e.target.value.trim();
-  e.target.value = '';
-  await api.task('add', null, title);
-});
+
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && view === 'setup' && suSheet && !e.target.matches('input, textarea')) {
     suSheet = null;
