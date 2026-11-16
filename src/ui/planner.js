@@ -947,6 +947,8 @@ function onDragMove(e) {
     d.mins = Math.max(SNAP, Math.round(h / (HOUR / 60) / SNAP) * SNAP);
     d.block.style.height = d.mins * (HOUR / 60) - 2 + 'px';
     d.block.classList.add('is-resizing');
+    // Over 30 minutes the time and length show; at 30 or less, just the name.
+    if (d.block.classList.contains('is-plan')) d.block.classList.toggle('is-short', d.mins <= 30);
     const s = new Date(d.start);
     const w = d.block.querySelector('.w');
     if (w) w.textContent = `${hm(s)}–${hm(s.getTime() + d.mins * 60e3)} · ${hLen(d.mins)}`;
