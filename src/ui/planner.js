@@ -724,9 +724,19 @@ function dayCard(i, now, h0, h1, { wide }) {
       const ghost = el('div', 'su-planghost');
       ghost.style.top = px(pa) + 'px';
       ghost.style.height = Math.max(p.mins * (HOUR / 60) - 2, 6) + 'px';
+      ghost.append(el('span', 'w'));
+      // The planned end can be dragged even mid-task (on top of the card).
+      const end = el('div', 'su-planend');
+      end.style.top = px(pb) - 6 + 'px';
+      end.title = `Planned end ${hm(pEnd)} · drag to change the plan`;
+      end.addEventListener('pointerdown', (e) => {
+        e.stopPropagation();
+        beginDrag(e, { kind: 'task', task: t, mode: 'resize', mins: p.mins, start: p.start, block: ghost });
+      });
       const ov = (c) => Math.max(0, Math.min(c.b, pb) - Math.max(c.a, pa));
       const host = cards.reduce((x, c) => (ov(c) > ov(x) ? c : x), cards[0]);
       host.nodes.unshift(ghost);
+      host.nodes.push(end);
       host.a = Math.min(host.a, pa);
       host.b = Math.max(host.b, pb);
     }
@@ -923,8 +933,10 @@ function onDragMove(e) {
     const h = Math.max(HOUR / 4, d.h0 + (e.clientY - d.y0));
     d.mins = Math.max(SNAP, Math.round(h / (HOUR / 60) / SNAP) * SNAP);
     d.block.style.height = d.mins * (HOUR / 60) - 2 + 'px';
+    d.block.classList.add('is-resizing');
     const s = new Date(d.start);
-    d.block.querySelector('.w').textContent = `${hm(s)}–${hm(s.getTime() + d.mins * 60e3)}`;
+    const w = d.block.querySelector('.w');
+    if (w) w.textContent = `${hm(s)}–${hm(s.getTime() + d.mins * 60e3)} · ${hLen(d.mins)}`;
     return;
   }
   if (d.block) d.block.classList.add('is-dragging');

@@ -968,3 +968,12 @@ input[type="time"]::-webkit-calendar-picker-indicator { opacity: 0.35; cursor: p
 .st-key { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--fg-tertiary); }
 .st-key input { width: 26px; height: 26px; text-align: center; font: inherit; font-size: 13px; color: var(--fg); background: transparent; border: 1px solid var(--hairline); border-radius: 6px; padding: 0; text-transform: uppercase; }
 .st-key input:focus { border-color: var(--fg-tertiary); outline: 0; }
+
+/* Started task: its planned end is a thin handle you can drag. */
+.su-planend { position: absolute; left: 0; right: 0; height: 12px; z-index: 4; cursor: ns-resize; touch-action: none; }
+.su-day.is-wide .su-planend { right: 14px; }
+.su-planend::after { content: ""; position: absolute; left: 50%; top: 5px; width: 28px; height: 2px; margin-left: -14px; border-radius: 1px; background: var(--fg-tertiary); opacity: 0; transition: opacity var(--dur) var(--ease); }
+.su-planend:hover::after, .su-col:hover .su-planend::after { opacity: 0.8; }
+.su-planghost .w { display: none; }
+.su-planghost.is-resizing { z-index: 5; border-color: var(--fg-tertiary); background: rgba(11, 11, 12, 0.6); }
+.su-planghost.is-resizing .w { display: block; position: absolute; bottom: 4px; left: 9px; font-size: 10px; color: var(--fg); font-variant-numeric: tabular-nums; }
