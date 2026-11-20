@@ -217,9 +217,10 @@ function renderSettings() {
   $('s-blur-close').checked = s.plannerBlurClose !== false;
   $('s-shortcuts').checked = s.shortcuts !== false;
   {
-    const mods = { ctrlAlt: 'Ctrl+Alt', ctrlShift: 'Ctrl+Shift', altShift: 'Alt+Shift' };
+    const mods = { ctrlAlt: 'Ctrl+Alt', ctrlShift: 'Ctrl+Shift', altShift: 'Alt+Shift', shift: 'Shift' };
     const mod = mods[s.shortcutMod] || mods.ctrlAlt;
-    const k = { today: 'T', week: 'W', settings: 'S', ...(s.shortcutKeys || {}) };
+    const fk = s.shortcutMod === 'shift';
+    const k = fk ? { today: 'F8', week: 'F9', settings: 'F10', ...(s.shortcutFKeys || {}) } : { today: 'T', week: 'W', settings: 'S', ...(s.shortcutKeys || {}) };
     const taken = (S.shortcutTaken || []).length;
     $('s-shortcuts-desc').textContent = `${mod}+${k.today} Today, ${mod}+${k.week} Week, ${mod}+${k.settings} Settings.` + (taken ? ` ${taken > 1 ? 'Some are' : 'One is'} taken by another app: pick another letter.` : '');
     $('s-keys-row').hidden = s.shortcuts === false;
@@ -299,10 +300,27 @@ for (const n of ['today', 'week', 'settings']) {
   input.addEventListener('focus', () => input.select());
   input.addEventListener('input', async () => {
     const v = input.value.trim().toUpperCase();
-    if (!/^[A-Z0-9]$/.test(v)) return;
-    input.value = v;
-    S = await api.updateSettings({ shortcutKeys: { [n]: v } });
+    if (S.settings.shortcutMod === 'shift') {
+      // F-keys: type 9 or F9 (wait for a second digit after 1, for F10–F12).
+      const f = v.replace(/^F?/, '');
+      if (!/^([2-9]|1[0-2]?)$/.test(f) || f === '1') return;
+      input.value = 'F' + f;
+      S = await api.updateSettings({ shortcutFKeys: { [n]: 'F' + f } });
+    } else {
+      if (!/^[A-Z0-9]$/.test(v)) return;
+      input.value = v;
+      S = await api.updateSettings({ shortcutKeys: { [n]: v } });
+    }
     input.blur();
     render();
+  });
+  // F1: press Enter after typing 1 (it can't tell 1 from the start of 10–12).
+  input.addEventListener('keydown', async (e) => {
+    if (e.key !== 'Enter' || S.settings.shortcutMod !== 'shift') return;
+    if (input.value.trim().toUpperCase().replace(/^F?/, '') === '1') {
+      S = await api.updateSettings({ shortcutFKeys: { [n]: 'F1' } });
+      input.blur();
+      render();
+    }
   });
 }

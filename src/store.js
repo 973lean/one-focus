@@ -24,6 +24,7 @@ const DEFAULTS = {
     shortcuts: true, // global shortcuts for Today / Week / Settings
     shortcutMod: 'ctrlAlt', // ctrlAlt | ctrlShift | altShift
     shortcutKeys: { today: 'T', week: 'W', settings: 'S' },
+    shortcutFKeys: { today: 'F8', week: 'F9', settings: 'F10' }, // used with shortcutMod 'shift'
     autoPlan: { mode: 'startEnd', every: 3, times: ['09:00', '13:30'] }, // off | startEnd | every | times
     remindBlocks: true, // when a planned block starts
     remindOver: true, // when the running task passes its planned end

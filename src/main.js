@@ -733,14 +733,16 @@ function watchCorners() {
 
 // Global shortcuts: a modifier pair you pick plus one letter each (Settings →
 // Planner). Electron can't do two-key sequences, so it's always mod + key.
-const SHORTCUT_MODS = { ctrlAlt: 'CommandOrControl+Alt', ctrlShift: 'CommandOrControl+Shift', altShift: 'Alt+Shift' };
+// Shift alone only goes with F-keys (Shift+letter would fire whenever you type a capital).
+const SHORTCUT_MODS = { ctrlAlt: 'CommandOrControl+Alt', ctrlShift: 'CommandOrControl+Shift', altShift: 'Alt+Shift', shift: 'Shift' };
+const F_DEFAULT = { today: 'F8', week: 'F9', settings: 'F10' };
 let shortcutTaken = []; // accelerators another app already owns
 function applyShortcuts() {
   globalShortcut.unregisterAll();
   shortcutTaken = [];
   if (state.settings.shortcuts === false) return;
   const mod = SHORTCUT_MODS[state.settings.shortcutMod] || SHORTCUT_MODS.ctrlAlt;
-  const keys = { today: 'T', week: 'W', settings: 'S', ...(state.settings.shortcutKeys || {}) };
+  const keys = state.settings.shortcutMod === 'shift' ? { ...F_DEFAULT, ...(state.settings.shortcutFKeys || {}) } : { today: 'T', week: 'W', settings: 'S', ...(state.settings.shortcutKeys || {}) };
   const reg = (k, fn) => {
     const acc = `${mod}+${k}`;
     try {
@@ -1355,6 +1357,14 @@ ipcMain.handle('settings:update', async (_e, patch) => {
     };
   }
   if ('shortcutMod' in patch && SHORTCUT_MODS[patch.shortcutMod]) state.settings.shortcutMod = patch.shortcutMod;
+  if (patch.shortcutFKeys && typeof patch.shortcutFKeys === 'object') {
+    const k = { ...F_DEFAULT, ...(state.settings.shortcutFKeys || {}) };
+    for (const [name, v] of Object.entries(patch.shortcutFKeys)) {
+      const key = String(v || '').trim().toUpperCase().replace(/^(\d+)$/, 'F$1');
+      if (['today', 'week', 'settings'].includes(name) && /^F([1-9]|1[0-2])$/.test(key)) k[name] = key;
+    }
+    state.settings.shortcutFKeys = k;
+  }
   if (patch.shortcutKeys && typeof patch.shortcutKeys === 'object') {
     const k = { today: 'T', week: 'W', settings: 'S', ...(state.settings.shortcutKeys || {}) };
     for (const [name, v] of Object.entries(patch.shortcutKeys)) {
@@ -1363,7 +1373,7 @@ ipcMain.handle('settings:update', async (_e, patch) => {
     }
     state.settings.shortcutKeys = k;
   }
-  if ('appMode' in patch || 'shortcuts' in patch || 'shortcutMod' in patch || 'shortcutKeys' in patch) applyShortcuts();
+  if ('appMode' in patch || 'shortcuts' in patch || 'shortcutMod' in patch || 'shortcutKeys' in patch || 'shortcutFKeys' in patch) applyShortcuts();
   if ('setupMode' in patch) state.settings.setupMode = patch.setupMode === 'inline' ? 'inline' : 'modal';
   if ('dayStructure' in patch) state.settings.dayStructure = cleanStructure(patch.dayStructure);
   if ('logView' in patch) state.settings.logView = patch.logView === 'sessions' ? 'sessions' : 'summary';
