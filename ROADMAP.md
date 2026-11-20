@@ -182,6 +182,13 @@
 - [x] Good-enough nudge: after +30m (or half the original plan) the prompts lead with "10m to wrap up" and ask for the good-enough version; more time is still there, quieter.
 - [x] Shortcuts: pick the modifier pair (Ctrl+Alt, Ctrl+Shift, Alt+Shift) and the letter for Today, Week and Settings; shortcuts another app owns are flagged.
 
+## v0.31 — Day summary, start early, Done & start, counts up
+- [x] Each day column's header: "7h 30m planned · ends 6:27 PM".
+- [x] Starting a task planned for later today moves its whole plan to now (same length).
+- [x] Same-name tasks count up (1/7, 2/7…) with today's finished ones first; finished ones no longer show 0/n.
+- [x] A planned block arriving mid-task: the popup offers "Done & start" (finish this, start that) or "Start" (switch).
+- [x] Repeats: re-ticking a finished repeating task no longer adds a second next copy; deleting a task drops its plan and repeat; the details panel explains that repeats live in One Focus (Google Tasks' own repeat can't be read or changed through its API).
+
 ## Parked
 - [x] ~~Full-screen announcements~~ → became the v0.7 blur for "Still on this?" and end of day
 

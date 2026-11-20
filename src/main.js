@@ -326,6 +326,11 @@ async function doSync() {
       if (t.status === 'completed' && t.completed && since && t.completed >= since) {
         tracker.recordCompletion({ key: 'g:' + t.id, title: t.title.trim(), googleId: t.id }, t.completed);
         const m = state.taskMeta['g:' + t.id];
+        if (m && m.repeat && m.spawned && m.spawned !== t.completed) {
+          // Re-ticked after being un-ticked: the next one already exists.
+          m.spawned = t.completed;
+          continue;
+        }
         if (m && m.repeat && m.spawned !== t.completed) {
           m.spawned = t.completed; // once per completion
           spawn.push({ t, m });
@@ -863,7 +868,7 @@ function checkReminders() {
       if (!p || (cur && cur.googleId === t.id)) continue;
       const start = Date.parse(p.start);
       const id = `block:${t.id}:${p.start}`;
-      if (now >= start && now - start < 10 * 60e3 && !remindFired(id)) return setReminder({ id, kind: 'block', taskId: t.id, title: t.title });
+      if (now >= start && now - start < 10 * 60e3 && !remindFired(id)) return setReminder({ id, kind: 'block', taskId: t.id, title: t.title, curTitle: cur && cur.googleId ? cur.title : null });
     }
 }
 
@@ -877,9 +882,14 @@ async function answerReminder(action) {
   state.remindFired.ids.push(r.id);
   store.save(state);
   if (action === 'plan') openSetupWindow('today');
-  else if (action === 'start' && client) {
+  else if ((action === 'start' || action === 'doneStart') && client) {
+    // Done & start: the task you were on is finished, then the planned one begins.
+    const prev = state.current;
+    if (action === 'doneStart' && prev && prev.googleId && !isHold(prev) && state.google.listId)
+      await client.patch(state.google.listId, prev.googleId, { status: 'completed' }).catch(() => {});
     const t = today.open.find((x) => x.id === r.taskId);
     if (t) tracker.setCurrent({ key: 'g:' + t.id, title: t.title, googleId: t.id });
+    if (action === 'doneStart') await resync();
   } else if (action === 'done' && client && state.google.listId) {
     await client.patch(state.google.listId, r.taskId, { status: 'completed' }).catch(() => {});
     await resync();
@@ -1134,10 +1144,25 @@ ipcMain.handle('manual:set', (_e, text) => {
 
 // Start a task: the given one, or the first in the queue. Starting a task
 // that isn't first moves it to the top in Google so the order matches.
+// Starting a task planned for later today: its whole plan moves to now (same
+// length), so the Planner shows it where you are and you can push from there.
+function pullPlanToNow(id) {
+  const m = state.taskMeta['g:' + id];
+  if (!m || !m.plan) return;
+  const st = Date.parse(m.plan.start);
+  if (localDate(new Date(st)) !== localDate() || st <= Date.now() + 5 * 60e3) return;
+  const n = new Date();
+  n.setSeconds(0, 0);
+  m.plan.start = n.toISOString();
+  m.goal = new Date(n.getTime() + m.plan.mins * 60e3).toISOString();
+  store.save(state);
+}
+
 ipcMain.handle('current:start', async (_e, id) => {
   if (!client) return { error: 'Connect Google Tasks in Settings first.' };
   const t = id ? today.open.find((x) => x.id === id) : snapshot().next;
   if (!t) return { error: 'Nothing in the list to start.' };
+  pullPlanToNow(t.id);
   tracker.setCurrent({ key: 'g:' + t.id, title: t.title, googleId: t.id });
   push();
   try {
@@ -1258,7 +1283,11 @@ ipcMain.handle('task:action', async (_e, action, id, value) => {
       const m = state.taskMeta['g:' + id];
       if (m) delete m.plan, delete m.goal;
       store.save(state);
-    } else if (action === 'delete') await client.remove(listId, id);
+    } else if (action === 'delete') {
+      await client.remove(listId, id);
+      delete state.taskMeta['g:' + id]; // its plan and repeat go with it
+      store.save(state);
+    }
     else if (action === 'focus') await client.move(listId, id);
     else if (action === 'move') await client.move(listId, id, value || undefined);
     else if (action === 'addStart' && title) {

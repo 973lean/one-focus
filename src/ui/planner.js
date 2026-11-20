@@ -615,6 +615,7 @@ function dayCard(i, now, h0, h1, { wide }) {
   }
 
   let total = 0;
+  let dayEnd = 0; // when the day's plan (or work running past it) ends
   for (const t of S.today.open) {
     const m = metaOf('g:' + t.id);
     if (!m.repeat || !m.plan) continue;
@@ -638,6 +639,7 @@ function dayCard(i, now, h0, h1, { wide }) {
     const p = planOf('g:' + t.id);
     if (!p || ld(new Date(p.start)) !== key) continue;
     total += p.mins;
+    dayEnd = Math.max(dayEnd, new Date(p.start).getTime() + p.mins * 60e3);
     const s = new Date(p.start);
     const pEnd = s.getTime() + p.mins * 60e3;
     const m = metaOf('g:' + t.id);
@@ -785,7 +787,11 @@ function dayCard(i, now, h0, h1, { wide }) {
   card.dataset.day = key;
   const head = el('div', 'su-day__head');
   const name = i === 0 ? (wide ? `Today · ${shortDay.format(d)}` : 'Today') : i === 1 ? 'Tomorrow' : i === -1 ? 'Yesterday' : shortDay.format(d);
-  head.append(el('span', 'su-day__name', name), el('span', 'su-day__total', wide ? 'plan · done' : total ? dur(total * 60e3) : ''));
+  // The day at a glance: how much is planned and when it ends.
+  const sum = total ? `${hLen(total)} planned · ends ${hm(dayEnd)}` : '';
+  const tot = el('span', 'su-day__total', sum);
+  if (total) tot.title = `${hLen(total)} planned today; the last block ends at ${hm(dayEnd)}`;
+  head.append(el('span', 'su-day__name', name), tot);
   card.append(head, col);
   return card;
 }
@@ -1183,7 +1189,7 @@ function renderSheet() {
     const itemsTime = (t.items || []).reduce((a, x) => a + ((S.itemMins || {})[x.id] || 0), 0);
     if (feat('items'))
       sheet.append(el('span', 'label', (t.items && t.items.length ? `Subtasks · ${doneItems}/${t.items.length}` : 'Subtasks') + (itemsTime ? ` · ${hLen(itemsTime)}` : '')), items, addItem);
-    if (m.repeat) sheet.append(el('p', 'hint', 'When you finish it, the next one is added with the same time of day.'));
+    if (m.repeat) sheet.append(el('p', 'hint', 'Repeats in One Focus: finishing it adds the next one to Google Tasks, same time of day. Never stops it; deleting it stops it too. A repeat set in the Google Tasks app can’t be seen or changed from here, so set it in one place only.'));
     sheet.append(acts);
     return;
   }

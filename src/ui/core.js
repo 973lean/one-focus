@@ -27,11 +27,15 @@ function dur(ms) {
 }
 
 // Tasks that share a name count up in list order: "2/5". Display only.
+// Same-name tasks count up: 1/7, 2/7, 3/7… Today's finished ones come first
+// (in the order they were done), then the open ones in list order.
 function seriesOf(t) {
   if (!S || !S.today) return null;
-  const same = S.today.open.filter((x) => x.title.trim().toLowerCase() === t.title.trim().toLowerCase());
-  if (same.length < 2) return null;
-  return `${same.findIndex((x) => x.id === t.id) + 1}/${same.length}`;
+  const key = t.title.trim().toLowerCase();
+  const same = (list) => list.filter((x) => x.title.trim().toLowerCase() === key);
+  const all = [...same(S.today.done).reverse(), ...same(S.today.open)];
+  if (all.length < 2) return null;
+  return `${all.findIndex((x) => x.id === t.id) + 1}/${all.length}`;
 }
 function titleWithSeries(node, t) {
   const n = t && t.id && seriesOf(t);

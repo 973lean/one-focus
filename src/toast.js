@@ -12,7 +12,7 @@ function dur(ms) {
 const nudged = (x) => !!x && x.kind === 'over' && x.added > 0 && (x.added >= 30 || (x.planMins > 0 && x.added >= (x.planMins - x.added) * 0.5));
 function kindText() {
   if (!r) return '';
-  if (r.kind === 'block') return 'Planned to start now';
+  if (r.kind === 'block') return r.curTitle ? `Planned now · you're on “${r.curTitle}”` : 'Planned to start now';
   if (nudged(r)) return `+${dur(r.added * 60e3)} added already · good enough to ship?`;
   const over = Date.now() - Date.parse(r.goal);
   return over < 60e3 ? 'Planned time’s up' : `${dur(over)} over the plan`;
@@ -31,7 +31,11 @@ function show(next) {
     b.addEventListener('click', () => api.reminderAct(action));
     acts.append(b);
   };
-  if (r.kind === 'block') btn('Start', 'start', 'main');
+  if (r.kind === 'block' && r.curTitle) {
+    // Mid-task when the next block arrives: finish this one and start that.
+    btn('Done & start', 'doneStart', 'main');
+    btn('Start', 'start');
+  } else if (r.kind === 'block') btn('Start', 'start', 'main');
   else if (nudged(r)) {
     btn('Done', 'done', 'main');
     btn('10m to wrap up', 'wrap');
