@@ -1387,7 +1387,7 @@ ipcMain.handle('settings:update', async (_e, patch) => {
   if ('checkMinutes' in patch) state.settings.checkMinutes = [0, 60, 120, 180].includes(+patch.checkMinutes) ? +patch.checkMinutes : 120;
   if ('awayMinutes' in patch) state.settings.awayMinutes = [5, 10, 20, 30].includes(+patch.awayMinutes) ? +patch.awayMinutes : 10;
   if ('endOfDay' in patch) state.settings.endOfDay = /^\d{2}:\d{2}$/.test(patch.endOfDay) ? patch.endOfDay : '';
-  if (state.settings.launchAtLogin !== prev.launchAtLogin) app.setLoginItemSettings({ openAtLogin: state.settings.launchAtLogin });
+  if (state.settings.launchAtLogin !== prev.launchAtLogin) applyLoginItem();
   if (!state.settings.listName) state.settings.listName = 'One Focus';
   if (state.settings.alwaysOnTop !== prev.alwaysOnTop) win.setAlwaysOnTop(state.settings.alwaysOnTop);
   const listChanged = state.settings.listName !== prev.listName;
@@ -1433,6 +1433,16 @@ ipcMain.handle('google:disconnect', () => {
 
 // ---------- lifecycle ----------
 
+// Open at login: written to Windows' startup list on every launch (not only
+// when the switch is flipped), so an update or a reinstall can't quietly drop
+// it. Only for the installed app, never for a dev run.
+function applyLoginItem() {
+  if (!app.isPackaged) return;
+  try {
+    app.setLoginItemSettings({ openAtLogin: !!state.settings.launchAtLogin, path: process.execPath, args: [] });
+  } catch {}
+}
+
 app.whenReady().then(() => {
   state = store.load();
   tracker = new Tracker(state, () => store.save(state));
@@ -1444,6 +1454,7 @@ app.whenReady().then(() => {
   setupUpdates();
   watchCorners();
   applyShortcuts();
+  applyLoginItem();
   app.on('will-quit', () => globalShortcut.unregisterAll());
 
   setInterval(sync, SYNC_MS);
