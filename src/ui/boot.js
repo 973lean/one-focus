@@ -20,7 +20,7 @@ document.querySelectorAll('.su-tab').forEach((b) =>
 );
 api.onPlannerTab((tab) => {
   if (tab === 'settings') return setView('settings');
-  planTab = tab === 'today' ? 'today' : 'week';
+  planTab = ['today', 'tasks'].includes(tab) ? tab : 'week';
   if (view !== 'setup') setView('setup');
   else renderSetup();
   setTimeout(scrollSetupToNow, 120);

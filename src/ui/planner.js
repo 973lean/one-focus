@@ -58,7 +58,8 @@ function card(cls, title, meta) {
 }
 
 // Planner tab: 'week' (plan the coming days) or 'today' (one big day + how it's going).
-let planTab = new URLSearchParams(location.search).get('tab') === 'today' ? 'today' : 'week';
+const PLAN_TABS = ['today', 'week', 'tasks'];
+let planTab = PLAN_TABS.includes(new URLSearchParams(location.search).get('tab')) ? new URLSearchParams(location.search).get('tab') : 'week';
 let logFetched = 0;
 
 // Logged time today on a task (finished sessions + the running one).
@@ -530,7 +531,9 @@ function renderSetup() {
   const days = $('su-days');
   const keep = [days.scrollLeft, days.scrollTop];
   days.replaceChildren();
-  if (planTab === 'today') {
+  if (planTab === 'tasks') {
+    days.append(tasksList());
+  } else if (planTab === 'today') {
     days.append(dayCard(0, now, h0, h1, { wide: true }), todaySummary());
   } else {
     // From Monday of this week (earlier days are view-only) to a month ahead.
@@ -869,9 +872,60 @@ function todaySummary() {
   return box;
 }
 
+// Tasks tab: every open task in your list, as a plain list. Tick to finish,
+// click for details; finished today sit faded at the bottom.
+function tasksList() {
+  const box = el('div', 'su-tasks');
+  const ul = el('ul', 'su-tasks__list');
+  const when = (t) => {
+    const p = planOf('g:' + t.id);
+    if (p) {
+      const d = ld(new Date(p.start));
+      const day = d === S.todayDate ? 'Today' : shortDay.format(new Date(p.start));
+      return `${day} ${hm(p.start)} · ${hLen(p.mins)}`;
+    }
+    if (t.due) return t.due === S.todayDate ? 'Today' : t.due < S.todayDate ? 'Overdue' : shortDay.format(new Date(t.due + 'T12:00:00'));
+    return '';
+  };
+  const row = (t, done) => {
+    const li = el('li', done ? 'is-done' : S.current && S.current.googleId === t.id ? 'is-running' : '');
+    const check = el('button', 'check');
+    check.setAttribute('aria-label', done ? 'Not done' : 'Done');
+    check.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      li.classList.add('is-busy');
+      await api.task(done ? 'reopen' : 'complete', t.id);
+    });
+    const m = metaOf('g:' + t.id);
+    li.append(check, titleWithSeries(el('span', 't', t.title), t), el('span', 'd', (m.repeat ? '↻ ' : '') + when(t)));
+    if (!done) li.addEventListener('click', () => ((suSheet = { type: 'task', id: t.id }), renderSetup()));
+    return li;
+  };
+  if (!S.connected) ul.append(el('li', 'empty', 'Connect Google Tasks in Settings to see your list here.'));
+  for (const t of S.today.open) ul.append(row(t, false));
+  for (const t of S.today.done) ul.append(row(t, true));
+  if (S.connected && !S.today.open.length && !S.today.done.length) ul.append(el('li', 'empty', 'Your list is empty.'));
+  const add = el('input', 'su-tasks__add');
+  add.type = 'text';
+  add.maxLength = 300;
+  add.placeholder = '+ Add a task';
+  add.addEventListener('keydown', async (e) => {
+    e.stopPropagation();
+    if (e.key === 'Escape') return add.blur();
+    if (e.key !== 'Enter' || !add.value.trim()) return;
+    const title = add.value.trim();
+    add.value = '';
+    await api.task('add', null, title);
+    setTimeout(() => { const again = document.querySelector('.su-tasks__add'); if (again) again.focus(); }, 60);
+  });
+  box.append(ul, add);
+  return box;
+}
+
 // Header date range follows what's on screen.
 function updateSetupRange() {
   if (planTab === 'today') return ($('su-range').textContent = ''); // the clock shows the date
+  if (planTab === 'tasks') return ($('su-range').textContent = S && S.today ? `${S.today.open.length} open` : '');
   const days = $('su-days');
   const cards = [...days.querySelectorAll('.su-day')];
   const r = days.getBoundingClientRect();
@@ -901,6 +955,7 @@ $('su-next').addEventListener('click', () => scrollDays(1));
 $('su-today').addEventListener('click', () => scrollDays('today'));
 
 function scrollSetupToNow() {
+  if (planTab === 'tasks') return;
   const col = document.querySelector('.su-col');
   if (!col) return;
   const days = $('su-days');

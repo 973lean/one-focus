@@ -649,7 +649,7 @@ function openSetupWindow(tab = 'week') {
 ipcMain.on('now:action', (_e, a) => {
   if (a === 'done' && win && !win.isDestroyed()) win.webContents.send('now:action', 'done');
 });
-ipcMain.handle('setup:open', (_e, tab) => openSetupWindow(['today', 'settings'].includes(tab) ? tab : 'week'));
+ipcMain.handle('setup:open', (_e, tab) => openSetupWindow(['today', 'tasks', 'settings'].includes(tab) ? tab : 'week'));
 
 // A page has drawn its first frame: show its window now (no white blink).
 ipcMain.on('ui:ready', (e) => {

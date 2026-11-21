@@ -613,7 +613,7 @@ input::placeholder { color: var(--fg-tertiary); }
 .su-tab { font-size: 26px; font-weight: 500; letter-spacing: -0.02em; color: var(--fg-tertiary); transition: color var(--dur) var(--ease); -webkit-app-region: no-drag; }
 .su-tab:hover { color: var(--fg-secondary); }
 .su-tab[aria-selected="true"] { color: var(--fg); }
-#view-setup[data-tab="today"] .su-nav { display: none; }
+#view-setup[data-tab="today"] .su-nav, #view-setup[data-tab="tasks"] .su-nav, #view-setup[data-tab="tasks"] .su-tray, #view-setup[data-tab="tasks"] #su-fit, #view-setup[data-tab="tasks"] #su-fit-undo { display: none !important; }
 
 /* Today tab: one wide day + a summary */
 .su-day.is-wide { flex: 0 1 520px; max-width: 560px; }
@@ -980,3 +980,21 @@ input[type="time"]::-webkit-calendar-picker-indicator { opacity: 0.35; cursor: p
 /* Short planned blocks (30 min or less): just the name; times on hover. */
 .su-block.is-plan.is-short .w { display: none; }
 .su-block.is-plan.is-short .t { font-size: 12.5px; }
+
+/* Planner · Tasks: the whole list, plain. */
+.su-tasks { flex: 1; max-width: 760px; margin: 0 auto; padding: 4px 4px 32px; }
+.su-tasks__list { list-style: none; display: flex; flex-direction: column; }
+.su-tasks__list li { display: flex; align-items: center; gap: 14px; padding: 11px 6px; border-bottom: 1px solid var(--hairline); font-size: 14px; color: var(--fg); cursor: pointer; border-radius: 6px; transition: background var(--dur) var(--ease); }
+.su-tasks__list li:hover { background: rgba(245, 245, 244, 0.03); }
+.su-tasks__list .check { flex-shrink: 0; width: 15px; height: 15px; border-radius: 50%; border: 1px solid var(--fg-tertiary); transition: border-color var(--dur) var(--ease), background var(--dur) var(--ease); }
+.su-tasks__list .check:hover { border-color: var(--fg); }
+.su-tasks__list .t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.su-tasks__list .d { flex-shrink: 0; font-size: 12px; color: var(--fg-tertiary); font-variant-numeric: tabular-nums; }
+.su-tasks__list li.is-running .t::before { content: ""; display: inline-block; width: 6px; height: 6px; margin-right: 8px; border-radius: 50%; background: var(--fg); vertical-align: 2px; }
+.su-tasks__list li.is-done { cursor: default; }
+.su-tasks__list li.is-done .t { color: var(--fg-tertiary); text-decoration: line-through; text-decoration-color: var(--hairline); }
+.su-tasks__list li.is-done .check { background: var(--fg-tertiary); border-color: transparent; }
+.su-tasks__list li.is-busy { opacity: 0.4; pointer-events: none; }
+.su-tasks__list li.empty { color: var(--fg-tertiary); cursor: default; }
+.su-tasks__add { margin-top: 10px; font-size: 14px !important; padding: 10px 6px !important; border-bottom-color: transparent !important; }
+.su-tasks__add:focus { border-bottom-color: var(--hairline) !important; }

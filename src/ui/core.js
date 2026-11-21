@@ -78,7 +78,15 @@ document.querySelectorAll('button[data-view]').forEach((b) =>
   })
 );
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && view !== 'now' && !e.target.matches('input')) setView('now');
+  if (e.key !== 'Escape' || e.target.matches('input, textarea')) return;
+  // Planner window: Escape closes the details panel (handled there), then
+  // Settings, then the window itself. It never shows the hidden Now screen.
+  if (setupMode) {
+    if (typeof suSheet !== 'undefined' && suSheet) return;
+    if (view === 'settings') return setView('setup');
+    return api.windowAction('close');
+  }
+  if (view !== 'now') setView('now');
 });
 
 // Window controls and hover state.

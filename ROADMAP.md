@@ -189,6 +189,11 @@
 - [x] A planned block arriving mid-task: the popup offers "Done & start" (finish this, start that) or "Start" (switch).
 - [x] Repeats: re-ticking a finished repeating task no longer adds a second next copy; deleting a task drops its plan and repeat; the details panel explains that repeats live in One Focus (Google Tasks' own repeat can't be read or changed through its API).
 
+## v0.32 — Planner · Tasks
+- [x] Third Planner tab, Tasks: the whole list, plain. Tick to finish, click for details, "+ Add a task" at the end (no date), when it's planned or due on the right, finished today faded at the bottom.
+- [x] Escape in the Planner window closes the details panel, then Settings, then the window (it used to blank the window).
+- [x] Shift + an F-key as a shortcut option; open-at-login re-registered on every launch.
+
 ## Parked
 - [x] ~~Full-screen announcements~~ → became the v0.7 blur for "Still on this?" and end of day
 
