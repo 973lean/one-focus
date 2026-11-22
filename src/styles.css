@@ -1016,3 +1016,14 @@ input[type="time"]::-webkit-calendar-picker-indicator { opacity: 0.35; cursor: p
 .su-tasks__list li:hover:has(.su-tasks__start) .d { display: none; }
 .su-tasks__start:hover { color: var(--fg); }
 .vw-list .su-tasks__list li { cursor: default; }
+
+/* Tasks lists: Done heading, clear, rename. */
+.su-tasks__list li.su-tasks__head { cursor: default; justify-content: space-between; padding: 22px 6px 8px; border-bottom: 0; font-size: 11px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: var(--fg-tertiary); }
+.su-tasks__list li.su-tasks__head:hover { background: none; }
+.su-tasks__head .act { font-size: 12px; font-weight: 400; letter-spacing: 0; text-transform: none; color: var(--fg-tertiary); }
+.su-tasks__head .act:hover { color: var(--fg); }
+.su-tasks__clear { flex-shrink: 0; font-size: 14px; line-height: 1; color: var(--fg-tertiary); opacity: 0; transition: opacity var(--dur) var(--ease), color var(--dur) var(--ease); }
+.su-tasks__list li:hover .su-tasks__clear { opacity: 1; }
+.su-tasks__clear:hover { color: var(--fg); }
+.vw-list .su-tasks__list li:not(.is-done) .t { cursor: text; }
+.su-tasks__edit { flex: 1; min-width: 0; font-size: 14px !important; padding: 2px 0 !important; }

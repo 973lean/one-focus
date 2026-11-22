@@ -897,7 +897,51 @@ function tasksList(opts = {}) {
       await api.task(done ? 'reopen' : 'complete', t.id);
     });
     const m = metaOf('g:' + t.id);
-    li.append(check, titleWithSeries(el('span', 't', t.title), t), el('span', 'd', (m.repeat ? '↻ ' : '') + when(t)));
+    const name = titleWithSeries(el('span', 't', t.title), t);
+    li.append(check, name, el('span', 'd', (m.repeat ? '↻ ' : '') + when(t)));
+    if (opts.inMain && !done) {
+      // Click the name to rename it (Enter saves, Escape cancels).
+      name.title = 'Click to rename';
+      name.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const input = el('input', 'su-tasks__edit');
+        input.type = 'text';
+        input.maxLength = 1024;
+        input.value = t.title;
+        let finished = false;
+        const finish = async (save) => {
+          if (finished) return;
+          finished = true;
+          const v = input.value.trim();
+          if (save && v && v !== t.title) {
+            name.textContent = v;
+            input.replaceWith(name);
+            await api.task('rename', t.id, v);
+          } else input.replaceWith(name);
+          render();
+        };
+        input.addEventListener('keydown', (ev) => {
+          ev.stopPropagation();
+          if (ev.key === 'Enter') finish(true);
+          if (ev.key === 'Escape') finish(false);
+        });
+        input.addEventListener('blur', () => finish(true));
+        name.replaceWith(input);
+        input.focus();
+        input.select();
+      });
+    }
+    if (done) {
+      const x = el('button', 'act su-tasks__clear', '×');
+      x.title = 'Clear (stays completed in Google Tasks)';
+      x.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        li.classList.add('is-busy');
+        S = await api.clearDone(t.id);
+        render();
+      });
+      li.append(x);
+    }
     if (opts.inMain) {
       // On View: a quiet Start on hover instead of the details panel.
       if (!done && !(S.current && S.current.googleId === t.id)) {
@@ -910,8 +954,22 @@ function tasksList(opts = {}) {
   };
   if (!S.connected) ul.append(el('li', 'empty', 'Connect Google Tasks in Settings to see your list here.'));
   for (const t of S.today.open) ul.append(row(t, false));
-  for (const t of S.today.done) ul.append(row(t, true));
-  if (S.connected && !S.today.open.length && !S.today.done.length) ul.append(el('li', 'empty', 'Your list is empty.'));
+  // Finished in the last 24 hours (they clear by themselves after that).
+  const recent = S.today.recent || S.today.done;
+  if (recent.length) {
+    const head = el('li', 'su-tasks__head');
+    const clearAll = el('button', 'act', 'Clear all');
+    clearAll.title = 'Clear finished tasks from this list (they stay completed in Google Tasks)';
+    clearAll.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      S = await api.clearDone('all');
+      render();
+    });
+    head.append(el('span', null, `Done · ${recent.length}`), clearAll);
+    ul.append(head);
+  }
+  for (const t of recent) ul.append(row(t, true));
+  if (S.connected && !S.today.open.length && !recent.length) ul.append(el('li', 'empty', 'Your list is empty.'));
   const add = el('input', 'su-tasks__add');
   add.type = 'text';
   add.maxLength = 300;
@@ -932,7 +990,8 @@ function tasksList(opts = {}) {
 // One Focus · View: the time and date over the whole list, made to be left up.
 function renderViewTab() {
   const box = $('vw-list');
-  if (!box || box.contains(document.activeElement)) return;
+  const a = document.activeElement;
+  if (!box || (a && a.matches('input') && box.contains(a))) return; // not while typing
   const keep = $('view-view').scrollTop;
   box.replaceChildren(tasksList({ inMain: true }));
   $('view-view').scrollTop = keep;

@@ -198,6 +198,11 @@
 - [x] One Focus's Today tab is now View: the time and date large at the top, every task below (tick to finish, Start on hover, when it's planned or due). It never drifts back to Now, so it can be left up.
 - [x] Shortcuts and corners bring the Planner (or One Focus) in front even while you're in another app (Windows blocks background apps from taking focus; the window is pinned on top for a moment).
 
+## v0.34 — Rename and clear in View
+- [x] View: click a task's name to rename it (Enter saves, Escape cancels).
+- [x] Finished tasks: a "Done · n" heading with Clear all, × on each row; they also clear by themselves 24 hours after being done. Clearing only hides them here: they stay completed in Google Tasks and in the log.
+- [x] View tweaks: twice-size clock, centred, hairline divider, menu hides like Now, second in the menu.
+
 ## Parked
 - [x] ~~Full-screen announcements~~ → became the v0.7 blur for "Still on this?" and end of day
 

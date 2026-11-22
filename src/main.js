@@ -359,7 +359,15 @@ async function doSync() {
     }
 
     const withItems = (t) => ({ ...pick(t), items: itemsOf[t.id] || [] });
-    today = { open: open.map(withItems), done: done.map(withItems), syncedAt: new Date().toISOString(), error: null };
+    // Finished in the last 24 hours and not cleared: the lists show these and
+    // they clear by themselves a day after they were done (Google keeps them).
+    const cleared = (state.clearedDone = state.clearedDone || {});
+    const dayAgo = Date.now() - 86400e3;
+    for (const [id, at] of Object.entries(cleared)) if (Date.parse(at) < dayAgo - 86400e3) delete cleared[id];
+    const recent = all
+      .filter((t) => t.status === 'completed' && t.completed && Date.parse(t.completed) >= dayAgo && !cleared[t.id])
+      .sort((a, b) => b.completed.localeCompare(a.completed));
+    today = { open: open.map(withItems), done: done.map(withItems), recent: recent.map(withItems), syncedAt: new Date().toISOString(), error: null };
 
     // Tasks never start on their own. If the running task was finished or
     // deleted (here or in Google Tasks), stop it and go idle.
@@ -1084,6 +1092,21 @@ function extendCurrent(rawMins) {
   store.save(state);
   push();
 }
+// Clear finished tasks from the lists (one, or all of them). Only hides them
+// here; they stay completed in Google Tasks and in the time log.
+ipcMain.handle('done:clear', (_e, ids) => {
+  const cleared = (state.clearedDone = state.clearedDone || {});
+  const list = ids === 'all' ? (today.recent || []).map((t) => t.id) : [].concat(ids || []);
+  for (const id of list) {
+    const t = (today.recent || []).find((x) => x.id === id);
+    cleared[id] = (t && t.completed) || new Date().toISOString();
+  }
+  today.recent = (today.recent || []).filter((t) => !cleared[t.id]);
+  store.save(state);
+  push();
+  return snapshot();
+});
+
 ipcMain.handle('current:extend', (_e, mins) => (extendCurrent(mins), snapshot()));
 
 ipcMain.handle('goals:shift', (_e, raw) => {
