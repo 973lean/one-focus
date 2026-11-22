@@ -23,8 +23,8 @@ let editing = false;
 
 // The Planner's clock (time + date), same format as Now.
 const plannerDateFmt = new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
-function plannerClock(now) {
-  const t = $('su-clock-t');
+function plannerClock(now, tId = 'su-clock-t', dId = 'su-clock-d') {
+  const t = $(tId);
   if (!t) return;
   const parts = timeFmt.formatToParts(now);
   const period = parts.find((x) => x.type === 'dayPeriod');
@@ -35,12 +35,13 @@ function plannerClock(now) {
     if (period) t.append(el('span', 'p', period.value));
     t.dateTime = now.toISOString();
   }
-  $('su-clock-d').textContent = plannerDateFmt.format(now);
+  $(dId).textContent = plannerDateFmt.format(now);
 }
 
 function tick() {
   const now = new Date();
   if (setupMode || view === 'setup') plannerClock(now);
+  if (view === 'view') plannerClock(now, 'vw-time', 'vw-date');
   const parts = timeFmt.formatToParts(now);
   const period = parts.find((x) => x.type === 'dayPeriod');
   clockEl.textContent = parts.filter((x) => x.type !== 'dayPeriod').map((x) => x.value).join('').trim();
@@ -177,7 +178,7 @@ function stopEditing() {
   renderNow();
 }
 
-taskEl.addEventListener('click', () => (S && S.connected ? setView('today') : startEditing()));
+taskEl.addEventListener('click', () => (S && S.connected ? setView('view') : startEditing()));
 taskEl.addEventListener('keydown', (e) => e.key === 'Enter' && taskEl.click());
 inputEl.addEventListener('keydown', async (e) => {
   if (e.key === 'Escape') return stopEditing();
@@ -310,7 +311,8 @@ if (!setupMode) {
   let touched = Date.now();
   for (const ev of ['pointermove', 'pointerdown', 'keydown', 'wheel']) document.addEventListener(ev, () => (touched = Date.now()), { passive: true });
   setInterval(() => {
-    if (view === 'now' || !feat('autoNow') || Date.now() - touched < 120e3) return;
+    // View is made to be left up, so it stays.
+    if (view === 'now' || view === 'view' || !feat('autoNow') || Date.now() - touched < 120e3) return;
     const a = document.activeElement;
     if (a && a.matches('input, textarea') && a.value && a.value.trim()) return;
     setView('now');

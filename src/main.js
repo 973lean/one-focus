@@ -518,13 +518,24 @@ let quitting = false;
 
 // Windows paints a new or re-shown window for a frame before its content:
 // that's the white blink. Show it fully transparent, then fade it in.
+// Windows won't let a background app take focus (a shortcut pressed while
+// you're in another app would open the window behind it). Pinning it on top
+// for a moment brings it in front; then it settles back.
+function bringToFront(w) {
+  if (!w || w.isDestroyed()) return;
+  const pinned = w.isAlwaysOnTop();
+  if (!pinned) w.setAlwaysOnTop(true, 'pop-up-menu');
+  w.show();
+  w.moveTop();
+  w.focus();
+  if (!pinned) setTimeout(() => !w.isDestroyed() && w.setAlwaysOnTop(false), 400);
+}
+
 function fadeIn(w, focus) {
   if (!w || w.isDestroyed()) return;
   w.setOpacity(0);
-  if (focus) {
-    w.show();
-    w.focus();
-  } else w.showInactive();
+  if (focus) bringToFront(w);
+  else w.showInactive();
   let o = 0;
   const step = () => {
     if (w.isDestroyed()) return;
@@ -598,8 +609,7 @@ function openSetupWindow(tab = 'week') {
   if ((light() || !feat('planner')) && tab !== 'settings') return;
   const inline = tab === 'settings' ? state.settings.settingsMode !== 'modal' : state.settings.setupMode === 'inline';
   if (inline) {
-    win.show();
-    win.focus();
+    bringToFront(win);
     win.webContents.send('planner:tab', tab);
     return;
   }
@@ -607,7 +617,7 @@ function openSetupWindow(tab = 'week') {
     setupWin.webContents.send('planner:tab', tab);
     // Kept alive while hidden, so it comes back instantly on the right tab.
     if (!setupWin.isVisible()) setTimeout(showPlanner, 30);
-    else setupWin.focus();
+    else bringToFront(setupWin);
     return;
   }
   const wa = screen.getPrimaryDisplay().workArea;

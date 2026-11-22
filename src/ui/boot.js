@@ -7,6 +7,7 @@ function render() {
   if (view === 'setup') renderSetup();
   renderNow();
   if (view === 'today') renderToday();
+  if (view === 'view') renderViewTab();
   if (view === 'settings') renderSettings();
 }
 

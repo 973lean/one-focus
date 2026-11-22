@@ -874,7 +874,7 @@ function todaySummary() {
 
 // Tasks tab: every open task in your list, as a plain list. Tick to finish,
 // click for details; finished today sit faded at the bottom.
-function tasksList() {
+function tasksList(opts = {}) {
   const box = el('div', 'su-tasks');
   const ul = el('ul', 'su-tasks__list');
   const when = (t) => {
@@ -898,7 +898,14 @@ function tasksList() {
     });
     const m = metaOf('g:' + t.id);
     li.append(check, titleWithSeries(el('span', 't', t.title), t), el('span', 'd', (m.repeat ? '↻ ' : '') + when(t)));
-    if (!done) li.addEventListener('click', () => ((suSheet = { type: 'task', id: t.id }), renderSetup()));
+    if (opts.inMain) {
+      // On View: a quiet Start on hover instead of the details panel.
+      if (!done && !(S.current && S.current.googleId === t.id)) {
+        const go = el('button', 'act su-tasks__start', 'Start');
+        go.addEventListener('click', (e) => (e.stopPropagation(), startWithClaim(t.id)));
+        li.append(go);
+      }
+    } else if (!done) li.addEventListener('click', () => ((suSheet = { type: 'task', id: t.id }), renderSetup()));
     return li;
   };
   if (!S.connected) ul.append(el('li', 'empty', 'Connect Google Tasks in Settings to see your list here.'));
@@ -920,6 +927,16 @@ function tasksList() {
   });
   box.append(ul, add);
   return box;
+}
+
+// One Focus · View: the time and date over the whole list, made to be left up.
+function renderViewTab() {
+  const box = $('vw-list');
+  if (!box || box.contains(document.activeElement)) return;
+  const keep = $('view-view').scrollTop;
+  box.replaceChildren(tasksList({ inMain: true }));
+  $('view-view').scrollTop = keep;
+  plannerClock(new Date(), 'vw-time', 'vw-date');
 }
 
 // Header date range follows what's on screen.

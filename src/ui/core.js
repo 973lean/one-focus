@@ -59,7 +59,7 @@ if (setupMode) document.body.classList.add('mode-setup');
 function setView(name) {
   view = name;
   appEl.dataset.view = name;
-  for (const id of ['now', 'log', 'today', 'setup', 'settings']) $('view-' + id).hidden = id !== name;
+  for (const id of ['now', 'log', 'today', 'view', 'setup', 'settings']) $('view-' + id).hidden = id !== name;
   document.querySelectorAll('.menu__item').forEach((b) => b.setAttribute('aria-current', String(b.dataset.view === name)));
   if (!setupMode) api.setView(name);
   if (name === 'log') loadLog();

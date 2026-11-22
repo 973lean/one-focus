@@ -13,7 +13,7 @@
       <nav class="menu" aria-label="Menu">
         <button class="menu__item" data-view="now">Now</button>
         <button class="menu__item" data-view="log">Log</button>
-        <button class="menu__item" data-view="today">Today</button>
+        <button class="menu__item" data-view="view">View</button>
         <button class="menu__item" data-view="setup">Plan</button>
       </nav>
       <div class="controls" aria-label="Window controls">
@@ -133,6 +133,12 @@
       <div id="log-summary"></div>
       <h2 class="eyebrow" id="log-sessions-title">Sessions</h2>
       <div id="log-sessions"></div>
+    </section>
+
+    <!-- View: leave it up — the time, the date and every task at once. -->
+    <section class="panel panel--view" id="view-view" hidden>
+      <div class="vw-clock"><time class="vw-time" id="vw-time"></time><span class="vw-date" id="vw-date"></span></div>
+      <div class="vw-list" id="vw-list"></div>
     </section>
 
     <section class="panel" id="view-today" hidden>

@@ -194,6 +194,10 @@
 - [x] Escape in the Planner window closes the details panel, then Settings, then the window (it used to blank the window).
 - [x] Shift + an F-key as a shortcut option; open-at-login re-registered on every launch.
 
+## v0.33 — View
+- [x] One Focus's Today tab is now View: the time and date large at the top, every task below (tick to finish, Start on hover, when it's planned or due). It never drifts back to Now, so it can be left up.
+- [x] Shortcuts and corners bring the Planner (or One Focus) in front even while you're in another app (Windows blocks background apps from taking focus; the window is pinned on top for a moment).
+
 ## Parked
 - [x] ~~Full-screen announcements~~ → became the v0.7 blur for "Still on this?" and end of day
 
