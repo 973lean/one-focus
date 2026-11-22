@@ -97,7 +97,7 @@ button:focus-visible, input:focus-visible { outline: 1px solid var(--fg-tertiary
    Inside a panel the menu stays visible so you can always get back. */
 .near-menu .menu__item,
 .near-controls .controls__btn,
-.app:not([data-view="now"]) .menu__item,
+.app:not([data-view="now"]):not([data-view="view"]) .menu__item,
 .bar:focus-within .menu__item,
 .bar:focus-within .controls__btn {
   opacity: 1;
@@ -1000,11 +1000,15 @@ input[type="time"]::-webkit-calendar-picker-indicator { opacity: 0.35; cursor: p
 .su-tasks__add:focus { border-bottom-color: var(--hairline) !important; }
 
 /* One Focus · View: time and date over every task. */
-.panel--view { container-type: inline-size; gap: 18px; padding-top: var(--space-4); }
-.vw-clock { display: flex; flex-direction: column; gap: 6px; padding: 0 6px 6px; }
-.vw-time { font-size: clamp(40px, 13cqw, 92px); font-weight: 500; letter-spacing: -0.04em; line-height: 0.95; color: var(--fg); font-variant-numeric: tabular-nums; }
+/* Centred vertically while it fits (auto margins); scrolls when the list is long.
+   The menu hides like on Now and comes back when the pointer is near it. */
+.panel--view { container-type: inline-size; gap: 0; padding-top: var(--space-4); }
+.panel--view > .vw-clock { margin-top: auto; }
+.panel--view > .vw-list { margin-bottom: auto; }
+.vw-clock { display: flex; flex-direction: column; gap: 10px; padding: 0 6px 32px; border-bottom: 1px solid var(--hairline); margin-bottom: 20px; }
+.vw-time { font-size: clamp(80px, 26cqw, 184px); font-weight: 500; letter-spacing: -0.04em; line-height: 0.92; color: var(--fg); font-variant-numeric: tabular-nums; }
 .vw-time .p { font-size: 0.34em; font-weight: 400; letter-spacing: 0.04em; margin-left: 0.2em; color: var(--fg-tertiary); }
-.vw-date { font-size: clamp(13px, 3cqw, 17px); letter-spacing: 0.04em; color: var(--fg-date); }
+.vw-date { font-size: clamp(26px, 6cqw, 34px); letter-spacing: 0.04em; color: var(--fg-date); }
 .vw-list .su-tasks { max-width: none; margin: 0; padding: 0 0 24px; }
 .su-tasks__start { display: none; flex-shrink: 0; font-size: 12px; color: var(--fg-secondary); }
 /* On hover, Start takes the time's place (no gap left when it's hidden). */
