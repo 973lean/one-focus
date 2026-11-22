@@ -212,6 +212,10 @@
 ## v0.36 — Settings search
 - [x] Search in the Settings header (or just type, or Ctrl+F): unrelated cards hide, matching settings highlighted with the words marked; Escape clears.
 
+## v0.36.x — Notes
+- [x] Settings → Notes: jot changes as they come up; Copy & clear puts them on the clipboard for a prompt, clears the box and keeps a dated copy ("Copied before", last 30).
+- [x] View: bigger tick circles; no Done heading; clear-all icon by the gear; add field on hover.
+
 ## Parked
 - [x] ~~Full-screen announcements~~ → became the v0.7 blur for "Still on this?" and end of day
 

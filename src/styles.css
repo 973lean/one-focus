@@ -1073,3 +1073,18 @@ input[type="time"]::-webkit-calendar-picker-indicator { opacity: 0.35; cursor: p
 .vw-list .su-tasks__list li { gap: 16px; }
 .vw-list .su-tasks__list .check { width: 20px; height: 20px; border-width: 1.5px; }
 .vw-list .su-tasks__list li.is-running .t::before { width: 7px; height: 7px; margin-right: 10px; }
+
+/* Notes (Settings): a plain box, a quiet button, a folded archive. */
+.st-notes { font: inherit; font-size: 13px; line-height: 1.5; color: var(--fg); background: rgba(245, 245, 244, 0.02); border: 1px solid var(--hairline); border-radius: 10px; padding: 10px 12px; min-height: 92px; resize: vertical; outline: none; user-select: text; margin-top: 4px; }
+.st-notes:focus { border-color: var(--fg-tertiary); }
+.st-archive { margin-top: 8px; font-size: 12px; color: var(--fg-tertiary); }
+.st-archive summary { cursor: pointer; list-style: none; padding: 4px 0; }
+.st-archive summary::-webkit-details-marker { display: none; }
+.st-archive summary::before { content: "›"; display: inline-block; margin-right: 6px; transition: transform var(--dur) var(--ease); }
+.st-archive[open] summary::before { transform: rotate(90deg); }
+.st-archive ul { list-style: none; display: flex; flex-direction: column; max-height: 260px; overflow-y: auto; }
+.st-archive li { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; padding: 8px 0; border-top: 1px solid var(--hairline); }
+.st-archive .when { font-variant-numeric: tabular-nums; }
+.st-archive .act { font-size: 12px; color: var(--fg-tertiary); }
+.st-archive .act:hover { color: var(--fg); }
+.st-archive .txt { grid-column: 1 / -1; margin: 0; white-space: pre-wrap; color: var(--fg-secondary); line-height: 1.45; user-select: text; }

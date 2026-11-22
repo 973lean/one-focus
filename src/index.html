@@ -337,6 +337,17 @@
           </div>
         </section>
 
+        <section class="st-card">
+          <h2 class="st-h">Notes</h2>
+          <p class="st-sub">Jot changes you want as they come up. Copy &amp; clear puts them on the clipboard, ready to paste into a prompt.</p>
+          <textarea class="st-notes" id="s-notes" rows="4" placeholder="e.g. make the circles bigger on View" spellcheck="true"></textarea>
+          <div class="actions">
+            <button class="btn btn--quiet" id="s-notes-cut">Copy &amp; clear</button>
+            <span class="status" id="s-notes-msg"></span>
+          </div>
+          <details class="st-archive" id="s-archive" hidden><summary id="s-archive-sum"></summary><ul id="s-archive-list"></ul></details>
+        </section>
+
       </div>
     </section>
     <button class="gear clear-done" id="clear-done" aria-label="Clear finished tasks" title="Clear finished tasks (they stay completed in Google Tasks)" hidden><svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.6"/><path d="M5.6 8.1 7.3 9.8l3.2-3.6"/></svg></button>

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, screen, powerMonitor, shell, desktopCapturer, globalShortcut } = require('electron');
+const { app, BrowserWindow, ipcMain, screen, powerMonitor, shell, desktopCapturer, globalShortcut, clipboard } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const store = require('./store');
@@ -57,6 +57,8 @@ function snapshot() {
     todayDate: localDate(),
     goals: goalsFor([cur, held, ...today.open.map((t) => ({ key: 'g:' + t.id }))]),
     plans: plansFor([...today.open, ...today.done]),
+    notes: state.notes || '',
+    notesArchive: state.notesArchive || [],
     shortcutTaken,
     itemMins: Object.fromEntries(Object.entries(state.taskMeta).filter(([k, m]) => k.startsWith('i:') && m.mins).map(([k, m]) => [k.slice(2), m.mins])),
     breaks: state.breaks,
@@ -1127,6 +1129,24 @@ ipcMain.handle('done:clear', (_e, ids) => {
     cleared[id] = (t && t.completed) || new Date().toISOString();
   }
   today.recent = (today.recent || []).filter((t) => !cleared[t.id]);
+  store.save(state);
+  push();
+  return snapshot();
+});
+
+// Notes (Settings): ideas for changes. Copy & clear puts them on the
+// clipboard and keeps a dated copy in a light archive (last 30).
+ipcMain.handle('notes:set', (_e, text) => {
+  state.notes = String(text || '').slice(0, 20000);
+  store.save(state);
+  return true;
+});
+ipcMain.handle('notes:cut', () => {
+  const text = (state.notes || '').trim();
+  if (!text) return snapshot();
+  clipboard.writeText(text);
+  state.notesArchive = [{ at: new Date().toISOString(), text }, ...(state.notesArchive || [])].slice(0, 30);
+  state.notes = '';
   store.save(state);
   push();
   return snapshot();

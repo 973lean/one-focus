@@ -378,3 +378,47 @@ renderSettings = function () {
   _renderSettings();
   if ($('st-search').value.trim()) settingsFilter();
 };
+
+// Notes: saved as you type (quietly); Copy & clear copies, clears and archives.
+const notesEl = $('s-notes');
+let notesTimer = null;
+notesEl.addEventListener('input', () => {
+  clearTimeout(notesTimer);
+  notesTimer = setTimeout(() => api.setNotes(notesEl.value), 400);
+});
+notesEl.addEventListener('keydown', (e) => e.stopPropagation());
+$('s-notes-cut').addEventListener('click', async () => {
+  clearTimeout(notesTimer);
+  await api.setNotes(notesEl.value);
+  if (!notesEl.value.trim()) return;
+  S = await api.cutNotes();
+  notesEl.value = '';
+  $('s-notes-msg').textContent = 'Copied. Paste it into your prompt.';
+  setTimeout(() => ($('s-notes-msg').textContent = ''), 2600);
+  renderNotes();
+});
+const notesFmt = new Intl.DateTimeFormat('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+function renderNotes() {
+  if (!S) return;
+  if (document.activeElement !== notesEl && notesEl.value !== (S.notes || '')) notesEl.value = S.notes || '';
+  const arch = S.notesArchive || [];
+  $('s-archive').hidden = !arch.length;
+  $('s-archive-sum').textContent = `Copied before · ${arch.length}`;
+  const list = $('s-archive-list');
+  list.replaceChildren();
+  for (const a of arch) {
+    const li = el('li');
+    const again = el('button', 'act', 'Copy');
+    again.addEventListener('click', async () => {
+      try { await navigator.clipboard.writeText(a.text); again.textContent = 'Copied'; } catch { again.textContent = 'Select it'; }
+      setTimeout(() => (again.textContent = 'Copy'), 1500);
+    });
+    li.append(el('span', 'when', notesFmt.format(new Date(a.at))), again, el('p', 'txt', a.text));
+    list.append(li);
+  }
+}
+const _renderSettings2 = renderSettings;
+renderSettings = function () {
+  _renderSettings2();
+  renderNotes();
+};

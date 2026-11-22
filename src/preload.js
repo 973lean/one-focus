@@ -33,6 +33,8 @@ contextBridge.exposeInMainWorld('oneFocus', {
   reminderAct: (action) => ipcRenderer.invoke('reminder:act', action),
   extend: (mins) => ipcRenderer.invoke('current:extend', mins),
   clearDone: (ids) => ipcRenderer.invoke('done:clear', ids),
+  setNotes: (text) => ipcRenderer.invoke('notes:set', text),
+  cutNotes: () => ipcRenderer.invoke('notes:cut'),
   repeatScope: (id, scope) => ipcRenderer.invoke('task:repeatScope', id, scope),
   onToast: (cb) => ipcRenderer.on('toast', (_e, r) => cb(r)),
   item: (parentId, action, itemId, value) => ipcRenderer.invoke('item:action', parentId, action, itemId, value),
