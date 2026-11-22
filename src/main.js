@@ -81,7 +81,7 @@ function plansFor(open) {
   for (const t of open) {
     const m = state.taskMeta['g:' + t.id];
     if (m && (m.plan || m.repeat || m.mins || m.pinned))
-      out['g:' + t.id] = { plan: m.plan || null, repeat: m.repeat || null, mins: m.mins || null, pinned: !!m.pinned, added: m.added || 0 };
+      out['g:' + t.id] = { plan: m.plan || null, repeat: m.repeat || null, mins: m.mins || null, pinned: !!m.pinned, added: m.added || 0, base: m.base || null };
   }
   return out;
 }
@@ -341,15 +341,20 @@ async function doSync() {
       const doneDay = localDate(new Date(t.completed));
       const from = t.due && t.due.slice(0, 10) > doneDay ? t.due.slice(0, 10) : doneDay;
       const next = planning.nextDate(from, m.repeat);
-      const created = await client.insert(listId, { title: t.title.trim(), notes: t.notes || undefined, due: next + 'T00:00:00.000Z' });
+      // The next copy follows the pattern (m.base) if one was kept by a
+      // "this one only" change; otherwise it copies this task.
+      const b = m.base || {};
+      const created = await client.insert(listId, { title: (b.title || t.title).trim(), notes: t.notes || undefined, due: next + 'T00:00:00.000Z' });
       const meta = { repeat: m.repeat };
       if (m.mins) meta.mins = m.mins;
       if (m.plan) {
         const old = new Date(m.plan.start);
+        const [hh, mm] = b.at ? b.at.split(':').map(Number) : [old.getHours(), old.getMinutes()];
+        const mins = b.mins || m.plan.mins;
         const [y, mo, d] = next.split('-').map(Number);
-        const start = new Date(y, mo - 1, d, old.getHours(), old.getMinutes());
-        meta.plan = { start: start.toISOString(), mins: m.plan.mins };
-        meta.goal = new Date(start.getTime() + m.plan.mins * 60e3).toISOString();
+        const start = new Date(y, mo - 1, d, hh, mm);
+        meta.plan = { start: start.toISOString(), mins };
+        meta.goal = new Date(start.getTime() + mins * 60e3).toISOString();
       }
       state.taskMeta['g:' + created.id] = meta;
     }
@@ -960,6 +965,26 @@ function cleanStructure(d) {
 }
 
 // Task details from Setup: title and notes go to Google; length and repeat stay here.
+// A repeating task changed: "one" keeps the pattern future copies are made
+// from (saving it first if needed); "all" makes this task the new pattern.
+ipcMain.handle('task:repeatScope', (_e, id, scope) => {
+  const m = state.taskMeta['g:' + id];
+  if (!m || !m.repeat) return snapshot();
+  if (scope === 'all') delete m.base;
+  else if (scope === 'one' && !m.base) {
+    const t = today.open.find((x) => x.id === id);
+    const st = m.plan ? new Date(m.plan.start) : null;
+    m.base = {
+      title: t ? t.title : undefined,
+      at: st ? `${String(st.getHours()).padStart(2, '0')}:${String(st.getMinutes()).padStart(2, '0')}` : undefined,
+      mins: m.plan ? m.plan.mins : m.mins,
+    };
+  }
+  store.save(state);
+  push();
+  return snapshot();
+});
+
 ipcMain.handle('task:detail', async (_e, id, patch) => {
   const key = 'g:' + id;
   const meta = (state.taskMeta[key] = { ...(state.taskMeta[key] || {}) });
@@ -1181,11 +1206,18 @@ ipcMain.handle('manual:set', (_e, text) => {
 // that isn't first moves it to the top in Google so the order matches.
 // Starting a task planned for later today: its whole plan moves to now (same
 // length), so the Planner shows it where you are and you can push from there.
+// Starting it late, before any work on it today (its slot has passed): same
+// thing, so the "over" count runs from when you really began, not the old slot.
 function pullPlanToNow(id) {
   const m = state.taskMeta['g:' + id];
   if (!m || !m.plan) return;
   const st = Date.parse(m.plan.start);
-  if (localDate(new Date(st)) !== localDate() || st <= Date.now() + 5 * 60e3) return;
+  if (localDate(new Date(st)) !== localDate()) return;
+  const early = st > Date.now() + 5 * 60e3;
+  const sod = new Date().setHours(0, 0, 0, 0);
+  const workedToday = state.sessions.some((x) => x.key === 'g:' + id && Date.parse(x.end) > sod);
+  const late = st < Date.now() - 5 * 60e3 && !workedToday;
+  if (!early && !late) return;
   const n = new Date();
   n.setSeconds(0, 0);
   m.plan.start = n.toISOString();

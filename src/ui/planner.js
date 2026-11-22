@@ -132,7 +132,8 @@ function behindToday() {
   let by = 0;
   const cur = S.current && S.current.googleId;
   const curPlan = cur && planOf('g:' + cur);
-  const curEnd = curPlan ? Date.parse(curPlan.start) + curPlan.mins * 60e3 : null;
+  // Only a plan for today counts (an old day's plan isn't "over" today).
+  const curEnd = curPlan && ld(new Date(curPlan.start)) === S.todayDate ? Date.parse(curPlan.start) + curPlan.mins * 60e3 : null;
   for (const t of S.today.open) {
     const p = planOf('g:' + t.id);
     if (!p || ld(new Date(p.start)) !== S.todayDate || t.id === cur) continue;
@@ -624,10 +625,13 @@ function dayCard(i, now, h0, h1, { wide }) {
     if (!m.repeat || !m.plan) continue;
     const s = new Date(m.plan.start);
     if (!window.Plan.repeatsOn(ld(s), m.repeat, key)) continue;
+    // Future copies follow the kept pattern, if "this one only" changed this one.
+    const b = m.base || {};
+    const [gh, gm] = b.at ? b.at.split(':').map(Number) : [s.getHours(), s.getMinutes()];
     const g = el('div', 'su-block is-ghost');
-    g.style.top = px(s.getHours() * 60 + s.getMinutes()) + 'px';
-    g.style.height = Math.max(m.plan.mins * (HOUR / 60) - 2, 16) + 'px';
-    g.append(el('span', 't', t.title), el('span', 'w', '↻ ' + repeatLabel(m.repeat, ld(s))));
+    g.style.top = px(gh * 60 + gm) + 'px';
+    g.style.height = Math.max((b.mins || m.plan.mins) * (HOUR / 60) - 2, 16) + 'px';
+    g.append(el('span', 't', b.title || t.title), el('span', 'w', '↻ ' + repeatLabel(m.repeat, ld(s))));
     col.append(g);
   }
   // Planned tasks. Not started: the plan as a dashed outline you can drag.
@@ -1128,6 +1132,10 @@ async function onDragEnd(e) {
     return renderSetup();
   }
   const save = (start, mins) => (d.kind === 'break' ? api.setBreak(d.id || null, start ? { start, mins } : null) : api.plan(d.task.id, start ? { start, mins } : null));
+  // A repeating task: this one, or this and the following ones?
+  if (d.kind === 'task' && d.mode !== 'new' && metaOf('g:' + d.task.id).repeat) {
+    if (!(await askRepeat(d.task))) return render();
+  }
   if (d.mode === 'resize') S = await save(d.start, d.mins);
   else {
     const t = targetAt(e.clientX, e.clientY);
@@ -1183,7 +1191,11 @@ function renderSheet() {
     const name = el('input', 'su-sheet__name');
     name.type = 'text';
     name.value = t.title;
-    name.addEventListener('change', async () => name.value.trim() && (S = await api.taskDetail(t.id, { title: name.value.trim() })));
+    name.addEventListener('change', async () => {
+      if (!name.value.trim()) return;
+      if (m.repeat && !(await askRepeat(t))) return (name.value = t.title);
+      S = await api.taskDetail(t.id, { title: name.value.trim() });
+    });
     const notes = el('textarea');
     notes.placeholder = 'Notes';
     notes.value = t.notes || '';
@@ -1193,7 +1205,11 @@ function renderSheet() {
       'when',
       p ? `${shortDay.format(new Date(p.start))} · ${hm(p.start)}–${hm(Date.parse(p.start) + p.mins * 60e3)}` : 'Not on the calendar yet. Drag it onto a day.'
     );
-    const length = tabsRow(LENGTHS, (p && p.mins) || m.mins || 30, async (v) => ((S = await api.taskDetail(t.id, { mins: v })), render()));
+    const length = tabsRow(LENGTHS, (p && p.mins) || m.mins || 30, async (v) => {
+      if (m.repeat && !(await askRepeat(t))) return render();
+      S = await api.taskDetail(t.id, { mins: v });
+      render();
+    });
     // Repeat: presets, or Custom (every N days/weeks/months, chosen weekdays).
     const isCustom = m.repeat && typeof m.repeat === 'object';
     const setRepeat = async (v) => ((S = await api.taskDetail(t.id, { repeat: v })), render());
@@ -1442,6 +1458,41 @@ function renderSheet() {
 }
 
 // Duplicate: a small window asking how many copies.
+// Like Google Calendar: changing a repeating task asks whether it's just this
+// one or this and the ones after it. Resolves 'one' | 'all', or null (cancel).
+function askRepeat(t) {
+  document.querySelectorAll('.su-modal').forEach((x) => x.remove());
+  return new Promise((resolve) => {
+    const back = el('div', 'su-modal');
+    const box = el('div', 'su-modal__box');
+    const done = async (scope) => {
+      back.remove();
+      if (scope) S = await api.repeatScope(t.id, scope);
+      resolve(scope);
+    };
+    const opt = (label, desc, scope) => {
+      const b = el('button', 'choice');
+      b.append(el('b', null, label), el('span', null, desc));
+      b.addEventListener('click', () => done(scope));
+      return b;
+    };
+    const cancel = el('button', 'act', 'Cancel');
+    cancel.addEventListener('click', () => done(null));
+    back.addEventListener('click', (e) => e.target === back && done(null));
+    const acts = el('div', 'su-modal__acts');
+    acts.append(cancel);
+    box.append(
+      el('span', 'su-sheet__name', 'Change a repeating task'),
+      el('p', 'hint', `“${t.title}” repeats.`),
+      opt('This one', 'Only this time. The next ones stay as they were.', 'one'),
+      opt('This and following', 'This one and every one after it.', 'all'),
+      acts
+    );
+    back.append(box);
+    $('view-setup').append(back);
+  });
+}
+
 function openDuplicate(t) {
   document.querySelectorAll('.su-modal').forEach((m) => m.remove());
   let n = 1;

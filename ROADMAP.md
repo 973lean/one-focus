@@ -203,6 +203,12 @@
 - [x] Finished tasks: a "Done · n" heading with Clear all, × on each row; they also clear by themselves 24 hours after being done. Clearing only hides them here: they stay completed in Google Tasks and in the log.
 - [x] View tweaks: twice-size clock, centred, hairline divider, menu hides like Now, second in the menu.
 
+## v0.35 — Quick bar, repeating changes, late starts
+- [x] Quick bar: start typing anywhere (or Ctrl+K) in One Focus or the Planner. Enter adds a task for today; ↑↓ picks a match and Enter switches to it; Shift+Enter adds and starts; Ctrl+Enter opens details (Planner).
+- [x] Changing a repeating task's time, length or name asks "This one" or "This and following" (like Google Calendar). "This one" keeps the pattern future copies and previews follow.
+- [x] Starting a planned task late (its slot passed, no work on it yet today) moves its plan to now, so "over" counts from when you began. Over only counts a plan for today.
+- [x] Today tab: no unplanned-cards row (Week keeps it).
+
 ## Parked
 - [x] ~~Full-screen announcements~~ → became the v0.7 blur for "Still on this?" and end of day
 
