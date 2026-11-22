@@ -947,6 +947,23 @@ function tasksList(opts = {}) {
       });
       li.append(x);
     }
+    if (opts.inMain && !done && movable.includes(t)) {
+      // On View: tiny up/down arrows in the left margin, shown on hover.
+      const i = movable.indexOf(t);
+      const mv = el('span', 'su-tasks__move');
+      const arrow = (dir, path) => {
+        const b = el('button', dir < 0 ? 'up' : 'down');
+        b.setAttribute('aria-label', dir < 0 ? 'Move up' : 'Move down');
+        b.title = dir < 0 ? 'Move up' : 'Move down';
+        b.innerHTML = `<svg viewBox="0 0 8 5"><path d="${path}"/></svg>`;
+        const other = movable[i + dir];
+        if (!other) b.disabled = true;
+        else b.addEventListener('click', (e) => (e.stopPropagation(), moveRow(t, other, dir)));
+        return b;
+      };
+      mv.append(arrow(-1, 'M1 4 4 1l3 3'), arrow(1, 'M1 1l3 3 3-3'));
+      li.prepend(mv);
+    }
     if (opts.inMain) {
       // On View: a quiet Start on hover instead of the details panel.
       if (!done && !(S.current && S.current.googleId === t.id)) {
@@ -957,6 +974,8 @@ function tasksList(opts = {}) {
     } else if (!done) li.addEventListener('click', () => ((suSheet = { type: 'task', id: t.id }), renderSetup()));
     return li;
   };
+  // Tasks with a time sort by that time, so only the rest can be moved.
+  const movable = S.today.open.filter((t) => !planOf('g:' + t.id) && !goalOf('g:' + t.id));
   if (!S.connected) ul.append(el('li', 'empty', 'Connect Google Tasks in Settings to see your list here.'));
   for (const t of S.today.open) ul.append(row(t, false));
   // Finished in the last 24 hours follow straight on (they clear by themselves
@@ -982,6 +1001,21 @@ function tasksList(opts = {}) {
   });
   box.append(ul, addWrap);
   return box;
+}
+
+// Swap a task with its neighbour (up: -1, down: 1). Shown at once; Google gets
+// "put the lower one after the upper one", so tasks in between don't matter.
+// Moves are queued so quick clicks reach Google in order.
+let moveQueue = Promise.resolve();
+function moveRow(t, other, dir) {
+  const open = S.today.open;
+  const a = open.indexOf(t);
+  const b = open.indexOf(other);
+  if (a < 0 || b < 0) return;
+  [open[a], open[b]] = [open[b], open[a]];
+  render();
+  const [upper, lower] = dir < 0 ? [t, other] : [other, t];
+  moveQueue = moveQueue.then(() => api.task('move', lower.id, upper.id)).catch(() => {});
 }
 
 // One Focus · View: the time and date over the whole list, made to be left up.
