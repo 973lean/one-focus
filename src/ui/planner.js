@@ -488,6 +488,7 @@ function renderSetup() {
   if (!S || suDrag || suDraft) return;
   const behindNow = behindToday();
   renderNowStrip();
+  paintClearDone();
   // Until a Day structure is set: a quiet nudge (Fit, off-hours marks and
   // opening by itself all lean on it). "Not now" hides it for the day.
   let dsLater = null;
@@ -958,26 +959,18 @@ function tasksList(opts = {}) {
   };
   if (!S.connected) ul.append(el('li', 'empty', 'Connect Google Tasks in Settings to see your list here.'));
   for (const t of S.today.open) ul.append(row(t, false));
-  // Finished in the last 24 hours (they clear by themselves after that).
+  // Finished in the last 24 hours follow straight on (they clear by themselves
+  // a day later; the corner button clears them all now).
   const recent = S.today.recent || S.today.done;
-  if (recent.length) {
-    const head = el('li', 'su-tasks__head');
-    const clearAll = el('button', 'act', 'Clear all');
-    clearAll.title = 'Clear finished tasks from this list (they stay completed in Google Tasks)';
-    clearAll.addEventListener('click', async (e) => {
-      e.stopPropagation();
-      S = await api.clearDone('all');
-      render();
-    });
-    head.append(el('span', null, `Done · ${recent.length}`), clearAll);
-    ul.append(head);
-  }
   for (const t of recent) ul.append(row(t, true));
   if (S.connected && !S.today.open.length && !recent.length) ul.append(el('li', 'empty', 'Your list is empty.'));
+  // Add a task: a quiet field that appears when the pointer comes near.
+  const addWrap = el('div', 'su-tasks__addwrap');
   const add = el('input', 'su-tasks__add');
   add.type = 'text';
   add.maxLength = 300;
-  add.placeholder = '+ Add a task';
+  add.placeholder = 'Add a task';
+  addWrap.append(add);
   add.addEventListener('keydown', async (e) => {
     e.stopPropagation();
     if (e.key === 'Escape') return add.blur();
@@ -987,17 +980,30 @@ function tasksList(opts = {}) {
     await api.task('add', null, title);
     setTimeout(() => { const again = document.querySelector('.su-tasks__add'); if (again) again.focus(); }, 60);
   });
-  box.append(ul, add);
+  box.append(ul, addWrap);
   return box;
 }
 
 // One Focus · View: the time and date over the whole list, made to be left up.
+// The corner "clear finished" button: on View and the Tasks tab, when there are any.
+function paintClearDone() {
+  const b = $('clear-done');
+  if (!b || !S || !S.today) return;
+  const onList = (!setupMode && view === 'view') || (view === 'setup' && planTab === 'tasks');
+  b.hidden = !onList || !(S.today.recent || []).length;
+}
+$('clear-done').addEventListener('click', async () => {
+  S = await api.clearDone('all');
+  render();
+});
+
 function renderViewTab() {
   const box = $('vw-list');
   const a = document.activeElement;
   if (!box || (a && a.matches('input') && box.contains(a))) return; // not while typing
   const keep = $('view-view').scrollTop;
   box.replaceChildren(tasksList({ inMain: true }));
+  paintClearDone();
   $('view-view').scrollTop = keep;
   plannerClock(new Date(), 'vw-time', 'vw-date');
 }

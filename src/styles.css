@@ -1031,8 +1031,10 @@ input[type="time"]::-webkit-calendar-picker-indicator { opacity: 0.35; cursor: p
 .su-tasks__list li.su-tasks__head:hover { background: none; }
 .su-tasks__head .act { font-size: 12px; font-weight: 400; letter-spacing: 0; text-transform: none; color: var(--fg-tertiary); }
 .su-tasks__head .act:hover { color: var(--fg); }
-.su-tasks__clear { flex-shrink: 0; font-size: 14px; line-height: 1; color: var(--fg-tertiary); opacity: 0; transition: opacity var(--dur) var(--ease), color var(--dur) var(--ease); }
-.su-tasks__list li:hover .su-tasks__clear { opacity: 1; }
+.su-tasks__clear { display: none; flex-shrink: 0; font-size: 14px; line-height: 1; color: var(--fg-tertiary); }
+/* On hover, × takes the time's place (hidden, it takes no space). */
+.su-tasks__list li:hover .su-tasks__clear { display: block; }
+.su-tasks__list li.is-done:hover .d { display: none; }
 .su-tasks__clear:hover { color: var(--fg); }
 .vw-list .su-tasks__list li:not(.is-done) .t { cursor: text; }
 .su-tasks__edit { flex: 1; min-width: 0; font-size: 14px !important; padding: 2px 0 !important; }
@@ -1055,3 +1057,14 @@ input[type="time"]::-webkit-calendar-picker-indicator { opacity: 0.35; cursor: p
 .quick__hint { padding: 4px 12px 0; font-size: 11px; color: var(--fg-tertiary); }
 
 #view-settings .is-miss { display: none !important; }
+
+/* Clear finished: a round icon beside the gear, shown when the pointer is near. */
+.gear.clear-done { right: calc(max(10px, env(safe-area-inset-right, 0px)) + 34px); }
+.app[data-view="settings"] .gear.clear-done { opacity: 0; pointer-events: none; }
+.near-gear .gear.clear-done { opacity: 1; pointer-events: auto; }
+.gear.clear-done svg { stroke-linecap: round; }
+/* Add a task: an input that appears near the pointer (or while typing). */
+.su-tasks__addwrap { padding: 14px 0 6px; }
+.su-tasks__add { width: 100%; font-size: 14px !important; padding: 10px 14px !important; border: 1px solid var(--hairline) !important; border-radius: 10px; background: rgba(245, 245, 244, 0.02); opacity: 0; transition: opacity var(--dur) var(--ease), border-color var(--dur) var(--ease); }
+.su-tasks__addwrap:hover .su-tasks__add, .su-tasks__add:focus, .su-tasks__add:not(:placeholder-shown) { opacity: 1; }
+.su-tasks__add:focus { border-color: var(--fg-tertiary) !important; }

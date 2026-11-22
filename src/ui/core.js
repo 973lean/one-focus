@@ -64,6 +64,7 @@ function setView(name) {
   if (!setupMode) api.setView(name);
   if (name === 'log') loadLog();
   render();
+  if (typeof paintClearDone === 'function') paintClearDone();
   if (name === 'setup') setTimeout(scrollSetupToNow, 350);
 }
 
