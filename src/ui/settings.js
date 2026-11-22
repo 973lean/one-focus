@@ -324,3 +324,57 @@ for (const n of ['today', 'week', 'settings']) {
     }
   });
 }
+
+// Search: cards without a match hide; inside the rest, matching settings get
+// a light highlight and the matched words are marked. Escape clears.
+function settingsFilter() {
+  const input = $('st-search');
+  const q = input.value.trim().toLowerCase();
+  const cards = document.querySelectorAll('#view-settings .st-card');
+  let shown = 0;
+  const mark = (node, on) => {
+    // Mark the match inside the setting's name (restored from the original text).
+    if (!node) return;
+    if (node.dataset.orig == null) node.dataset.orig = node.textContent;
+    const text = node.dataset.orig;
+    const i = on ? text.toLowerCase().indexOf(q) : -1;
+    if (i < 0) return void (node.textContent = text);
+    node.replaceChildren(text.slice(0, i), el('mark', null, text.slice(i, i + q.length)), text.slice(i + q.length));
+  };
+  for (const card of cards) {
+    const head = card.querySelector('.st-h');
+    const rows = [...card.querySelectorAll('.st-row, .field')];
+    const titleHit = !!q && head && head.textContent.toLowerCase().includes(q);
+    let hits = 0;
+    for (const r of rows) {
+      const hit = !!q && r.textContent.toLowerCase().includes(q);
+      r.classList.toggle('is-hit', hit && !titleHit);
+      mark(r.querySelector('.st-name, .field > span'), hit);
+      if (hit) hits++;
+    }
+    mark(head, titleHit);
+    // Only some rows match: show just those (a title match keeps the whole card).
+    const only = !!q && !titleHit && hits > 0;
+    for (const r of rows) r.classList.toggle('is-miss', only && !r.classList.contains('is-hit'));
+    const sub = card.querySelector('.st-sub');
+    if (sub) sub.classList.toggle('is-miss', only);
+    const show = !q || titleHit || hits > 0;
+    card.hidden = !show;
+    if (show) shown++;
+  }
+  $('st-none').hidden = !q || shown > 0;
+}
+$('st-search').addEventListener('input', settingsFilter);
+$('st-search').addEventListener('keydown', (e) => {
+  e.stopPropagation();
+  if (e.key === 'Escape') {
+    if ($('st-search').value) ($('st-search').value = ''), settingsFilter();
+    else $('st-search').blur();
+  }
+});
+// Rows redrawn by renderSettings (Features) keep the current filter.
+const _renderSettings = renderSettings;
+renderSettings = function () {
+  _renderSettings();
+  if ($('st-search').value.trim()) settingsFilter();
+};

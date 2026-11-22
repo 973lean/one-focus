@@ -97,6 +97,18 @@ document.addEventListener('keydown', (e) => {
   const t = e.target;
   if (t && t.matches && t.matches('input, textarea, select, [contenteditable]')) return;
   if (document.querySelector('.su-modal')) return;
+  // In Settings, typing (or Ctrl+F) searches the settings instead.
+  if (view === 'settings') {
+    const typed = e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey && /\S/.test(e.key);
+    if (typed || ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f')) {
+      e.preventDefault();
+      const s = $('st-search');
+      if (typed) s.value += e.key;
+      s.focus();
+      settingsFilter();
+    }
+    return;
+  }
   if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === 'k') {
     e.preventDefault();
     return openQuick('');
