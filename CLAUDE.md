@@ -8,3 +8,4 @@ Small Electron app for a secondary monitor: time, date, one task at a time from 
 - Releases are automatic: pushing app changes to `main` runs `.github/workflows/publish.yml`, which builds the Windows installer and force-replaces the `builds` branch. Installed apps auto-update from there (electron-updater, generic provider on raw.githubusercontent). Don't push builds by hand. Bump the minor version in package.json for notable releases; the patch number is the workflow run number.
 - `docs/index.html` is the web view (GitHub Pages, reads a secret Gist the app updates via `src/web.js`).
 - The user tests on Windows; this repo is usually edited from a Linux cloud session.
+- Before calling any visible change done, run the `self-check` skill (`.claude/skills/self-check`): render, drive, score, fix, repeat.

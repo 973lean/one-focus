@@ -209,6 +209,9 @@
 - [x] Starting a planned task late (its slot passed, no work on it yet today) moves its plan to now, so "over" counts from when you began. Over only counts a plan for today.
 - [x] Today tab: no unplanned-cards row (Week keeps it).
 
+## v0.36 — Settings search
+- [x] Search in the Settings header (or just type, or Ctrl+F): unrelated cards hide, matching settings highlighted with the words marked; Escape clears.
+
 ## Parked
 - [x] ~~Full-screen announcements~~ → became the v0.7 blur for "Still on this?" and end of day
 
