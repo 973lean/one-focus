@@ -1068,3 +1068,8 @@ input[type="time"]::-webkit-calendar-picker-indicator { opacity: 0.35; cursor: p
 .su-tasks__add { width: 100%; font-size: 14px !important; padding: 10px 14px !important; border: 1px solid var(--hairline) !important; border-radius: 10px; background: rgba(245, 245, 244, 0.02); opacity: 0; transition: opacity var(--dur) var(--ease), border-color var(--dur) var(--ease); }
 .su-tasks__addwrap:hover .su-tasks__add, .su-tasks__add:focus, .su-tasks__add:not(:placeholder-shown) { opacity: 1; }
 .su-tasks__add:focus { border-color: var(--fg-tertiary) !important; }
+
+/* View: bigger tick circles (and a matching running dot) for a screen you glance at. */
+.vw-list .su-tasks__list li { gap: 16px; }
+.vw-list .su-tasks__list .check { width: 20px; height: 20px; border-width: 1.5px; }
+.vw-list .su-tasks__list li.is-running .t::before { width: 7px; height: 7px; margin-right: 10px; }
