@@ -709,8 +709,8 @@ function dayCard(i, now, h0, h1, { wide }) {
       // it there and moves the rest to after the gap, as a second task.
       const gap = !t.done && !running ? gapIn(gaps, pa, pb) : null;
       if (gap) {
-        const sp = el('button', 'su-cut', 'Split');
-        sp.title = `Split at ${hm(d.getTime() + gap[0] * 60e3)}: the rest moves to ${hm(d.getTime() + gap[1] * 60e3)} as a second task`;
+        const sp = el('button', 'su-cut', 'Remove gap');
+        sp.title = `Cut it at ${hm(d.getTime() + gap[0] * 60e3)}; the rest moves to ${hm(d.getTime() + gap[1] * 60e3)} as a second part (1/2, 2/2)`;
         sp.addEventListener('pointerdown', (e) => e.stopPropagation());
         sp.addEventListener('click', async (e) => {
           e.stopPropagation();
@@ -718,6 +718,8 @@ function dayCard(i, now, h0, h1, { wide }) {
           const r = await api.split(t.id, new Date(d.getTime() + gap[0] * 60e3).toISOString(), new Date(d.getTime() + gap[1] * 60e3).toISOString());
           if (r && r.error) blk.classList.remove('is-busy');
         });
+        // It sits just inside the gap part of the block, clear of the title.
+        sp.style.top = Math.max(2, Math.min((gap[0] - pa) * (HOUR / 60) + 5, (pb - pa) * (HOUR / 60) - 20)) + 'px';
         blk.append(sp);
       }
       if (!t.done) {
@@ -837,10 +839,10 @@ function dayCard(i, now, h0, h1, { wide }) {
   const head = el('div', 'su-day__head');
   const name = i === 0 ? (wide ? `Today · ${shortDay.format(d)}` : 'Today') : i === 1 ? 'Tomorrow' : i === -1 ? 'Yesterday' : shortDay.format(d);
   // The day at a glance: how much is planned and when it ends.
-  const sum = total ? `${hLen(total)} planned · ends ${hm(dayEnd)}` : '';
-  const tot = el('span', 'su-day__total', sum);
-  if (total) tot.title = `${hLen(total)} planned today; the last block ends at ${hm(dayEnd)}`;
-  head.append(el('span', 'su-day__name', name), tot);
+  // Just the day's name; how much is planned shows on hover (no extra line).
+  const nameEl = el('span', 'su-day__name', name);
+  if (total) nameEl.title = `${hLen(total)} planned · ends ${hm(dayEnd)}`;
+  head.append(nameEl);
   card.append(head, col);
   return card;
 }
