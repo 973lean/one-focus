@@ -190,6 +190,31 @@ function workWindows(d) {
 }
 const outsideWork = (win, a, b) => feat('offHours') && !!win && !win.some(([x, y]) => a >= x && b <= y);
 
+// Gaps in a day (minutes): between work blocks, the structure's breaks and
+// breaks you placed. Merged and sorted.
+function dayGaps(d) {
+  const out = [];
+  const win = workWindows(d) || [];
+  for (let i = 1; i < win.length; i++) if (win[i][0] > win[i - 1][1]) out.push([win[i - 1][1], win[i][0]]);
+  const ds = S.settings.dayStructure;
+  if (ds && win.length) for (const [a, b] of ds.breaks || []) out.push([toMin(a), toMin(b)]);
+  const key = ld(d);
+  for (const b of S.breaks || []) {
+    const s = new Date(b.start);
+    if (ld(s) === key) out.push([s.getHours() * 60 + s.getMinutes(), s.getHours() * 60 + s.getMinutes() + b.mins]);
+  }
+  out.sort((x, y) => x[0] - y[0]);
+  const merged = [];
+  for (const g of out) {
+    const last = merged[merged.length - 1];
+    if (last && g[0] <= last[1]) last[1] = Math.max(last[1], g[1]);
+    else if (g[1] > g[0]) merged.push([...g]);
+  }
+  return merged;
+}
+// The first gap a planned block runs into (it starts before it): [cut, resume].
+const gapIn = (gaps, a, b) => gaps.find(([x]) => x - a >= 5 && b - x >= 5) || null;
+
 // Fit a day. The order of the blocks never changes and nothing moves later:
 // each block not started yet (and not pinned) moves up into the earliest gap
 // that fits, after the block before it, inside the work windows, around real
@@ -641,6 +666,7 @@ function dayCard(i, now, h0, h1, { wide }) {
   // Cards that overlap sit side by side, like a calendar.
   const behind = i === 0 ? behindToday() : { ids: new Set() };
   const dayWin = workWindows(d);
+  const gaps = dayGaps(d);
   const items = []; // { a, b (minutes), nodes }
   const at = (ms) => { const x = new Date(ms); return Math.round((x.getTime() - d.getTime()) / 60e3); };
   for (const t of [...S.today.open, ...S.today.done.map((x) => ({ ...x, done: true }))]) {
@@ -679,10 +705,25 @@ function dayCard(i, now, h0, h1, { wide }) {
       blk.style.height = Math.max(p.mins * (HOUR / 60) - 2, 16) + 'px';
       blk.append(titleWithSeries(el('span', 't', t.title), t), el('span', 'w', (p.mins <= 20 ? hm(s) : `${hm(s)}–${hm(pEnd)}`) + ` · ${hLen(p.mins)}` + (m.repeat ? ' · ↻' : '') + (offHours ? ' · off hours' : '')));
       blk.title = `${t.title}\n${hm(s)}–${hm(pEnd)} · ${hLen(p.mins)}` + (offHours ? '\nOutside your work hours (Day structure).' : '');
+      // Runs into a gap (a break, or between work blocks): Split on hover cuts
+      // it there and moves the rest to after the gap, as a second task.
+      const gap = !t.done && !running ? gapIn(gaps, pa, pb) : null;
+      if (gap) {
+        const sp = el('button', 'su-cut', 'Split');
+        sp.title = `Split at ${hm(d.getTime() + gap[0] * 60e3)}: the rest moves to ${hm(d.getTime() + gap[1] * 60e3)} as a second task`;
+        sp.addEventListener('pointerdown', (e) => e.stopPropagation());
+        sp.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          blk.classList.add('is-busy');
+          const r = await api.split(t.id, new Date(d.getTime() + gap[0] * 60e3).toISOString(), new Date(d.getTime() + gap[1] * 60e3).toISOString());
+          if (r && r.error) blk.classList.remove('is-busy');
+        });
+        blk.append(sp);
+      }
       if (!t.done) {
         blk.append(el('span', 'h'));
         blk.addEventListener('pointerdown', (e) => {
-          if (e.target.classList.contains('su-warnmark')) return;
+          if (e.target.closest('.su-warnmark, .su-cut')) return;
           beginDrag(e, { kind: 'task', task: t, mode: e.target.classList.contains('h') ? 'resize' : 'move', mins: p.mins, start: p.start, block: blk });
         });
       }

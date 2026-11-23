@@ -221,8 +221,8 @@ function renderSettings() {
     const mod = mods[s.shortcutMod] || mods.ctrlAlt;
     const fk = s.shortcutMod === 'shift';
     const k = fk ? { today: 'F8', week: 'F9', settings: 'F10', ...(s.shortcutFKeys || {}) } : { today: 'T', week: 'W', settings: 'S', ...(s.shortcutKeys || {}) };
-    const taken = (S.shortcutTaken || []).length;
-    $('s-shortcuts-desc').textContent = `${mod}+${k.today} Today, ${mod}+${k.week} Week, ${mod}+${k.settings} Settings.` + (taken ? ` ${taken > 1 ? 'Some are' : 'One is'} taken by another app: pick another letter.` : '');
+    const taken = (S.shortcutTaken || []).map((a) => a.replace('CommandOrControl', 'Ctrl'));
+    $('s-shortcuts-desc').textContent = `${mod}+${k.today} Today, ${mod}+${k.week} Week, ${mod}+${k.settings} Settings.` + (taken.length ? ` ${taken.join(', ')} ${taken.length > 1 ? 'are' : 'is'} taken by another app: pick another letter.` : '');
     $('s-keys-row').hidden = s.shortcuts === false;
     document.querySelectorAll('#s-shortcut-mod .tab').forEach((t) => t.setAttribute('aria-selected', String(t.dataset.v === (s.shortcutMod || 'ctrlAlt'))));
     for (const n of ['today', 'week', 'settings']) if (document.activeElement !== $('s-key-' + n)) $('s-key-' + n).value = k[n];

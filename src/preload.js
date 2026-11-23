@@ -22,6 +22,7 @@ contextBridge.exposeInMainWorld('oneFocus', {
   addPlanned: (title, plan) => ipcRenderer.invoke('plan:add', title, plan),
   taskDetail: (id, patch) => ipcRenderer.invoke('task:detail', id, patch),
   duplicate: (id, n) => ipcRenderer.invoke('task:duplicate', id, n),
+  split: (id, cut, resume) => ipcRenderer.invoke('task:split', id, cut, resume),
   setBreak: (id, plan) => ipcRenderer.invoke('break:set', id, plan),
   openSetup: (tab) => ipcRenderer.invoke('setup:open', tab),
   onPlannerTab: (cb) => ipcRenderer.on('planner:tab', (_e, tab) => cb(tab)),

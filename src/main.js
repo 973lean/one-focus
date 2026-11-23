@@ -762,7 +762,20 @@ function watchCorners() {
 const SHORTCUT_MODS = { ctrlAlt: 'CommandOrControl+Alt', ctrlShift: 'CommandOrControl+Shift', altShift: 'Alt+Shift', shift: 'Shift' };
 const F_DEFAULT = { today: 'F8', week: 'F9', settings: 'F10' };
 let shortcutTaken = []; // accelerators another app already owns
-function applyShortcuts() {
+// A key that couldn't be registered (another app had it, or Windows wasn't
+// ready at login) is tried again a few times, then on every unlock/resume.
+let shortcutRetry = null;
+let shortcutTries = 0;
+function retryShortcuts() {
+  clearTimeout(shortcutRetry);
+  if (!shortcutTaken.length || shortcutTries >= 6) return;
+  shortcutRetry = setTimeout(() => {
+    shortcutTries++;
+    applyShortcuts(true);
+  }, [3, 10, 30, 60, 300, 900][shortcutTries] * 1000);
+}
+function applyShortcuts(retrying) {
+  if (!retrying) shortcutTries = 0;
   globalShortcut.unregisterAll();
   shortcutTaken = [];
   if (state.settings.shortcuts === false) return;
@@ -778,9 +791,12 @@ function applyShortcuts() {
   };
   // Settings: here or on the main monitor, as set in Settings → Mode.
   reg(keys.settings, () => openSetupWindow('settings'));
-  if (light()) return;
-  reg(keys.today, () => openSetupWindow('today'));
-  reg(keys.week, () => openSetupWindow('week'));
+  if (!light()) {
+    reg(keys.today, () => openSetupWindow('today'));
+    reg(keys.week, () => openSetupWindow('week'));
+  }
+  if (shortcutTaken.length) retryShortcuts();
+  if (retrying) push();
 }
 
 // ---------- the Planner opens itself at chosen times ----------
@@ -1029,6 +1045,36 @@ ipcMain.handle('task:duplicate', async (_e, id, raw) => {
       if (m.repeat) meta.repeat = m.repeat;
       if (Object.keys(meta).length) state.taskMeta['g:' + c.id] = meta;
     }
+    store.save(state);
+    await resync();
+    return { ok: true };
+  } catch (e) {
+    return { error: e.message };
+  }
+});
+
+// Split a planned task around a gap (a break, or between work blocks): it
+// keeps the part before `cut`, and a same-name copy (so it counts 1/2, 2/2)
+// takes the rest from `resume`. Both can then be edited on their own.
+ipcMain.handle('task:split', async (_e, id, cutIso, resumeIso) => {
+  const t = today.open.find((x) => x.id === id);
+  const m = state.taskMeta['g:' + id];
+  if (!t || !m || !m.plan || !client || !state.google.listId) return { error: 'Task not found.' };
+  const start = Date.parse(m.plan.start);
+  const cut = Date.parse(cutIso);
+  const resume = Date.parse(resumeIso);
+  const first = Math.round((cut - start) / 60e3);
+  const rest = m.plan.mins - first;
+  if (Number.isNaN(cut) || Number.isNaN(resume) || resume < cut || first < 5 || rest < 5) return { error: 'Nothing to split.' };
+  try {
+    const day = localDate(new Date(resume));
+    const c = await client.insert(state.google.listId, { title: t.title, notes: t.notes || undefined, due: day + 'T00:00:00.000Z' }, id);
+    const copy = { plan: { start: new Date(resume).toISOString(), mins: rest }, goal: new Date(resume + rest * 60e3).toISOString(), mins: rest };
+    if (m.category) copy.category = m.category;
+    state.taskMeta['g:' + c.id] = copy;
+    m.plan = { ...m.plan, mins: first };
+    m.goal = new Date(cut).toISOString();
+    if (m.mins) m.mins = first;
     store.save(state);
     await resync();
     return { ok: true };
@@ -1566,9 +1612,9 @@ app.whenReady().then(() => {
 
   // Locking the screen for a break doesn't stop a Hold (sleep still does).
   powerMonitor.on('lock-screen', () => (isHold(state.current) || tracker.pause('lock'), push()));
-  powerMonitor.on('unlock-screen', () => (tracker.resume('lock'), sync(), setTimeout(checkAutoPlan, 4000)));
+  powerMonitor.on('unlock-screen', () => (tracker.resume('lock'), sync(), setTimeout(checkAutoPlan, 4000), shortcutTaken.length && applyShortcuts()));
   powerMonitor.on('suspend', () => (tracker.pause('sleep'), push()));
-  powerMonitor.on('resume', () => (tracker.resume('sleep'), sync(), setTimeout(checkAutoPlan, 4000)));
+  powerMonitor.on('resume', () => (tracker.resume('sleep'), sync(), setTimeout(checkAutoPlan, 4000), shortcutTaken.length && applyShortcuts()));
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
