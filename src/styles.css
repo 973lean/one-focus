@@ -1089,8 +1089,8 @@ input[type="time"]::-webkit-calendar-picker-indicator { opacity: 0.35; cursor: p
 .st-archive .act:hover { color: var(--fg); }
 .st-archive .txt { grid-column: 1 / -1; margin: 0; white-space: pre-wrap; color: var(--fg-secondary); line-height: 1.45; user-select: text; }
 
-/* View: move a task up or down with two tiny arrows in the left margin, on hover. */
-.vw-list .su-tasks__list li { position: relative; }
+/* View and Planner Tasks: move a task up or down with two tiny arrows in the left margin, on hover. */
+.su-tasks__list li { position: relative; }
 .su-tasks__move { position: absolute; left: -17px; top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; gap: 1px; opacity: 0; transition: opacity var(--dur) var(--ease); }
 .su-tasks__list li:hover .su-tasks__move { opacity: 1; }
 .su-tasks__move button { display: block; width: 14px; height: 11px; padding: 3px; color: var(--fg-tertiary); }
@@ -1103,3 +1103,5 @@ input[type="time"]::-webkit-calendar-picker-indicator { opacity: 0.35; cursor: p
 .su-block:hover .su-cut { opacity: 1; }
 .su-cut:hover { color: var(--fg); }
 .su-block.is-busy { opacity: 0.45; pointer-events: none; }
+/* Planner Tasks tab: room on the left for the arrows, even in a narrow window. */
+.su-days > .su-tasks { padding-left: 22px; padding-right: 22px; }

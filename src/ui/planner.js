@@ -990,8 +990,8 @@ function tasksList(opts = {}) {
       });
       li.append(x);
     }
-    if (opts.inMain && !done && movable.includes(t)) {
-      // On View: tiny up/down arrows in the left margin, shown on hover.
+    if (!done && movable.includes(t)) {
+      // Tiny up/down arrows in the left margin, shown on hover.
       const i = movable.indexOf(t);
       const mv = el('span', 'su-tasks__move');
       const arrow = (dir, path) => {
