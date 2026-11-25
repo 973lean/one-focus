@@ -62,8 +62,9 @@ function snapshot() {
     goals: goalsFor([cur, held, ...today.open.map((t) => ({ key: 'g:' + t.id }))]),
     plans: plansFor([...today.open, ...today.done]),
     notes: state.notes || '',
-    backlog: Backlog.normalize(state.backlog),
+    backlog: backlogSnap(),
     claude: { on: !!(state.claude && state.claude.on), port: claudePort, error: claudeError, desktop: claudeDesktopOn },
+    launches: launchLog,
     notesArchive: state.notesArchive || [],
     shortcutTaken,
     itemMins: Object.fromEntries(Object.entries(state.taskMeta).filter(([k, m]) => k.startsWith('i:') && m.mins).map(([k, m]) => [k.slice(2), m.mins])),
@@ -383,7 +384,10 @@ async function doSync() {
       .sort((a, b) => b.completed.localeCompare(a.completed));
     today = { open: open.map(withItems), done: done.map(withItems), recent: recent.map(withItems), syncedAt: new Date().toISOString(), error: null };
     // Backlog mode: new tasks join the queue, finished ones leave, auto fills slots.
-    if (state.backlog && state.backlog.on) state.backlog = Backlog.reconcile(state.backlog, today.open);
+    if (state.backlog && state.backlog.on) {
+      state.backlog = Backlog.reconcile(state.backlog, today.open);
+      runLaunches();
+    }
 
     // Tasks never start on their own. If the running task was finished or
     // deleted (here or in Google Tasks), stop it and go idle.
@@ -1095,10 +1099,19 @@ ipcMain.handle('task:split', async (_e, id, cutIso, resumeIso) => {
 });
 
 // ---------- Backlog mode (View): active / queued / evergreen ----------
+// For the page: the backlog plus each task's group and each group's holds.
+function backlogSnap() {
+  const b = Backlog.normalize(state.backlog);
+  const v = Backlog.lanes(b, today.open);
+  const groupOf = {};
+  for (const r of [...v.active, ...v.queued, ...v.evergreen]) groupOf[r.task.id] = r.group;
+  return { ...b, groupOf, groupInfo: v.groups };
+}
 // settings: { on, auto, slots }. item: { lane, index } moves it; { turn }
 // says whose turn; { ask, link, didIt } edit it. Every change re-runs the
 // auto fill and goes out to the page and the web view.
 function backlogChanged() {
+  runLaunches();
   store.save(state);
   push(); // also schedules the web view
   return snapshot();
@@ -1108,13 +1121,14 @@ ipcMain.handle('backlog:settings', (_e, patch = {}) => {
   if ('on' in patch) b.on = !!patch.on;
   if ('auto' in patch) b.auto = !!patch.auto;
   if (b.on) b = Backlog.reconcile(b, today.open);
-  if ('slots' in patch) b = Backlog.setSlots(b, patch.slots);
+  if (Array.isArray(patch.groups)) b = Backlog.setGroups(b, patch.groups);
+  if ('slots' in patch) b = Backlog.setSlots(b, patch.slots, new Date(), patch.group || null);
   state.backlog = b;
   return backlogChanged();
 });
 ipcMain.handle('backlog:item', (_e, id, patch = {}) => {
   let b = Backlog.normalize(state.backlog);
-  if (typeof patch.lane === 'string') b = Backlog.move(b, id, patch.lane, Number.isInteger(patch.index) ? patch.index : null);
+  if (typeof patch.lane === 'string') b = Backlog.move(b, id, patch.lane, Number.isInteger(patch.index) ? patch.index : null, new Date(), typeof patch.group === 'string' ? patch.group : null);
   if (typeof patch.turn === 'string') b = Backlog.setTurn(b, id, patch.turn);
   if ('ask' in patch || 'link' in patch || patch.didIt) b = Backlog.patchItem(b, id, patch);
   state.backlog = b;
@@ -1141,13 +1155,18 @@ function claudeView() {
 }
 
 // Put a task in the lane/turn Claude asked for. Active only if a slot is free.
-function claudeApply(id, { status, request, link }) {
+// A task from Claude never starts another session for itself (noLaunch).
+function claudeApply(id, { status, request, link, group }) {
   let b = Backlog.normalize(state.backlog);
   const it = b.items[id];
   if (!it) return;
+  const g = typeof group === 'string' && group.trim() ? b.groups.find((x) => x.name.toLowerCase() === group.trim().toLowerCase() || x.id === group.trim()) : null;
+  const gid = g ? g.id : null;
   const wantActive = status === 'running' || status === 'needs_you' || (request && status !== 'queued' && status !== 'evergreen');
-  if (wantActive && it.lane !== 'active') b = Backlog.move(b, id, 'active');
-  else if ((status === 'queued' || status === 'evergreen') && it.lane !== status) b = Backlog.move(b, id, status);
+  if (wantActive && (it.lane !== 'active' || gid)) b = Backlog.move(b, id, 'active', null, new Date(), gid);
+  else if ((status === 'queued' || status === 'evergreen') && (it.lane !== status || gid)) b = Backlog.move(b, id, status, null, new Date(), gid);
+  else if (gid) b = Backlog.move(b, id, it.lane, null, new Date(), gid);
+  b = Backlog.patchItem(b, id, { noLaunch: true });
   if (b.items[id] && b.items[id].lane === 'active') {
     if (status === 'running') b = Backlog.setTurn(b, id, 'agent');
     if (status === 'needs_you' && !request) b = Backlog.setTurn(b, id, 'you');
@@ -1160,19 +1179,20 @@ function claudeApply(id, { status, request, link }) {
 const claudeDeps = () => ({
   version: app.getVersion(),
   view: claudeView,
-  add: async ({ title, status, request, link, top }) => {
+  add: async ({ title, status, request, link, top, group }) => {
     if (!client || !state.google.listId) throw new Error('Google Tasks is not connected in One Focus.');
     const last = today.open[today.open.length - 1];
     const t = await client.insert(state.google.listId, { title }, last && last.id);
-    state.backlog = { ...Backlog.normalize(state.backlog), on: true };
-    await resync(); // the new task joins the queue
+    // Placed before the sync sees it, so it can't start a session of its own.
+    state.backlog = Backlog.reconcile({ ...Backlog.normalize(state.backlog), on: true }, [...today.open, { id: t.id, title: t.title }]);
     if (top) state.backlog = Backlog.move(state.backlog, t.id, 'queued', 0);
-    claudeApply(t.id, { status, request, link });
+    claudeApply(t.id, { status, request, link, group });
     store.save(state);
+    await resync();
     push();
     return { id: t.id, title: t.title };
   },
-  update: async (t, { status, request, link, title }) => {
+  update: async (t, { status, request, link, title, group }) => {
     if (!client || !state.google.listId) throw new Error('Google Tasks is not connected in One Focus.');
     if (typeof title === 'string' && title.trim()) await client.patch(state.google.listId, t.id, { title: title.trim().slice(0, 1024) });
     if (status === 'done') {
@@ -1180,7 +1200,7 @@ const claudeDeps = () => ({
       return resync();
     }
     if (!state.backlog || !state.backlog.on) state.backlog = Backlog.reconcile({ ...Backlog.normalize(state.backlog), on: true }, today.open);
-    claudeApply(t.id, { status, request, link });
+    claudeApply(t.id, { status, request, link, group });
     store.save(state);
     push();
     if (title) await resync();
@@ -1315,6 +1335,62 @@ ipcMain.handle('claude:code', () => {
   const cmd = `claude mcp add --scope user --transport http one-focus http://127.0.0.1:${claudePort}/mcp --header "Authorization: Bearer ${c.token}"`;
   clipboard.writeText(cmd);
   return { ok: true };
+});
+
+// ---------- Starting Claude sessions when a slot opens (Backlog.launches) ----------
+// Claude Code: a PowerShell window in the group's folder running
+// `claude "<message>"` (the message goes through a file, so no quoting
+// trouble). Claude chat: claude.ai/new with the message filled in.
+let launchLog = []; // the last few, for Settings: { at, group, kind, title, error }
+function runLaunches() {
+  if (!state.backlog || !state.backlog.on) return;
+  const { backlog, todo } = Backlog.launches(state.backlog);
+  state.backlog = backlog;
+  if (!todo.length) return;
+  store.save(state);
+  for (const l of todo) startSession(l);
+}
+function startSession(l) {
+  const msg = Backlog.message(l, !!(state.claude && state.claude.on && claudePort));
+  const entry = { at: nowIso(), group: l.group.name, kind: l.kind, how: l.group.launch, title: l.title || '' };
+  try {
+    if (l.group.launch === 'chat') shell.openExternal('https://claude.ai/new?q=' + encodeURIComponent(msg));
+    else if (l.group.launch === 'code') startClaudeCode(l.group.dir, msg, l.kind === 'task' ? l.title : l.group.name);
+  } catch (e) {
+    entry.error = e.message;
+  }
+  launchLog = [entry, ...launchLog].slice(0, 10);
+  push();
+}
+function startClaudeCode(dirRaw, msg, label) {
+  const dir = dirRaw && fs.existsSync(dirRaw) ? dirRaw : null;
+  if (dirRaw && !dir) throw new Error(`Folder not found: ${dirRaw}`);
+  const cwd = dir || app.getPath('home');
+  if (process.platform !== 'win32') throw new Error('Starting Claude Code works on Windows for now.');
+  const dirP = path.join(claudeDir(), 'prompts');
+  fs.mkdirSync(dirP, { recursive: true });
+  for (const f of fs.readdirSync(dirP)) if (Date.now() - fs.statSync(path.join(dirP, f)).mtimeMs > 86400e3) fs.rmSync(path.join(dirP, f), { force: true });
+  const file = path.join(dirP, Date.now().toString(36) + '.txt');
+  // Windows PowerShell 5 drops double quotes inside arguments: use curly ones.
+  fs.writeFileSync(file, msg.replace(/"([^"]*)"/g, '“$1”').replace(/"/g, '”'), 'utf8');
+  const q = (s) => "'" + String(s).replace(/'/g, "''") + "'";
+  const script = `$Host.UI.RawUI.WindowTitle = ${q('One Focus · ' + label)}; Set-Location -LiteralPath ${q(cwd)}; claude (Get-Content -Raw -Encoding UTF8 -LiteralPath ${q(file)})`;
+  const { spawn } = require('child_process');
+  const p = spawn('powershell.exe', ['-NoExit', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', script], { cwd, detached: true, stdio: 'ignore' });
+  p.on('error', (e) => ((launchLog[0] = { ...launchLog[0], error: e.message }), push()));
+  p.unref();
+}
+setInterval(() => state && state.backlog && state.backlog.on && (runLaunches(), push()), 60e3); // holds run out
+
+// Settings → Groups: start one now, to check the folder and the message.
+ipcMain.handle('backlog:test', (_e, gid) => {
+  const b = Backlog.normalize(state.backlog);
+  const g = b.groups.find((x) => x.id === gid);
+  if (!g) return { error: 'No such group.' };
+  if (g.launch === 'off') return { error: 'Pick Claude Code or Claude chat first.' };
+  const top = Backlog.lanes(b, today.open).queued.find((r) => r.group === g.id);
+  startSession(g.emptyMsg.trim() && !top ? { kind: 'empty', group: g } : { kind: 'task', group: g, id: top ? top.task.id : 'test', title: top ? top.task.title : 'Test task from One Focus' });
+  return { ok: true, last: launchLog[0] };
 });
 
 // One-off breaks placed in Setup. plan null = remove.

@@ -17,10 +17,11 @@ function backlogLanes() {
   const rows = (lane) =>
     Object.entries(b.items)
       .filter(([id, it]) => it.lane === lane && byId.has(id))
-      .map(([id, it]) => ({ ...it, task: byId.get(id) }));
+      .map(([id, it]) => ({ ...it, task: byId.get(id), group: (b.groupOf || {})[id] || (b.groups && b.groups[0] ? b.groups[0].id : 'main') }));
   const rank = (x, y) => (x.rank || 0) - (y.rank || 0);
   const active = rows('active').sort((x, y) => (x.turn === y.turn ? Date.parse(x.since) - Date.parse(y.since) : x.turn === 'you' ? -1 : 1));
-  return { active, queued: rows('queued').sort(rank), evergreen: rows('evergreen').sort(rank), slots: b.slots };
+  const groups = b.groupInfo || [{ id: 'main', name: 'Active', slots: b.slots, active: active.length, pending: [] }];
+  return { active, queued: rows('queued').sort(rank), evergreen: rows('evergreen').sort(rank), slots: b.slots, groups };
 }
 
 // "just now", "12m ago", "3h ago", "yesterday", "Mon", "Nov 3".
@@ -61,7 +62,7 @@ async function blItem(id, patch) {
 function backlogList() {
   const L = backlogLanes();
   const box = el('div', 'su-tasks bl');
-  const full = L.active.length >= L.slots;
+  const full = L.groups.every((g) => L.active.filter((r) => r.group === g.id).length + (g.pending || []).length >= g.slots);
   const needsYou = L.active.some((r) => r.turn === 'you');
 
   const act = (label, title, fn) => {
@@ -145,7 +146,9 @@ function backlogList() {
       side.append(el('i'), timeNode('bl-time', you ? 'you' : 'run', r.since));
       side.addEventListener('click', (e) => (e.stopPropagation(), blItem(t.id, { turn: you ? 'agent' : 'you' })));
     } else side = timeNode('d', lane === 'queued' ? 'ago' : 'done', lane === 'queued' ? r.queuedAt : r.lastDone);
-    li.append(grip, check, main, acts, side);
+    li.append(grip, check, main, acts);
+    if (lane === 'queued' && L.groups.length > 1) li.append(el('span', 'bl-tag', (L.groups.find((g) => g.id === r.group) || {}).name || ''));
+    li.append(side);
     return li;
   };
 
@@ -163,19 +166,36 @@ function backlogList() {
     return ul;
   };
 
-  // Active: requests first, then running, then the open slots.
-  const slotBtns = el('span', 'bl-slots');
-  const minus = act('−', 'Remove an open slot', () => api.backlog({ slots: L.slots - 1 }).then((r) => ((S = r), render())));
-  const plus = act('+', 'Add a slot', () => api.backlog({ slots: L.slots + 1 }).then((r) => ((S = r), render())));
-  minus.disabled = L.slots <= Math.max(1, L.active.length);
-  plus.disabled = L.slots >= 9;
-  slotBtns.append(minus, plus);
-  const activeUl = list('active', L.active);
-  for (let i = L.active.length; i < L.slots; i++) {
-    const s = el('li', 'bl-slot', S.backlog.auto ? (L.queued.length ? 'Open slot' : 'Open slot · queue is empty') : 'Open slot · Start a queued task or drag one here');
-    activeUl.append(s);
+  // Active: one section per group (just "Active" with one group). Requests
+  // first, then running, then held slots ("Starting Claude…") and open ones.
+  const many = L.groups.length > 1;
+  for (const g of L.groups) {
+    const rows = L.active.filter((r) => r.group === g.id);
+    const holds = g.pending || [];
+    const slotBtns = el('span', 'bl-slots');
+    const setSlots = (n) => api.backlog({ slots: n, group: g.id }).then((r) => ((S = r), render()));
+    const minus = act('−', 'Remove an open slot', () => setSlots(g.slots - 1));
+    const plus = act('+', 'Add a slot', () => setSlots(g.slots + 1));
+    minus.disabled = g.slots <= Math.max(1, rows.length);
+    plus.disabled = g.slots >= 9;
+    slotBtns.append(minus, plus);
+    const ul = list('active', rows);
+    ul.dataset.group = g.id;
+    for (const p of holds) {
+      const h = el('li', 'bl-slot is-starting');
+      const t = el('span', 'bl-slot__time', ago(p.at));
+      Object.assign(t.dataset, { kind: 'ago', at: p.at });
+      h.append(el('i'), document.createTextNode('Starting Claude · '), t);
+      h.title = 'A Claude session was started for this group; the slot is held until it adds its task (up to 15 minutes).';
+      ul.append(h);
+    }
+    const queuedHere = L.queued.some((r) => r.group === g.id);
+    for (let i = rows.length + holds.length; i < g.slots; i++)
+      ul.append(el('li', 'bl-slot', S.backlog.auto ? (queuedHere ? 'Open slot' : 'Open slot · queue is empty') : 'Open slot · Start a queued task or drag one here'));
+    const hd = head(many ? g.name : 'Active', `${rows.length}/${g.slots}`, slotBtns);
+    if (many) hd.classList.add('is-group');
+    box.append(hd, ul);
   }
-  box.append(head('Active', `${L.active.length}/${L.slots}`, slotBtns), activeUl);
 
   box.append(head('Queued', L.queued.length ? String(L.queued.length) : ''), list('queued', L.queued));
   if (!L.queued.length) box.lastChild.append(el('li', 'bl-empty', 'Nothing waiting.'));
@@ -225,8 +245,7 @@ function beginLaneDrag(e, li, box) {
   const line = el('div', 'bl-dropline');
   box.append(line);
   const lists = [...box.querySelectorAll('.bl-list')];
-  const activeCount = box.querySelectorAll('.bl-list[data-lane="active"] .bl-row').length;
-  const slots = S.backlog.slots;
+  const groupInfo = backlogLanes().groups;
   let target = null;
   rowDrag = { y: e.clientY };
   box.classList.add('is-dragging');
@@ -244,7 +263,9 @@ function beginLaneDrag(e, li, box) {
     const ul = best.ul;
     const lane = ul.dataset.lane;
     for (const x of lists) x.previousElementSibling.classList.remove('is-full');
-    if (lane === 'active' && from !== 'active' && activeCount >= slots) {
+    const g = lane === 'active' ? groupInfo.find((x) => x.id === ul.dataset.group) : null;
+    const used = g ? ul.querySelectorAll('.bl-row:not(.is-placeholder)').length : 0;
+    if (g && li.parentElement !== ul && used >= g.slots && !(g.pending || []).length) {
       ul.previousElementSibling.classList.add('is-full');
       line.hidden = true;
       target = null;
@@ -260,7 +281,7 @@ function beginLaneDrag(e, li, box) {
     else y = rows[rows.length - 1].getBoundingClientRect().bottom;
     line.hidden = false;
     line.style.top = y - boxTop - 1 + 'px';
-    target = { lane, index };
+    target = { lane, index, group: g ? g.id : undefined };
   };
   const end = (commit) => {
     grip.removeEventListener('pointermove', move);
@@ -276,7 +297,7 @@ function beginLaneDrag(e, li, box) {
     const t = target;
     if (commit && t) {
       // Same lane: the index counts rows without this one, as the main process expects.
-      blItem(li.dataset.id, { lane: t.lane, index: t.index });
+      blItem(li.dataset.id, { lane: t.lane, index: t.index, ...(t.group ? { group: t.group } : {}) });
     } else render();
   };
   const up = () => end(true);

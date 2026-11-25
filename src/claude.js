@@ -35,6 +35,7 @@ const TOOLS = [
         request: { type: 'string', description: 'What you need from the user, as a short instruction. Implies status "needs_you".' },
         link: { type: 'string', description: 'URL of this chat or session (https), if you know it, so the user can jump back in.' },
         top: { type: 'boolean', description: 'Put it at the top of the queue instead of the end.' },
+        group: { type: 'string', description: 'Group name from one_focus_backlog (each group has its own active slots). If One Focus started this session for a group, use that one. Leave out to let One Focus sort it by its words.' },
       },
       required: ['title'],
       additionalProperties: false,
@@ -52,6 +53,7 @@ const TOOLS = [
         request: { type: 'string', description: 'What you need from the user now. Sets status "needs_you". Empty string clears it.' },
         link: { type: 'string', description: 'URL of the chat or session (https). Empty string removes it.' },
         title: { type: 'string', description: 'A new title.' },
+        group: { type: 'string', description: 'Move it to this group (name from one_focus_backlog).' },
       },
       required: ['task'],
       additionalProperties: false,
@@ -80,11 +82,14 @@ function describe(view) {
   if (!view.on) return 'Backlog mode is off in One Focus (adding a task turns it on).';
   const lines = [];
   const need = view.active.filter((r) => r.turn === 'you');
+  const groups = view.groups || [];
+  const gname = (r) => (groups.length > 1 ? ` [${(groups.find((g) => g.id === r.group) || {}).name || ''}]` : '');
   lines.push(`Active ${view.active.length}/${view.slots}${view.auto ? ' (auto fills from the queue)' : ''}:`);
+  if (groups.length > 1) lines.push('  Groups: ' + groups.map((g) => `${g.name} ${g.active}/${g.slots}`).join(', '));
   if (!view.active.length) lines.push('  (none)');
-  for (const r of view.active) lines.push(`  - [${r.turn === 'you' ? 'needs you' : 'running'}] ${r.task.title} (id ${r.task.id})${r.ask ? ` — request: ${r.ask}` : ''}${r.link ? ` — ${r.link}` : ''}`);
+  for (const r of view.active) lines.push(`  - [${r.turn === 'you' ? 'needs you' : 'running'}]${gname(r)} ${r.task.title} (id ${r.task.id})${r.ask ? ` — request: ${r.ask}` : ''}${r.link ? ` — ${r.link}` : ''}`);
   lines.push(`Queued ${view.queued.length}:`);
-  for (const r of view.queued) lines.push(`  - ${r.task.title} (id ${r.task.id})`);
+  for (const r of view.queued) lines.push(`  -${gname(r)} ${r.task.title} (id ${r.task.id})`);
   if (view.evergreen.length) {
     lines.push('Evergreen:');
     for (const r of view.evergreen) lines.push(`  - ${r.task.title} (id ${r.task.id})`);
@@ -119,7 +124,7 @@ async function handle(msg, deps) {
       const title = String(a.title || '').trim().slice(0, 300);
       if (!title) return ok(id, text('A title is needed.', true));
       if (a.status && !STATUS.includes(a.status)) return ok(id, text('Unknown status: ' + a.status, true));
-      const t = await deps.add({ title, status: a.status || (a.request ? 'needs_you' : 'queued'), request: a.request, link: a.link, top: !!a.top });
+      const t = await deps.add({ title, status: a.status || (a.request ? 'needs_you' : 'queued'), request: a.request, link: a.link, top: !!a.top, group: a.group });
       const v = deps.view();
       const row = [...v.active, ...v.queued, ...v.evergreen].find((r) => r.task.id === t.id);
       const where = !row ? 'added' : row.lane === 'active' ? (row.turn === 'you' ? 'active, waiting on the user' : 'active, running') : row.lane;
@@ -131,7 +136,7 @@ async function handle(msg, deps) {
       const t = findTask(v.open, a.task);
       if (!t) return ok(id, text(`No open task matches "${a.task}". Use one_focus_backlog to see the ids.`, true));
       if (a.status && !STATUS.includes(a.status)) return ok(id, text('Unknown status: ' + a.status, true));
-      await deps.update(t, { status: a.status, request: a.request, link: a.link, title: a.title });
+      await deps.update(t, { status: a.status, request: a.request, link: a.link, title: a.title, group: a.group });
       if (a.status === 'done') return ok(id, text(`Finished "${t.title}".`));
       const after = deps.view();
       const row = [...after.active, ...after.queued, ...after.evergreen].find((r) => r.task.id === t.id);

@@ -337,7 +337,7 @@ button:focus-visible, input:focus-visible { outline: 1px solid var(--fg-tertiary
 .row input.edit { flex: 1; min-width: 0; }
 .row.is-busy { opacity: 0.4; pointer-events: none; }
 
-input[type="text"], input[type="password"] {
+input[type="text"], input[type="password"], input[type="number"] {
   font: inherit;
   color: var(--fg);
   background: transparent;
@@ -348,7 +348,7 @@ input[type="text"], input[type="password"] {
   user-select: text;
   width: 100%;
 }
-input[type="text"]:focus, input[type="password"]:focus { border-bottom-color: var(--fg-tertiary); }
+input[type="text"]:focus, input[type="password"]:focus, input[type="number"]:focus { border-bottom-color: var(--fg-tertiary); }
 input::placeholder { color: var(--fg-tertiary); }
 
 /* Settings */
@@ -1191,3 +1191,23 @@ input[type="time"]::-webkit-calendar-picker-indicator { opacity: 0.35; cursor: p
 .bl-mode { display: flex; padding: 2px; border: 1px solid var(--hairline); border-radius: 14px; }
 .bl-mode .bl-seg { height: 20px; border-radius: 10px; }
 .bl-seg[aria-selected="true"] { color: var(--fg); background: var(--fill); }
+/* Groups: one Active section each; a held slot while a started session gets going. */
+.bl-head.is-group .bl-head__name { color: var(--fg-secondary); }
+.bl-tag { flex-shrink: 0; font-size: 11px; color: var(--fg-tertiary); padding: 1px 6px; border: 1px solid var(--hairline); border-radius: 4px; }
+.bl-list li.bl-row:hover > .bl-tag { display: none; }
+.bl-list li.bl-slot.is-starting { display: flex; align-items: center; gap: 8px; color: var(--fg-secondary); border-style: solid; }
+.bl-slot.is-starting i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; animation: bl-pulse 1.6s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .bl-slot.is-starting i { animation: none; } }
+/* Settings → Groups: one folded row per group. */
+.grp { border-top: 1px solid var(--hairline); }
+.grp:first-child { border-top: 0; }
+.grp summary { cursor: pointer; list-style: none; padding: 10px 0; font-size: 13px; color: var(--fg-tertiary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.grp summary::-webkit-details-marker { display: none; }
+.grp summary b { font-weight: 500; color: var(--fg); }
+.grp summary::before { content: "›"; display: inline-block; width: 12px; color: var(--fg-tertiary); transition: transform var(--dur) var(--ease); }
+.grp[open] summary::before { transform: rotate(90deg); }
+.grp__body { display: flex; flex-direction: column; gap: 12px; padding: 2px 0 14px 12px; }
+.grp__row { display: grid; grid-template-columns: 1fr 72px 120px; gap: 10px; }
+.grp__msg { min-height: 64px; }
+.grp__row input[type="number"] { -moz-appearance: textfield; }
+.grp__row input[type="number"]::-webkit-inner-spin-button { opacity: 0.4; }

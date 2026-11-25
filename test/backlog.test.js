@@ -81,3 +81,73 @@ test('a request (ask) makes it your turn; handing back clears it', () => {
   b = B.setTurn(b, 'a', 'agent', later(3));
   assert.equal(b.items.a.ask, undefined);
 });
+
+// ---------- groups and starting sessions ----------
+const G = (over = {}) => [
+  { id: 'rbx', name: 'Roblox', slots: 1, match: 'roblox, rbx', launch: 'code', dir: 'C:/rbx', taskMsg: 'Work on {task} ({group})', ...over.rbx },
+  { id: 'copy', name: 'Copy', slots: 1, match: 'copy', launch: 'off', ...over.copy },
+];
+const titled = (...xs) => xs.map(([id, title]) => ({ id, title }));
+
+test('groups: tasks sort by words; each group fills its own slots', () => {
+  let b = B.setGroups({ ...B.blank(), on: true }, G(), T0);
+  b = B.reconcile(b, titled(['a', 'Roblox: jump'], ['b', 'Copy: hooks'], ['c', 'RBX: map'], ['d', 'Inbox']), T0);
+  assert.equal(B.groupOf(b, 'a'), 'rbx');
+  assert.equal(B.groupOf(b, 'd'), 'rbx'); // no words match: the first group
+  assert.deepEqual(['a', 'b', 'c', 'd'].map((x) => laneOf(b, x)), ['active', 'active', 'queued', 'queued']);
+  // dragging into the full Copy group is refused; into it by hand when free works
+  b = B.move(b, 'c', 'active', null, T0, 'copy');
+  assert.equal(laneOf(b, 'c'), 'queued');
+});
+
+test('a task taking a slot in a launching group is started once, with its message', () => {
+  let b = B.setGroups({ ...B.blank(), on: true }, G(), T0);
+  b = B.reconcile(b, titled(['a', 'Roblox: jump'], ['b', 'Copy: hooks']), T0);
+  let r = B.launches(b, T0);
+  assert.deepEqual(r.todo.map((l) => [l.kind, l.id]), [['task', 'a']]); // Copy doesn't launch
+  assert.equal(B.message(r.todo[0], false), 'Work on Roblox: jump (Roblox)');
+  assert.match(B.message(r.todo[0], true), /One Focus task a: use the one_focus tools/);
+  r = B.launches(r.backlog, later(1));
+  assert.equal(r.todo.length, 0); // not again
+});
+
+test('empty group: one standing launch holds the slot until Claude adds its task', () => {
+  let b = B.setGroups({ ...B.blank(), on: true }, G({ rbx: { emptyMsg: 'Pick the next Roblox task' } }), T0);
+  b = B.reconcile(b, [], T0);
+  let r = B.launches(b, T0);
+  assert.deepEqual(r.todo.map((l) => l.kind), ['empty']);
+  b = r.backlog;
+  assert.equal(B.launches(b, later(1)).todo.length, 0); // the slot is held
+  // Claude adds its task: it takes the held slot even though the group is "full"
+  b = B.reconcile(b, titled(['x', 'Roblox: lobby UI']), later(2));
+  b = B.move(b, 'x', 'active', null, later(2), 'rbx');
+  b = B.patchItem(b, 'x', { noLaunch: true });
+  assert.equal(laneOf(b, 'x'), 'active');
+  assert.equal(b.pending.length, 0);
+  assert.equal(B.launches(b, later(3)).todo.length, 0);
+  // the hold runs out after 15 minutes if nothing comes
+  let c = B.launches(B.reconcile(B.setGroups({ ...B.blank(), on: true }, G({ rbx: { emptyMsg: 'Go' } }), T0), [], T0), T0).backlog;
+  assert.equal(B.launches(c, later(16)).todo.length, 1);
+});
+
+test('perHour caps launches for a group', () => {
+  let b = B.setGroups({ ...B.blank(), on: true }, G({ rbx: { emptyMsg: 'Go', perHour: 2, slots: 3 } }), T0);
+  b = B.reconcile(b, [], T0);
+  let n = 0;
+  for (let i = 0; i < 5; i++) {
+    const r = B.launches(b, later(i));
+    n += r.todo.length;
+    b = r.backlog;
+  }
+  assert.equal(n, 2);
+});
+
+test('slots per group; without groups the old single lane still works', () => {
+  let b = B.setGroups({ ...B.blank() }, G(), T0);
+  b = B.setSlots(b, 4, T0, 'copy');
+  assert.equal(b.groups.find((g) => g.id === 'copy').slots, 4);
+  assert.equal(b.slots, 5);
+  const old = B.normalize({ on: true, slots: 2, items: {} });
+  assert.equal(old.groups.length, 1);
+  assert.equal(old.groups[0].slots, 2);
+});

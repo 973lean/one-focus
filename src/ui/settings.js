@@ -281,6 +281,7 @@ function renderSettings() {
       : w.on && w.url
       ? `Live at ${w.url.replace('https://', '')} · updated ${w.publishedAt ? hm(w.publishedAt) : '—'}`
       : 'Off. See today and the coming days in any browser at a private link.';
+  renderGroups();
   // Claude: on/off, then add to Claude Desktop / copy the Claude Code command.
   const cl = S.claude || {};
   $('cl-on').hidden = !!cl.on;
@@ -453,4 +454,108 @@ $('cl-code').addEventListener('click', async () => {
   const r = await api.claudeCode();
   b.textContent = r.error ? r.error : 'Copied · paste in a terminal';
   setTimeout(() => (b.textContent = 'Copy for Claude Code'), 2500);
+});
+
+// ---------- Groups (backlog Active split; optional Claude session per open slot) ----------
+const LAUNCH_WORDS = { off: 'Nothing', code: 'Claude Code', chat: 'Claude chat' };
+let grpOpen = null; // the group whose details are open
+function readGroups() {
+  return [...document.querySelectorAll('#grp-list .grp')].map((d) => {
+    const v = (k) => d.querySelector(`[data-k="${k}"]`);
+    return {
+      id: d.dataset.id,
+      name: v('name').value,
+      slots: +v('slots').value,
+      match: v('match').value,
+      launch: d.dataset.launch,
+      dir: v('dir').value,
+      taskMsg: v('taskMsg').value,
+      emptyMsg: v('emptyMsg').value,
+      perHour: +v('perHour').value,
+    };
+  });
+}
+async function saveGroups(groups = readGroups()) {
+  S = await api.backlog({ groups });
+  renderGroups(true);
+}
+function renderGroups(force) {
+  const list = $('grp-list');
+  if (!list || !S || !S.backlog) return;
+  if (!force && list.contains(document.activeElement)) return; // not while typing
+  const groups = S.backlog.groups || [];
+  list.replaceChildren();
+  groups.forEach((g) => {
+    const d = el('details', 'grp');
+    d.dataset.id = g.id;
+    d.dataset.launch = g.launch;
+    d.open = grpOpen === g.id;
+    d.addEventListener('toggle', () => (grpOpen = d.open ? g.id : grpOpen === g.id ? null : grpOpen));
+    const sum = el('summary');
+    sum.append(el('b', null, g.name), el('span', null, ` · ${g.slots} slot${g.slots > 1 ? 's' : ''}${g.match ? ' · ' + g.match : ''} · ${g.launch === 'off' ? 'no sessions' : 'starts ' + LAUNCH_WORDS[g.launch]}`));
+    const body = el('div', 'grp__body');
+    const field = (label, k, val, attrs = {}) => {
+      const f = el('label', 'field');
+      const input = el(attrs.area ? 'textarea' : 'input', attrs.area ? 'st-notes grp__msg' : '');
+      if (!attrs.area) input.type = attrs.type || 'text';
+      Object.assign(input, { value: val ?? '', placeholder: attrs.ph || '', spellcheck: false });
+      if (attrs.min) Object.assign(input, { min: attrs.min, max: attrs.max });
+      if (attrs.area) input.rows = 3;
+      input.dataset.k = k;
+      input.addEventListener('change', () => saveGroups());
+      input.addEventListener('keydown', (e) => e.stopPropagation());
+      f.append(el('span', null, label), input);
+      if (attrs.hide) f.hidden = true;
+      return f;
+    };
+    const row = el('div', 'grp__row');
+    row.append(field('Name', 'name', g.name), field('Slots', 'slots', g.slots, { type: 'number', min: 1, max: 9 }), field('Max starts an hour', 'perHour', g.perHour, { type: 'number', min: 1, max: 30 }));
+    const seg = el('div', 'tabs st-seg');
+    for (const k of ['off', 'code', 'chat']) {
+      const b = el('button', 'tab', LAUNCH_WORDS[k]);
+      b.setAttribute('aria-selected', String(g.launch === k));
+      b.addEventListener('click', () => {
+        d.dataset.launch = k;
+        saveGroups();
+      });
+      seg.append(b);
+    }
+    const when = el('div', 'field');
+    when.append(el('span', null, 'When a slot opens, start'), seg);
+    const off = g.launch === 'off';
+    body.append(
+      row,
+      field('Words that put a task here (comma separated)', 'match', g.match, { ph: 'roblox, rbx' }),
+      when,
+      field('Folder for Claude Code', 'dir', g.dir, { ph: 'C:\\Users\\you\\Projects\\game', hide: g.launch !== 'code' }),
+      field('Message for the task that takes the slot ({task}, {group}, {id})', 'taskMsg', g.taskMsg, { area: true, hide: off }),
+      field('Message when nothing is queued (empty = don’t start one)', 'emptyMsg', g.emptyMsg, { area: true, hide: off, ph: 'e.g. Look at the Roblox backlog and start the most valuable next step.' })
+    );
+    const acts = el('div', 'actions');
+    if (!off) {
+      const test = el('button', 'btn btn--quiet', 'Start one now');
+      test.addEventListener('click', async () => {
+        const r = await api.backlogTest(g.id);
+        test.textContent = r.error || (r.last && r.last.error) || 'Started';
+        setTimeout(() => (test.textContent = 'Start one now'), 2500);
+      });
+      acts.append(test);
+    }
+    if (groups.length > 1) {
+      const del = el('button', 'btn btn--quiet', 'Remove group');
+      del.addEventListener('click', () => saveGroups(readGroups().filter((x) => x.id !== g.id)));
+      acts.append(del);
+    }
+    if (acts.children.length) body.append(acts);
+    d.append(sum, body);
+    list.append(d);
+  });
+  const last = (S.launches || [])[0];
+  $('grp-last').textContent = last ? `Last start: ${last.group} · ${LAUNCH_WORDS[last.how] || ''} · ${hm(last.at)}${last.title ? ' · ' + last.title : ''}${last.error ? ' · ' + last.error : ''}` : '';
+  $('grp-add').hidden = groups.length >= 8;
+}
+$('grp-add').addEventListener('click', () => {
+  const id = 'g' + Date.now().toString(36);
+  grpOpen = id;
+  saveGroups([...readGroups(), { id, name: 'Group ' + (readGroups().length + 1), slots: 1, launch: 'off' }]);
 });

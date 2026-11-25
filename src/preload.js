@@ -29,6 +29,7 @@ contextBridge.exposeInMainWorld('oneFocus', {
   claudeSet: (on) => ipcRenderer.invoke('claude:set', on),
   claudeDesktop: () => ipcRenderer.invoke('claude:desktop'),
   claudeCode: () => ipcRenderer.invoke('claude:code'),
+  backlogTest: (group) => ipcRenderer.invoke('backlog:test', group),
   setBreak: (id, plan) => ipcRenderer.invoke('break:set', id, plan),
   openSetup: (tab) => ipcRenderer.invoke('setup:open', tab),
   onPlannerTab: (cb) => ipcRenderer.on('planner:tab', (_e, tab) => cb(tab)),
