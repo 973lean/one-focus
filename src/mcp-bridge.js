@@ -31,6 +31,9 @@ function post(body) {
         let data = '';
         res.on('data', (c) => (data += c));
         res.on('end', () => {
+          if (res.statusCode === 401 || res.statusCode === 403)
+            return reject(new Error('One Focus refused the connection. In One Focus: Settings → Claude → Turn off, Turn on, then Add to Claude Desktop again.'));
+          if (res.statusCode >= 400 && !data) return reject(new Error('One Focus answered ' + res.statusCode + '.'));
           if (res.statusCode === 202 || !data) return resolve(null);
           try {
             resolve(JSON.parse(data));

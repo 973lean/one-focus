@@ -176,3 +176,28 @@ test('bridge forwards to the app with the token; without the app it still starts
   assert.equal(byId[3].result.isError, true);
   assert.match(byId[3].result.content[0].text, /not running/);
 });
+
+test('bridge: a refused connection (401) still answers Claude instead of going silent', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'of-claude-'));
+  fs.copyFileSync(path.join(__dirname, '..', 'src', 'mcp-bridge.js'), path.join(dir, 'mcp-bridge.js'));
+  fs.copyFileSync(path.join(__dirname, '..', 'src', 'claude.js'), path.join(dir, 'claude.js'));
+  const server = http.createServer((req, res) => res.writeHead(401).end());
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  const apiFile = path.join(dir, 'api.json');
+  fs.writeFileSync(apiFile, JSON.stringify({ port: server.address().port, token: 'old' }));
+  const got = await new Promise((resolve) => {
+    const p = spawn(process.execPath, [path.join(dir, 'mcp-bridge.js'), apiFile]);
+    const out = [];
+    p.stdout.on('data', (d) => {
+      for (const l of String(d).split('\n').filter(Boolean)) out.push(JSON.parse(l));
+      if (out.length >= 2) (p.kill(), resolve(out));
+    });
+    p.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} }) + '\n');
+    p.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'one_focus_backlog', arguments: {} } }) + '\n');
+    setTimeout(() => (p.kill(), resolve(out)), 5000);
+  });
+  server.close();
+  const byId = Object.fromEntries(got.map((m) => [m.id, m]));
+  assert.equal(byId[1].result.serverInfo.name, 'one-focus');
+  assert.match(byId[2].result.content[0].text, /refused the connection/);
+});

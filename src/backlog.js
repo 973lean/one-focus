@@ -47,10 +47,17 @@ function normalize(bl) {
   b.groups = (Array.isArray(b.groups) && b.groups.length ? b.groups : [{ id: 'main', name: 'Active', slots: b.slots }])
     .slice(0, 8)
     .map(normGroup)
-    .map((g, i) => (seen.has(g.id) ? { ...g, id: g.id + i } : (seen.add(g.id), g)));
+    .map((g, i) => {
+      let id = g.id;
+      for (let n = i; seen.has(id); n++) id = g.id + n;
+      seen.add(id);
+      return id === g.id ? g : { ...g, id };
+    });
   b.slots = b.groups.reduce((n, g) => n + g.slots, 0);
   b.pending = (Array.isArray(b.pending) ? b.pending : []).filter((p) => p && b.groups.some((g) => g.id === p.group));
   b.launched = Array.isArray(b.launched) ? b.launched : [];
+  b.emptySig = { ...(b.emptySig || {}) };
+  b.rev = { ...(b.rev || {}) }; // per group: ticks each time a task takes or leaves a slot
   return b;
 }
 
@@ -58,8 +65,9 @@ const nextRank = (b, lane) => Object.values(b.items).filter((x) => x.lane === la
 const inLane = (b, lane) => Object.entries(b.items).filter(([, x]) => x.lane === lane);
 const byRank = (x, y) => (x[1].rank || 0) - (y[1].rank || 0);
 
-// Which group a task is in: chosen by hand, else the first whose words are in
-// the title, else the first group.
+// Which group a task is in: chosen by hand (or fixed when it took a slot, so a
+// rename can't move an active task), else the first whose words are in the
+// title, else the first group.
 function groupOf(b, id) {
   const it = b.items[id] || {};
   if (it.group && b.groups.some((g) => g.id === it.group)) return it.group;
@@ -70,6 +78,7 @@ function groupOf(b, id) {
   }
   return b.groups[0].id;
 }
+const bump = (b, gid) => (b.rev[gid] = (b.rev[gid] || 0) + 1);
 const groupById = (b, gid) => b.groups.find((g) => g.id === gid) || b.groups[0];
 const activeIn = (b, gid) => inLane(b, 'active').filter(([id]) => groupOf(b, id) === gid).length;
 const livePending = (b, now) => b.pending.filter((p) => Date.parse(p.until) > now.getTime());
@@ -77,20 +86,33 @@ const pendingIn = (b, gid, now) => livePending(b, now).filter((p) => p.group ===
 const freeIn = (b, gid, now) => groupById(b, gid).slots - activeIn(b, gid) - pendingIn(b, gid, now);
 
 // Tasks seen for the first time join the end of the queue; tasks no longer
-// open (finished or deleted) leave. Titles are kept for the group words.
-function reconcile(bl, open, now = new Date()) {
+// open (finished or deleted) leave — except ones added after this list was
+// fetched (since, ms), which an older list can't know about yet. Titles are
+// kept for the group words.
+function reconcile(bl, open, now = new Date(), { since = null } = {}) {
   const b = normalize(bl);
   const ids = new Set(open.map((t) => t.id));
-  for (const id of Object.keys(b.items)) if (!ids.has(id)) delete b.items[id];
-  for (const t of open) {
-    if (b.items[t.id]) {
-      if (b.items[t.id].title !== t.title) b.items[t.id] = { ...b.items[t.id], title: t.title };
-      continue;
+  for (const [id, it] of Object.entries(b.items))
+    if (!ids.has(id) && !(since && Date.parse(it.addedAt || 0) >= since)) {
+      if (it.lane === 'active') bump(b, groupOf(b, id));
+      delete b.items[id];
     }
-    const at = t.updated && Date.parse(t.updated) < now.getTime() ? new Date(t.updated).toISOString() : now.toISOString();
-    b.items[t.id] = { lane: 'queued', rank: nextRank(b, 'queued'), queuedAt: at, title: t.title };
-  }
+  for (const t of open) ensureItem(b, t, now);
   return b.auto ? fill(b, now) : b;
+}
+function ensureItem(b, t, now) {
+  if (b.items[t.id]) {
+    if (b.items[t.id].title !== t.title) b.items[t.id] = { ...b.items[t.id], title: t.title };
+    return;
+  }
+  const at = t.updated && Date.parse(t.updated) < now.getTime() ? new Date(t.updated).toISOString() : now.toISOString();
+  b.items[t.id] = { lane: 'queued', rank: nextRank(b, 'queued'), queuedAt: at, title: t.title, addedAt: now.toISOString() };
+}
+// One new task (e.g. just added by Claude): joins the queue, nothing pruned.
+function ensure(bl, t, now = new Date()) {
+  const b = normalize(bl);
+  ensureItem(b, t, now);
+  return b;
 }
 
 // Each group's free slots take its queued tasks, top first.
@@ -108,34 +130,44 @@ function fill(bl, now = new Date()) {
   return b;
 }
 
-// A task taking a slot in a group that starts sessions is due one.
+// A task taking a slot in a group that starts sessions is due one — unless
+// it came from Claude (it already has a session). Its group is fixed now.
 function activate(b, it, g, now) {
-  const next = { ...it, lane: 'active', activeAt: now.toISOString(), since: now.toISOString(), turn: 'you' };
-  if (g.launch !== 'off' && g.taskMsg.trim()) next.launchDue = true;
+  bump(b, g.id);
+  const next = { ...it, lane: 'active', activeAt: now.toISOString(), since: now.toISOString(), turn: 'you', group: g.id };
+  if (!it.group) next.pinned = true;
+  if (g.launch !== 'off' && g.taskMsg.trim() && !it.fromClaude) next.launchDue = true;
   else delete next.launchDue;
   return next;
 }
+const unpin = (it) => {
+  const next = { ...it };
+  if (next.pinned) delete next.group;
+  delete next.pinned;
+  return next;
+};
 
-// Put a task in a lane (and optionally a group) at a position (null = the
-// end). Into a full group it's refused — unless a session started for that
-// group is waiting: then this is its task, and takes the held slot.
+// Put a task in a lane (and optionally a group, chosen by hand) at a
+// position (null = the end). Into a full group it's refused; a slot held for
+// a started session counts as taken (only Claude's own task frees it: claim).
 function move(bl, id, lane, index = null, now = new Date(), group = null) {
   let b = normalize(bl);
   const it = b.items[id];
   if (!it || !LANES.includes(lane)) return b;
-  const gid = group && b.groups.some((g) => g.id === group) ? group : groupOf(b, id);
+  const manual = group && b.groups.some((g) => g.id === group);
+  const gid = manual ? group : groupOf(b, id);
   const changesGroup = gid !== groupOf(b, id);
-  if (lane === 'active' && (it.lane !== 'active' || changesGroup) && freeIn(b, gid, now) <= 0) {
-    const p = livePending(b, now).find((x) => x.group === gid);
-    if (!p) return b;
-    b.pending = b.pending.filter((x) => x !== p);
-  }
+  if (lane === 'active' && (it.lane !== 'active' || changesGroup) && freeIn(b, gid, now) <= 0) return b;
   let next = { ...it };
-  if (group && b.groups.some((g) => g.id === group)) next.group = group;
+  if (manual) {
+    next.group = group;
+    delete next.pinned;
+  }
   if (lane !== it.lane) {
     if (lane === 'active') next = activate(b, next, groupById(b, gid), now);
     else {
-      next = { ...next, lane };
+      if (it.lane === 'active') bump(b, groupOf(b, id));
+      next = unpin({ ...next, lane });
       for (const k of ['since', 'turn', 'activeAt', 'launchDue']) delete next[k];
       if (lane === 'queued') next.queuedAt = now.toISOString();
     }
@@ -149,6 +181,33 @@ function move(bl, id, lane, index = null, now = new Date(), group = null) {
   b.items[id] = next;
   order.forEach((x, i) => (b.items[x] = { ...b.items[x], rank: i + 1 }));
   return b.auto && lane !== 'active' ? fill(b, now) : b;
+}
+
+// A task Claude added or is updating: it never gets a session of its own,
+// and if a session was started for its group, this is that session's task:
+// the held slot is released so the task can take it.
+function claim(bl, id, now = new Date()) {
+  const b = normalize(bl);
+  const it = b.items[id];
+  if (!it) return b;
+  const next = { ...it, fromClaude: true };
+  delete next.launchDue;
+  b.items[id] = next;
+  if (!it.fromClaude) {
+    const gid = groupOf(b, id);
+    const p = livePending(b, now).find((x) => x.group === gid);
+    if (p) b.pending = b.pending.filter((x) => x !== p);
+  }
+  return b.auto ? fill(b, now) : b;
+}
+
+// A start that failed: give back its held slot and its place in the hourly cap.
+function release(bl, gid, at) {
+  const b = normalize(bl);
+  b.pending = b.pending.filter((p) => !(p.group === gid && p.at === at));
+  const i = b.launched.findIndex((l) => l.group === gid && l.at === at);
+  if (i >= 0) b.launched.splice(i, 1);
+  return b;
 }
 
 // Active: whose turn it is. Flipping restarts the clock for that state.
@@ -193,17 +252,23 @@ function setSlots(bl, n, now = new Date(), group = null) {
 }
 
 // Replace the groups (from Settings). Tasks whose group is gone fall back to
-// the words / the first group.
+// the words / the first group. Slots never drop below what's active.
 function setGroups(bl, groups, now = new Date()) {
   const b = normalize({ ...normalize(bl), groups: Array.isArray(groups) && groups.length ? groups : null });
+  for (const g of b.groups) g.slots = Math.min(Math.max(g.slots, activeIn(b, g.id)), MAX_SLOTS);
+  b.slots = b.groups.reduce((n, g) => n + g.slots, 0);
   return b.auto ? fill(b, now) : b;
 }
 
-// Sessions to start now. Tasks that just took a slot in a launching group,
-// then — auto mode, nothing queued in the group, a slot free — one standing
-// launch per group, which holds the slot. Each group starts at most perHour
-// an hour. Returns the backlog (flags cleared, holds added) and the list.
-function launches(bl, now = new Date()) {
+// Sessions to start now. Tasks that just took a slot in a launching group
+// (over the hourly cap they wait for the next free start), then — auto mode,
+// the Claude connection on (or Claude couldn't report back and the hold would
+// never clear), nothing queued in the group, a slot free — one standing
+// launch per group, which holds the slot. A standing launch happens once per
+// state of the group: if its hold runs out with nothing added, it isn't
+// restarted until a task in the group comes or goes. Returns the backlog
+// (flags cleared, holds added) and the list.
+function launches(bl, now = new Date(), { mcp = true } = {}) {
   const b = normalize(bl);
   const hourAgo = now.getTime() - 3600e3;
   b.launched = b.launched.filter((l) => Date.parse(l.at) > hourAgo);
@@ -212,22 +277,32 @@ function launches(bl, now = new Date()) {
   const todo = [];
   for (const [id, it] of inLane(b, 'active').filter(([, x]) => x.launchDue)) {
     const g = groupById(b, groupOf(b, id));
-    const next = { ...it };
+    if (g.launch === 'off' || it.fromClaude) {
+      const next = { ...it };
+      delete next.launchDue;
+      b.items[id] = next;
+      continue;
+    }
+    if (used(g.id) >= g.perHour) continue; // waits for the cap
+    const next = { ...it, turn: 'agent', since: now.toISOString() }; // Claude is on it
     delete next.launchDue;
     b.items[id] = next;
-    if (g.launch === 'off' || used(g.id) >= g.perHour) continue;
-    b.items[id] = { ...next, turn: 'agent', since: now.toISOString() }; // Claude is on it
-    b.launched.push({ group: g.id, at: now.toISOString() });
-    todo.push({ kind: 'task', group: g, id, title: it.title || '' });
+    const at = now.toISOString();
+    b.launched.push({ group: g.id, at });
+    todo.push({ kind: 'task', group: g, id, title: it.title || '', at });
   }
-  if (b.on && b.auto)
+  if (b.on && b.auto && mcp)
     for (const g of b.groups) {
       if (g.launch === 'off' || !g.emptyMsg.trim() || used(g.id) >= g.perHour) continue;
       if (freeIn(b, g.id, now) <= 0) continue;
       if (inLane(b, 'queued').some(([x]) => groupOf(b, x) === g.id)) continue;
-      b.pending.push({ group: g.id, at: now.toISOString(), until: new Date(now.getTime() + PENDING_MS).toISOString() });
-      b.launched.push({ group: g.id, at: now.toISOString() });
-      todo.push({ kind: 'empty', group: g });
+      const sig = g.slots + ':' + (b.rev[g.id] || 0);
+      if (b.emptySig[g.id] === sig) continue;
+      const at = now.toISOString();
+      b.emptySig[g.id] = sig;
+      b.pending.push({ group: g.id, at, until: new Date(now.getTime() + PENDING_MS).toISOString() });
+      b.launched.push({ group: g.id, at });
+      todo.push({ kind: 'empty', group: g, at });
     }
   return { backlog: b, todo };
 }
@@ -236,7 +311,8 @@ function launches(bl, now = new Date()) {
 // with the Claude connection on, a note says how to report back.
 function message(l, mcp) {
   const tpl = l.kind === 'task' ? l.group.taskMsg : l.group.emptyMsg;
-  let m = tpl.replace(/\{task\}/g, l.title || '').replace(/\{group\}/g, l.group.name).replace(/\{id\}/g, l.id || '').trim();
+  const vals = { task: l.title || '', group: l.group.name, id: l.id || '' };
+  let m = tpl.replace(/\{(task|group|id)\}/g, (_, k) => vals[k]).trim();
   if (mcp)
     m +=
       l.kind === 'task'
@@ -260,4 +336,4 @@ function lanes(bl, open, now = new Date()) {
   return { active, queued: rows('queued').sort(rank), evergreen: rows('evergreen').sort(rank), slots: b.slots, groups };
 }
 
-module.exports = { blank, normalize, reconcile, fill, move, setTurn, patchItem, setSlots, setGroups, launches, message, lanes, groupOf, LANES, MAX_SLOTS, PENDING_MS };
+module.exports = { blank, normalize, reconcile, ensure, fill, move, claim, release, setTurn, patchItem, setSlots, setGroups, launches, message, lanes, groupOf, LANES, MAX_SLOTS, PENDING_MS };

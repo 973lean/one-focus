@@ -314,6 +314,7 @@ async function doSync() {
       state.google.listId = listId;
       store.save(state);
     }
+    const fetchedAt = Date.now(); // tasks added after this aren't in this list yet
     const raw = await client.listTasks(listId);
     const all = raw.filter((t) => !t.parent && (t.title || '').trim());
     // Subtasks are a task's "items" (a checklist), in list order.
@@ -385,7 +386,7 @@ async function doSync() {
     today = { open: open.map(withItems), done: done.map(withItems), recent: recent.map(withItems), syncedAt: new Date().toISOString(), error: null };
     // Backlog mode: new tasks join the queue, finished ones leave, auto fills slots.
     if (state.backlog && state.backlog.on) {
-      state.backlog = Backlog.reconcile(state.backlog, today.open);
+      state.backlog = Backlog.reconcile(state.backlog, today.open, new Date(), { since: fetchedAt });
       runLaunches();
     }
 
@@ -1120,7 +1121,7 @@ ipcMain.handle('backlog:settings', (_e, patch = {}) => {
   let b = Backlog.normalize(state.backlog);
   if ('on' in patch) b.on = !!patch.on;
   if ('auto' in patch) b.auto = !!patch.auto;
-  if (b.on) b = Backlog.reconcile(b, today.open);
+  if (b.on && today.syncedAt) b = Backlog.reconcile(b, today.open);
   if (Array.isArray(patch.groups)) b = Backlog.setGroups(b, patch.groups);
   if ('slots' in patch) b = Backlog.setSlots(b, patch.slots, new Date(), patch.group || null);
   state.backlog = b;
@@ -1155,24 +1156,28 @@ function claudeView() {
 }
 
 // Put a task in the lane/turn Claude asked for. Active only if a slot is free.
-// A task from Claude never starts another session for itself (noLaunch).
-function claudeApply(id, { status, request, link, group }) {
+// claim(): a task from Claude never starts a session for itself, and takes a
+// slot held for a session started for its group.
+function claudeApply(id, { status, request, link, group, top }) {
   let b = Backlog.normalize(state.backlog);
-  const it = b.items[id];
-  if (!it) return;
+  if (!b.items[id]) return;
+  const now = new Date();
   const g = typeof group === 'string' && group.trim() ? b.groups.find((x) => x.name.toLowerCase() === group.trim().toLowerCase() || x.id === group.trim()) : null;
   const gid = g ? g.id : null;
-  const wantActive = status === 'running' || status === 'needs_you' || (request && status !== 'queued' && status !== 'evergreen');
-  if (wantActive && (it.lane !== 'active' || gid)) b = Backlog.move(b, id, 'active', null, new Date(), gid);
-  else if ((status === 'queued' || status === 'evergreen') && (it.lane !== status || gid)) b = Backlog.move(b, id, status, null, new Date(), gid);
-  else if (gid) b = Backlog.move(b, id, it.lane, null, new Date(), gid);
-  b = Backlog.patchItem(b, id, { noLaunch: true });
+  const wasActive = b.items[id].lane === 'active';
+  if (gid) b = Backlog.move(b, id, b.items[id].lane, null, now, gid); // regroup (an active one only if the group has room)
+  b = Backlog.claim(b, id, now);
+  const lane = b.items[id].lane;
+  const wantActive = status === 'running' || status === 'needs_you' || (request && status !== 'queued' && status !== 'evergreen') || (wasActive && !status);
+  if (wantActive && lane !== 'active') b = Backlog.move(b, id, 'active', null, now);
+  else if ((status === 'queued' || status === 'evergreen') && lane !== status) b = Backlog.move(b, id, status, status === 'queued' && top ? 0 : null, now);
+  else if (top && lane === 'queued') b = Backlog.move(b, id, 'queued', 0, now);
   if (b.items[id] && b.items[id].lane === 'active') {
-    if (status === 'running') b = Backlog.setTurn(b, id, 'agent');
-    if (status === 'needs_you' && !request) b = Backlog.setTurn(b, id, 'you');
+    if (status === 'running') b = Backlog.setTurn(b, id, 'agent', now);
+    if (status === 'needs_you' && !request) b = Backlog.setTurn(b, id, 'you', now);
   }
-  if (typeof request === 'string') b = Backlog.patchItem(b, id, { ask: request });
-  if (typeof link === 'string') b = Backlog.patchItem(b, id, { link });
+  if (typeof request === 'string') b = Backlog.patchItem(b, id, { ask: request }, now);
+  if (typeof link === 'string') b = Backlog.patchItem(b, id, { link }, now);
   state.backlog = b;
 }
 
@@ -1183,10 +1188,10 @@ const claudeDeps = () => ({
     if (!client || !state.google.listId) throw new Error('Google Tasks is not connected in One Focus.');
     const last = today.open[today.open.length - 1];
     const t = await client.insert(state.google.listId, { title }, last && last.id);
-    // Placed before the sync sees it, so it can't start a session of its own.
-    state.backlog = Backlog.reconcile({ ...Backlog.normalize(state.backlog), on: true }, [...today.open, { id: t.id, title: t.title }]);
-    if (top) state.backlog = Backlog.move(state.backlog, t.id, 'queued', 0);
-    claudeApply(t.id, { status, request, link, group });
+    // In the backlog (and Claude's) before any sync sees it: nothing pruned,
+    // and it can't start a session of its own.
+    state.backlog = Backlog.ensure({ ...Backlog.normalize(state.backlog), on: true }, { id: t.id, title: t.title });
+    claudeApply(t.id, { status, request, link, group, top });
     store.save(state);
     await resync();
     push();
@@ -1199,7 +1204,8 @@ const claudeDeps = () => ({
       await client.patch(state.google.listId, t.id, { status: 'completed' });
       return resync();
     }
-    if (!state.backlog || !state.backlog.on) state.backlog = Backlog.reconcile({ ...Backlog.normalize(state.backlog), on: true }, today.open);
+    if (!state.backlog || !state.backlog.on) state.backlog = { ...Backlog.normalize(state.backlog), on: true };
+    if (today.syncedAt) state.backlog = Backlog.reconcile(state.backlog, today.open);
     claudeApply(t.id, { status, request, link, group });
     store.save(state);
     push();
@@ -1229,9 +1235,9 @@ function startClaude() {
     const host = String(req.headers.host || '');
     if (req.url.split('?')[0] !== '/mcp') return send(404);
     if (req.headers.origin || !/^(127\.0\.0\.1|localhost):\d+$/.test(host)) return send(403); // never from a web page
-    const auth = String(req.headers.authorization || '');
+    const auth = Buffer.from(String(req.headers.authorization || ''));
     const want = Buffer.from('Bearer ' + c.token);
-    if (auth.length !== want.length || !crypto.timingSafeEqual(Buffer.from(auth), want)) return send(401);
+    if (auth.length !== want.length || !crypto.timingSafeEqual(auth, want)) return send(401);
     if (req.method !== 'POST') return send(405);
     let raw = '';
     req.on('data', (d) => {
@@ -1239,29 +1245,37 @@ function startClaude() {
       if (raw.length > 1e6) req.destroy();
     });
     req.on('end', async () => {
-      let msg;
       try {
-        msg = JSON.parse(raw);
-      } catch {
-        return send(400, { jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Parse error' } });
+        let msg;
+        try {
+          msg = JSON.parse(raw);
+        } catch {
+          return send(400, { jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Parse error' } });
+        }
+        const deps = claudeDeps();
+        const replies = (await Promise.all((Array.isArray(msg) ? msg : [msg]).map((m) => Claude.handle(m, deps)))).filter(Boolean);
+        if (!replies.length) return send(202);
+        send(200, Array.isArray(msg) ? replies : replies[0]);
+      } catch (e) {
+        if (!res.headersSent) send(500, { jsonrpc: '2.0', id: null, error: { code: -32603, message: e.message } });
       }
-      const deps = claudeDeps();
-      const replies = (await Promise.all((Array.isArray(msg) ? msg : [msg]).map((m) => Claude.handle(m, deps)))).filter(Boolean);
-      if (!replies.length) return send(202);
-      send(200, Array.isArray(msg) ? replies : replies[0]);
     });
   });
+  claudeServer = server; // set now, so turning it off before it's listening still closes it
+  // Taken port: try the next ones for now, but keep the saved one, so the
+  // Claude Code command (which has it) works again next time.
   let tries = 0;
+  let port = c.port;
   server.on('error', (e) => {
-    if (e.code === 'EADDRINUSE' && tries++ < 10) return server.listen(++c.port, '127.0.0.1');
+    if (e.code === 'EADDRINUSE' && tries++ < 10) return server.listen(++port, '127.0.0.1');
     claudeError = 'Could not start: ' + e.message;
     push();
   });
-  server.listen(c.port, '127.0.0.1', () => {
-    claudeServer = server;
-    claudePort = c.port;
+  server.listen(port, '127.0.0.1', () => {
+    if (claudeServer !== server) return server.close();
+    claudePort = port;
     try {
-      fs.writeFileSync(claudeApiFile(), JSON.stringify({ port: c.port, token: c.token }));
+      fs.writeFileSync(claudeApiFile(), JSON.stringify({ port, token: c.token }));
     } catch (e) {
       claudeError = 'Could not write api.json: ' + e.message;
     }
@@ -1342,27 +1356,35 @@ ipcMain.handle('claude:code', () => {
 // `claude "<message>"` (the message goes through a file, so no quoting
 // trouble). Claude chat: claude.ai/new with the message filled in.
 let launchLog = []; // the last few, for Settings: { at, group, kind, title, error }
+const mcpOn = () => !!(state.claude && state.claude.on && claudePort);
 function runLaunches() {
   if (!state.backlog || !state.backlog.on) return;
-  const { backlog, todo } = Backlog.launches(state.backlog);
+  const { backlog, todo } = Backlog.launches(state.backlog, new Date(), { mcp: mcpOn() });
   state.backlog = backlog;
   if (!todo.length) return;
   store.save(state);
   for (const l of todo) startSession(l);
 }
-function startSession(l) {
-  const msg = Backlog.message(l, !!(state.claude && state.claude.on && claudePort));
+// A start that fails gives back its held slot and its place in the cap.
+function startSession(l, { test = false } = {}) {
+  const msg = Backlog.message(l, !test && mcpOn());
   const entry = { at: nowIso(), group: l.group.name, kind: l.kind, how: l.group.launch, title: l.title || '' };
-  try {
-    if (l.group.launch === 'chat') shell.openExternal('https://claude.ai/new?q=' + encodeURIComponent(msg));
-    else if (l.group.launch === 'code') startClaudeCode(l.group.dir, msg, l.kind === 'task' ? l.title : l.group.name);
-  } catch (e) {
+  const failed = (e) => {
     entry.error = e.message;
+    if (l.at) state.backlog = Backlog.release(state.backlog, l.group.id, l.at);
+    store.save(state);
+    push();
+  };
+  try {
+    if (l.group.launch === 'chat') shell.openExternal('https://claude.ai/new?q=' + encodeURIComponent(msg)).catch(failed);
+    else if (l.group.launch === 'code') startClaudeCode(l.group.dir, msg, l.kind === 'task' ? l.title : l.group.name, failed);
+  } catch (e) {
+    failed(e);
   }
   launchLog = [entry, ...launchLog].slice(0, 10);
   push();
 }
-function startClaudeCode(dirRaw, msg, label) {
+function startClaudeCode(dirRaw, msg, label, failed) {
   const dir = dirRaw && fs.existsSync(dirRaw) ? dirRaw : null;
   if (dirRaw && !dir) throw new Error(`Folder not found: ${dirRaw}`);
   const cwd = dir || app.getPath('home');
@@ -1375,12 +1397,26 @@ function startClaudeCode(dirRaw, msg, label) {
   fs.writeFileSync(file, msg.replace(/"([^"]*)"/g, '“$1”').replace(/"/g, '”'), 'utf8');
   const q = (s) => "'" + String(s).replace(/'/g, "''") + "'";
   const script = `$Host.UI.RawUI.WindowTitle = ${q('One Focus · ' + label)}; Set-Location -LiteralPath ${q(cwd)}; claude (Get-Content -Raw -Encoding UTF8 -LiteralPath ${q(file)})`;
+  // `start` gives PowerShell its own real console (keyboard and all); the
+  // script goes base64 (UTF-16LE), so paths and messages need no quoting.
+  const encoded = Buffer.from(script, 'utf16le').toString('base64');
   const { spawn } = require('child_process');
-  const p = spawn('powershell.exe', ['-NoExit', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', script], { cwd, detached: true, stdio: 'ignore' });
-  p.on('error', (e) => ((launchLog[0] = { ...launchLog[0], error: e.message }), push()));
-  p.unref();
+  const p = spawn('cmd.exe', ['/d /c start "" powershell.exe -NoExit -NoProfile -ExecutionPolicy Bypass -EncodedCommand ' + encoded], {
+    cwd,
+    windowsVerbatimArguments: true,
+    windowsHide: true,
+    stdio: 'ignore',
+  });
+  p.on('error', (e) => failed && failed(e));
+  p.on('exit', (code) => code && failed && failed(new Error('Couldn’t open a terminal (exit ' + code + ').')));
 }
-setInterval(() => state && state.backlog && state.backlog.on && (runLaunches(), push()), 60e3); // holds run out
+// Each minute: holds that ran out give their slot back (auto fill), then any starts due.
+setInterval(() => {
+  if (!state || !state.backlog || !state.backlog.on) return;
+  if (state.backlog.auto) state.backlog = Backlog.fill(state.backlog);
+  runLaunches();
+  push();
+}, 60e3);
 
 // Settings → Groups: start one now, to check the folder and the message.
 ipcMain.handle('backlog:test', (_e, gid) => {
@@ -1389,7 +1425,9 @@ ipcMain.handle('backlog:test', (_e, gid) => {
   if (!g) return { error: 'No such group.' };
   if (g.launch === 'off') return { error: 'Pick Claude Code or Claude chat first.' };
   const top = Backlog.lanes(b, today.open).queued.find((r) => r.group === g.id);
-  startSession(g.emptyMsg.trim() && !top ? { kind: 'empty', group: g } : { kind: 'task', group: g, id: top ? top.task.id : 'test', title: top ? top.task.title : 'Test task from One Focus' });
+  if (g.emptyMsg.trim() && !top) startSession({ kind: 'empty', group: g });
+  else if (top) startSession({ kind: 'task', group: g, id: top.task.id, title: top.task.title });
+  else startSession({ kind: 'task', group: g, id: '', title: 'Test task from One Focus' }, { test: true });
   return { ok: true, last: launchLog[0] };
 });
 
@@ -1884,7 +1922,13 @@ function applyLoginItem() {
   } catch {}
 }
 
+// One copy at a time (a login start plus a manual one would sync and start
+// Claude sessions twice). A second start just brings this one forward.
+if (!app.requestSingleInstanceLock()) app.quit();
+else app.on('second-instance', () => win && !win.isDestroyed() && bringToFront(win));
+
 app.whenReady().then(() => {
+  if (!app.hasSingleInstanceLock()) return;
   state = store.load();
   tracker = new Tracker(state, () => store.save(state));
   tracker.idleOff = beforeWorkday(); // set before recover opens a session

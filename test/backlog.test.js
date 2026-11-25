@@ -118,28 +118,92 @@ test('empty group: one standing launch holds the slot until Claude adds its task
   assert.deepEqual(r.todo.map((l) => l.kind), ['empty']);
   b = r.backlog;
   assert.equal(B.launches(b, later(1)).todo.length, 0); // the slot is held
-  // Claude adds its task: it takes the held slot even though the group is "full"
-  b = B.reconcile(b, titled(['x', 'Roblox: lobby UI']), later(2));
-  b = B.move(b, 'x', 'active', null, later(2), 'rbx');
-  b = B.patchItem(b, 'x', { noLaunch: true });
+  // a hand-dragged task can't take the held slot
+  b = B.reconcile(b, titled(['u', 'Roblox: mine']), later(1));
+  b = B.move(b, 'u', 'evergreen', null, later(1));
+  b = B.move(b, 'u', 'active', null, later(1));
+  assert.equal(laneOf(b, 'u'), 'evergreen');
+  // Claude adds its task: claim frees the hold and the task takes the slot (no session for it)
+  b = B.ensure(b, { id: 'x', title: 'Roblox: lobby UI' }, later(2));
+  b = B.claim(b, 'x', later(2));
+  b = B.move(b, 'x', 'active', null, later(2));
   assert.equal(laneOf(b, 'x'), 'active');
   assert.equal(b.pending.length, 0);
   assert.equal(B.launches(b, later(3)).todo.length, 0);
-  // the hold runs out after 15 minutes if nothing comes
-  let c = B.launches(B.reconcile(B.setGroups({ ...B.blank(), on: true }, G({ rbx: { emptyMsg: 'Go' } }), T0), [], T0), T0).backlog;
-  assert.equal(B.launches(c, later(16)).todo.length, 1);
 });
 
-test('perHour caps launches for a group', () => {
-  let b = B.setGroups({ ...B.blank(), on: true }, G({ rbx: { emptyMsg: 'Go', perHour: 2, slots: 3 } }), T0);
-  b = B.reconcile(b, [], T0);
+test('a hold that runs out is not restarted until the group changes', () => {
+  let b = B.launches(B.reconcile(B.setGroups({ ...B.blank(), on: true }, G({ rbx: { emptyMsg: 'Go' } }), T0), [], T0), T0).backlog;
   let n = 0;
-  for (let i = 0; i < 5; i++) {
-    const r = B.launches(b, later(i));
+  for (let m = 1; m <= 600; m += 1) {
+    const r = B.launches(b, later(m));
     n += r.todo.length;
     b = r.backlog;
   }
-  assert.equal(n, 2);
+  assert.equal(n, 0); // 10 hours unattended: no stack of sessions
+  // Claude's task arrives and finishes: the slot opened again, so one more start
+  b = B.claim(B.ensure(b, { id: 'x', title: 'Roblox: x' }, later(601)), 'x', later(601));
+  b = B.move(b, 'x', 'active', null, later(601));
+  b = B.reconcile(b, [], later(602));
+  assert.equal(B.launches(b, later(603)).todo.length, 1);
+});
+
+test('no standing launch without the Claude connection (it could never report back)', () => {
+  const b = B.reconcile(B.setGroups({ ...B.blank(), on: true }, G({ rbx: { emptyMsg: 'Go' } }), T0), [], T0);
+  assert.equal(B.launches(b, T0, { mcp: false }).todo.length, 0);
+});
+
+test('perHour caps launches for a group; capped task launches wait, not vanish', () => {
+  let b = B.setGroups({ ...B.blank(), on: true }, G({ rbx: { perHour: 1, slots: 2 } }), T0);
+  b = B.reconcile(b, titled(['a', 'Roblox: a'], ['c', 'Roblox: c']), T0);
+  let r = B.launches(b, T0);
+  assert.deepEqual(r.todo.map((l) => l.id), ['a']);
+  r = B.launches(r.backlog, later(30));
+  assert.equal(r.todo.length, 0);
+  r = B.launches(r.backlog, later(61));
+  assert.deepEqual(r.todo.map((l) => l.id), ['c']);
+});
+
+test('a failed start gives back its hold and its place in the cap', () => {
+  let b = B.reconcile(B.setGroups({ ...B.blank(), on: true }, G({ rbx: { emptyMsg: 'Go', perHour: 1 } }), T0), [], T0);
+  const r = B.launches(b, T0);
+  b = B.release(r.backlog, 'rbx', r.todo[0].at);
+  assert.equal(b.pending.length, 0);
+  assert.equal(b.launched.length, 0);
+});
+
+test('a sync with an older list keeps tasks added since; Claude tasks never launch', () => {
+  let b = B.setGroups({ ...B.blank(), on: true }, G(), T0);
+  b = B.reconcile(b, titled(['a', 'Roblox: a']), T0);
+  b = B.launches(b, T0).backlog;
+  b = B.reconcile(b, [], later(1)); // a finishes
+  const fetchedAt = later(2).getTime();
+  b = B.claim(B.ensure(b, { id: 'n', title: 'Roblox: new' }, later(3)), 'n', later(3));
+  b = B.reconcile(b, [], later(4), { since: fetchedAt }); // the older list doesn't have n yet
+  assert.ok(b.items.n);
+  assert.equal(laneOf(b, 'n'), 'active');
+  assert.equal(B.launches(b, later(5)).todo.length, 0);
+});
+
+test('renaming an active task does not move it to another group', () => {
+  let b = B.setGroups({ ...B.blank(), auto: true }, G(), T0);
+  b = B.reconcile(b, titled(['a', 'Copy: write']), T0);
+  assert.equal(B.groupOf(b, 'a'), 'copy');
+  b = B.reconcile(b, titled(['a', 'Roblox copy']), later(1));
+  assert.equal(B.groupOf(b, 'a'), 'copy');
+});
+
+test('message: titles with $ and braces come through as written', () => {
+  const g = { name: 'Ops $&', taskMsg: 'Do: {task} in {group}', emptyMsg: '' };
+  assert.equal(B.message({ kind: 'task', group: g, id: 'x', title: "Pay $' now $$ {group} $&" }, false), "Do: Pay $' now $$ {group} $& in Ops $&");
+});
+
+test('groups: duplicate ids are made unique; slots never below what is active', () => {
+  const b = B.normalize({ groups: [{ id: 'a' }, { id: 'a' }, { id: 'a1' }] });
+  assert.equal(new Set(b.groups.map((g) => g.id)).size, 3);
+  let c = B.reconcile({ ...B.blank(), slots: 3 }, titled(['x', 'x'], ['y', 'y'], ['z', 'z']), T0);
+  c = B.setGroups(c, [{ id: 'main', name: 'Active', slots: 1 }], T0);
+  assert.equal(c.groups[0].slots, 3);
 });
 
 test('slots per group; without groups the old single lane still works', () => {
