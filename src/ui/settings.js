@@ -285,13 +285,9 @@ function renderSettings() {
   // Claude: on/off, then add to Claude Desktop / copy the Claude Code command.
   const cl = S.claude || {};
   $('cl-on').hidden = !!cl.on;
-  $('cl-desktop').hidden = $('cl-code').hidden = $('cl-off').hidden = $('cl-hint').hidden = !cl.on;
+  $('cl-desktop').hidden = $('cl-code').hidden = $('cl-off').hidden = !cl.on;
   if (!$('cl-desktop').dataset.busy) $('cl-desktop').textContent = cl.desktop ? 'In Claude Desktop ✓' : 'Add to Claude Desktop';
-  $('cl-status').textContent = cl.error
-    ? cl.error
-    : cl.on
-    ? `On${cl.port ? '' : ' · starting…'}. Claude can add its work to your backlog, mark it running, ask you for things and finish it.`
-    : 'Off. Let Claude put its work on your backlog: running tasks, requests for you, links back to the chat.';
+  $('cl-status').textContent = cl.error ? cl.error : cl.on ? (cl.port ? 'On' : 'Starting…') : 'Off';
   $('app-check').hidden = u.status === 'dev' || u.status === 'ready';
   $('app-check').classList.toggle('is-spinning', u.status === 'checking' || u.status === 'downloading');
   $('g-setup').hidden = S.connected;
@@ -458,7 +454,7 @@ $('cl-code').addEventListener('click', async () => {
 
 // ---------- Groups (backlog Active split; optional Claude session per open slot) ----------
 const LAUNCH_WORDS = { off: 'Nothing', code: 'Claude Code', chat: 'Claude chat' };
-let grpOpen = null; // the group whose details are open
+const grpOpen = new Set(); // groups whose details are open
 function readGroups() {
   return [...document.querySelectorAll('#grp-list .grp')].map((d) => {
     const v = (k) => d.querySelector(`[data-k="${k}"]`);
@@ -475,24 +471,35 @@ function readGroups() {
     };
   });
 }
-async function saveGroups(groups = readGroups()) {
+// Field edits save quietly (only the summary line updates, focus stays);
+// adding, removing or changing what a group starts rebuilds the list.
+async function saveGroups(groups = readGroups(), rebuild = true) {
   S = await api.backlog({ groups });
-  renderGroups(true);
+  if (rebuild) return renderGroups(true);
+  for (const g of S.backlog.groups || []) {
+    const d = document.querySelector(`#grp-list .grp[data-id="${CSS.escape(g.id)}"] summary`);
+    if (d) d.replaceChildren(...grpSummary(g));
+  }
+}
+function grpSummary(g) {
+  return [el('b', null, g.name), el('span', null, ` · ${g.slots} slot${g.slots > 1 ? 's' : ''}${g.match ? ' · ' + g.match : ''}${g.launch === 'off' ? '' : ' · ' + LAUNCH_WORDS[g.launch]}`)];
 }
 function renderGroups(force) {
   const list = $('grp-list');
   if (!list || !S || !S.backlog) return;
-  if (!force && list.contains(document.activeElement)) return; // not while typing
+  const last = (S.launches || [])[0];
+  $('grp-last').textContent = last ? `Last: ${last.group} · ${LAUNCH_WORDS[last.how] || ''} · ${hm(last.at)}${last.title ? ' · ' + last.title : ''}${last.error ? ' · ' + last.error : ''}` : '';
+  if (!force && list.contains(document.activeElement) && document.activeElement.matches('input, textarea')) return; // not while typing
   const groups = S.backlog.groups || [];
   list.replaceChildren();
   groups.forEach((g) => {
     const d = el('details', 'grp');
     d.dataset.id = g.id;
     d.dataset.launch = g.launch;
-    d.open = grpOpen === g.id;
-    d.addEventListener('toggle', () => (grpOpen = d.open ? g.id : grpOpen === g.id ? null : grpOpen));
+    d.open = grpOpen.has(g.id);
+    d.addEventListener('toggle', () => (d.open ? grpOpen.add(g.id) : grpOpen.delete(g.id)));
     const sum = el('summary');
-    sum.append(el('b', null, g.name), el('span', null, ` · ${g.slots} slot${g.slots > 1 ? 's' : ''}${g.match ? ' · ' + g.match : ''} · ${g.launch === 'off' ? 'no sessions' : 'starts ' + LAUNCH_WORDS[g.launch]}`));
+    sum.append(...grpSummary(g));
     const body = el('div', 'grp__body');
     const field = (label, k, val, attrs = {}) => {
       const f = el('label', 'field');
@@ -502,7 +509,7 @@ function renderGroups(force) {
       if (attrs.min) Object.assign(input, { min: attrs.min, max: attrs.max });
       if (attrs.area) input.rows = 3;
       input.dataset.k = k;
-      input.addEventListener('change', () => saveGroups());
+      input.addEventListener('change', () => saveGroups(readGroups(), false));
       input.addEventListener('keydown', (e) => e.stopPropagation());
       f.append(el('span', null, label), input);
       if (attrs.hide) f.hidden = true;
@@ -525,11 +532,11 @@ function renderGroups(force) {
     const off = g.launch === 'off';
     body.append(
       row,
-      field('Words that put a task here (comma separated)', 'match', g.match, { ph: 'roblox, rbx' }),
+      field('Words', 'match', g.match),
       when,
-      field('Folder for Claude Code', 'dir', g.dir, { ph: 'C:\\Users\\you\\Projects\\game', hide: g.launch !== 'code' }),
-      field('Message for the task that takes the slot ({task}, {group}, {id})', 'taskMsg', g.taskMsg, { area: true, hide: off }),
-      field('Message when nothing is queued (empty = don’t start one)', 'emptyMsg', g.emptyMsg, { area: true, hide: off, ph: 'e.g. Look at the Roblox backlog and start the most valuable next step.' })
+      field('Folder', 'dir', g.dir, { hide: g.launch !== 'code' }),
+      field('Message for a task', 'taskMsg', g.taskMsg, { area: true, hide: off }),
+      field('Message when nothing is queued', 'emptyMsg', g.emptyMsg, { area: true, hide: off })
     );
     const acts = el('div', 'actions');
     if (!off) {
@@ -550,12 +557,10 @@ function renderGroups(force) {
     d.append(sum, body);
     list.append(d);
   });
-  const last = (S.launches || [])[0];
-  $('grp-last').textContent = last ? `Last start: ${last.group} · ${LAUNCH_WORDS[last.how] || ''} · ${hm(last.at)}${last.title ? ' · ' + last.title : ''}${last.error ? ' · ' + last.error : ''}` : '';
   $('grp-add').hidden = groups.length >= 8;
 }
 $('grp-add').addEventListener('click', () => {
   const id = 'g' + Date.now().toString(36);
-  grpOpen = id;
+  grpOpen.add(id);
   saveGroups([...readGroups(), { id, name: 'Group ' + (readGroups().length + 1), slots: 1, launch: 'off' }]);
 });

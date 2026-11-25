@@ -1178,7 +1178,7 @@ input[type="time"]::-webkit-calendar-picker-indicator { opacity: 0.35; cursor: p
 .bl.is-dragging .bl-acts { display: none !important; }
 .bl.is-dragging .bl-list li.bl-row:hover > .d { display: block; }
 .bl-dropline { position: absolute; left: 0; right: 0; height: 2px; border-radius: 1px; background: var(--fg-secondary); pointer-events: none; }
-.bl-head.is-full .bl-head__count { color: rgba(232, 140, 120, 0.9); }
+.bl-head.is-full .bl-head__count { color: var(--fg); }
 .bl-head.is-full .bl-head__count::after { content: " · full"; }
 
 /* Corner switches (View only): Backlog, then Manual / Auto when it's on. */
@@ -1212,3 +1212,16 @@ input[type="time"]::-webkit-calendar-picker-indicator { opacity: 0.35; cursor: p
 .grp__row input[type="number"] { -moz-appearance: textfield; }
 .grp__row input[type="number"]::-webkit-inner-spin-button { opacity: 0.4; }
 .bl-list:empty { min-height: 14px; }
+
+/* Review fixes: the corner switches never cover a row (room at the bottom,
+   and a solid backing); the queue reads quieter than what's in flight; on a
+   narrow window hover actions take the state's place instead of squashing
+   the title. */
+.bl { padding-bottom: 56px; }
+.bl-pill, .bl-mode { background: var(--bg); }
+.bl-list[data-lane="queued"] li.bl-row .t { color: var(--fg-secondary); }
+.bl-list.is-now li.bl-row .t { color: var(--fg); }
+@container (max-width: 560px) {
+  .bl-list li.bl-row:hover > .bl-state { display: none; }
+  .bl-list li.bl-row:hover .bl-acts { gap: 10px; }
+}

@@ -216,6 +216,7 @@ function launches(bl, now = new Date()) {
     delete next.launchDue;
     b.items[id] = next;
     if (g.launch === 'off' || used(g.id) >= g.perHour) continue;
+    b.items[id] = { ...next, turn: 'agent', since: now.toISOString() }; // Claude is on it
     b.launched.push({ group: g.id, at: now.toISOString() });
     todo.push({ kind: 'task', group: g, id, title: it.title || '' });
   }

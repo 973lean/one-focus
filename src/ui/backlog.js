@@ -64,6 +64,11 @@ function backlogList() {
   const box = el('div', 'su-tasks bl');
   const full = L.groups.every((g) => L.active.filter((r) => r.group === g.id).length + (g.pending || []).length >= g.slots);
   const needsYou = L.active.some((r) => r.turn === 'you');
+  const focusId = (L.active.find((r) => r.turn === 'you') || {}).task?.id; // the oldest request anywhere
+  const freeIn = (gid) => {
+    const g = L.groups.find((x) => x.id === gid) || L.groups[0];
+    return g.slots - L.active.filter((r) => r.group === g.id).length - (g.pending || []).length;
+  };
 
   const act = (label, title, fn) => {
     const b = el('button', 'bl-act', label);
@@ -81,7 +86,7 @@ function backlogList() {
     const t = r.task;
     const you = lane === 'active' && r.turn === 'you';
     const running = S.current && S.current.googleId === t.id;
-    const li = el('li', 'bl-row' + (lane === 'active' ? (you ? ' is-you' : ' is-agent') : '') + (you && i === 0 ? ' is-focus' : '') + (running ? ' is-running' : ''));
+    const li = el('li', 'bl-row' + (lane === 'active' ? (you ? ' is-you' : ' is-agent') : '') + (you && t.id === focusId ? ' is-focus' : '') + (running ? ' is-running' : ''));
     li.dataset.id = t.id;
     li.dataset.lane = lane;
 
@@ -122,19 +127,24 @@ function backlogList() {
 
     // Quiet actions on hover.
     const acts = el('span', 'bl-acts');
-    const editLink = act('Link', r.link ? 'Change the link (empty removes it)' : 'Add a link (e.g. the chat)', () =>
-      inlineEdit(name, r.link || '', 2000, (v) => blItem(t.id, { link: v }), 'Paste a link')
+    const below = () => {
+      const slot = el('span', 'bl-ask');
+      main.append(slot);
+      return slot;
+    };
+    const editLink = act('Link', r.link ? 'Change the link (empty removes it)' : 'Add a link', () =>
+      inlineEdit(below(), r.link || '', 2000, (v) => blItem(t.id, { link: v && !/^https?:\/\//i.test(v) && /^[\w.-]+\.[a-z]{2,}(\/|$)/i.test(v) ? 'https://' + v : v }), 'Link')
     );
     if (lane === 'active') {
       acts.append(
         act(you ? 'Edit request' : 'Needs me', 'What it needs from you (makes it your turn)', () =>
-          inlineEdit(name, r.ask || '', 200, (v) => (v ? blItem(t.id, { ask: v }) : null), 'What does it need from you?')
+          inlineEdit(main.querySelector('.bl-ask') || below(), r.ask || '', 200, (v) => blItem(t.id, { ask: v }), 'Request')
         ),
         editLink,
         act('Queue', 'Back to the queue (frees the slot)', () => blItem(t.id, { lane: 'queued', index: 0 }))
       );
     } else if (lane === 'queued') {
-      if (!full) acts.append(act('Start', 'Make it active', () => blItem(t.id, { lane: 'active' })));
+      if (freeIn(r.group) > 0) acts.append(act('Start', 'Make it active', () => blItem(t.id, { lane: 'active' })));
       acts.append(editLink, act('Evergreen', 'Keep it as a standing task', () => blItem(t.id, { lane: 'evergreen' })));
     } else acts.append(editLink, act('Queue', 'Move it to the queue', () => blItem(t.id, { lane: 'queued' })));
 
@@ -147,7 +157,8 @@ function backlogList() {
       side.addEventListener('click', (e) => (e.stopPropagation(), blItem(t.id, { turn: you ? 'agent' : 'you' })));
     } else side = timeNode('d', lane === 'queued' ? 'ago' : 'done', lane === 'queued' ? r.queuedAt : r.lastDone);
     li.append(grip, check, main, acts);
-    if (lane === 'queued' && L.groups.length > 1) li.append(el('span', 'bl-tag', (L.groups.find((g) => g.id === r.group) || {}).name || ''));
+    const grp = L.groups.find((g) => g.id === r.group);
+    if (lane === 'queued' && L.groups.length > 1 && grp && !t.title.toLowerCase().includes(grp.name.toLowerCase())) li.append(el('span', 'bl-tag', grp.name));
     li.append(side);
     return li;
   };
@@ -169,7 +180,12 @@ function backlogList() {
   // Active: one section per group (just "Active" with one group). Requests
   // first, then running, then held slots ("Starting Claude…") and open ones.
   const many = L.groups.length > 1;
-  for (const g of L.groups) {
+  const oldestAsk = (g) => {
+    const r = L.active.find((x) => x.group === g.id && x.turn === 'you');
+    return r ? Date.parse(r.since) : Infinity;
+  };
+  const order = L.groups.map((g, i) => ({ g, i })).sort((a, b) => oldestAsk(a.g) - oldestAsk(b.g) || a.i - b.i).map((x) => x.g);
+  for (const g of order) {
     const rows = L.active.filter((r) => r.group === g.id);
     const holds = g.pending || [];
     const slotBtns = el('span', 'bl-slots');
@@ -185,24 +201,28 @@ function backlogList() {
       const h = el('li', 'bl-slot is-starting');
       const t = el('span', 'bl-slot__time', ago(p.at));
       Object.assign(t.dataset, { kind: 'ago', at: p.at });
-      h.append(el('i'), document.createTextNode('Starting Claude · '), t);
+      h.append(el('i'), el('span', null, 'Starting Claude ·'), t);
       h.title = 'A Claude session was started for this group; the slot is held until it adds its task (up to 15 minutes).';
       ul.append(h);
     }
     for (let i = rows.length + holds.length; i < g.slots; i++)
       ul.append(el('li', 'bl-slot', 'Open slot'));
-    const hd = head(many ? g.name : 'Active', `${rows.length}/${g.slots}`, slotBtns);
+    const hd = head(many ? g.name : 'Active', `${rows.length + holds.length}/${g.slots}`, slotBtns);
     if (many) hd.classList.add('is-group');
     box.append(hd, ul);
   }
 
-  box.append(head('Queued', L.queued.length ? String(L.queued.length) : ''), list('queued', L.queued));
-
-  // Evergreen comes forward when every slot is busy and nothing needs you.
+  // Evergreen comes forward (above the queue, brighter) when every slot is
+  // busy and nothing needs you: it's what to do while you wait.
   const waiting = full && !needsYou && L.active.length > 0;
   const eg = head('Evergreen', '');
-  if (waiting) eg.classList.add('is-now');
-  box.append(eg, list('evergreen', L.evergreen));
+  const egList = list('evergreen', L.evergreen);
+  const q = [head('Queued', L.queued.length ? String(L.queued.length) : ''), list('queued', L.queued)];
+  if (waiting) {
+    eg.classList.add('is-now');
+    egList.classList.add('is-now');
+    box.append(eg, egList, ...q);
+  } else box.append(...q, eg, egList);
 
   // Add a task: it joins the queue.
   const addWrap = el('div', 'su-tasks__addwrap');
