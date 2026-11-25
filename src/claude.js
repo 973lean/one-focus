@@ -37,6 +37,7 @@ const TOOLS = [
         link: { type: 'string', description: 'URL of this chat or session (https), if you know it, so the user can jump back in.' },
         top: { type: 'boolean', description: 'Put it at the top of the queue instead of the end.' },
         group: { type: 'string', description: 'Group name from one_focus_backlog (each group has its own active slots). If One Focus started this session for a group, use that one. Leave out to let One Focus sort it by its words.' },
+        work_day: { type: 'string', description: 'The day the user plans to work on it, YYYY-MM-DD (empty string clears it). Not a deadline.' },
         due: { type: 'string', description: 'Deadline as YYYY-MM-DD, if the task has one.' },
         details: { type: 'string', description: 'At most two short lines: only what is needed to act. Longer material belongs in the chat, not the task.' },
         prompt: { type: 'string', description: 'A prompt One Focus sends to a new Claude session when this task is started (by hand or by run_when).' },
@@ -59,6 +60,7 @@ const TOOLS = [
         link: { type: 'string', description: 'URL of the chat or session (https). Empty string removes it.' },
         title: { type: 'string', description: 'A new title.' },
         group: { type: 'string', description: 'Move it to this group (name from one_focus_backlog).' },
+        work_day: { type: 'string', description: 'The day the user plans to work on it, YYYY-MM-DD (empty string clears it). Not a deadline.' },
         due: { type: 'string', description: 'Deadline as YYYY-MM-DD; empty string removes it.' },
         details: { type: 'string', description: 'New details (Google Tasks notes). At most two short lines: only what is needed to act. Longer material belongs in the chat, not the task.' },
         prompt: { type: 'string', description: 'A prompt One Focus sends to a new Claude session when this task is started (by hand or by run_when).' },
@@ -96,7 +98,7 @@ function describe(view) {
   lines.push(`Active ${view.active.length}/${view.slots}${view.auto ? ' (auto fills from the queue)' : ''}:`);
   if (groups.length > 1) lines.push('  Groups: ' + groups.map((g) => `${g.name} ${g.active}/${g.slots}`).join(', '));
   if (!view.active.length) lines.push('  (none)');
-  const due = (r) => (r.deadline ? ` (due ${r.deadline})` : '') + (r.when ? ` (runs: ${r.when})` : '') + (r.task.notes ? ` — details: ${r.task.notes.replace(/\s+/g, ' ').slice(0, 160)}` : '');
+  const due = (r) => (r.day ? ` (work day ${r.day})` : '') + (r.deadline ? ` (due ${r.deadline})` : '') + (r.when ? ` (runs: ${r.when})` : '') + (r.task.notes ? ` — details: ${r.task.notes.replace(/\s+/g, ' ').slice(0, 160)}` : '');
   for (const r of view.active) lines.push(`  - [${r.turn === 'you' ? 'needs you' : 'running'}]${gname(r)} ${r.task.title} (id ${r.task.id})${due(r)}${r.ask ? ` — request: ${r.ask}` : ''}${r.link ? ` — ${r.link}` : ''}`);
   lines.push(`Queued ${view.queued.length}:`);
   for (const r of view.queued) lines.push(`  -${gname(r)} ${r.task.title} (id ${r.task.id})${due(r)}`);
@@ -134,7 +136,7 @@ async function handle(msg, deps) {
       const title = String(a.title || '').trim().slice(0, 300);
       if (!title) return ok(id, text('A title is needed.', true));
       if (a.status && !STATUS.includes(a.status)) return ok(id, text('Unknown status: ' + a.status, true));
-      const t = await deps.add({ title, status: a.status || (a.request ? 'needs_you' : 'queued'), request: a.request, link: a.link, top: !!a.top, group: a.group, due: a.due, details: a.details, prompt: a.prompt, when: a.run_when });
+      const t = await deps.add({ title, status: a.status || (a.request ? 'needs_you' : 'queued'), request: a.request, link: a.link, top: !!a.top, group: a.group, due: a.due, day: a.work_day, details: a.details, prompt: a.prompt, when: a.run_when });
       const v = deps.view();
       const row = [...v.active, ...v.queued, ...v.evergreen].find((r) => r.task.id === t.id);
       const where = !row ? 'added' : row.lane === 'active' ? (row.turn === 'you' ? 'active, waiting on the user' : 'active, running') : row.lane;
@@ -146,7 +148,7 @@ async function handle(msg, deps) {
       const t = findTask(v.open, a.task);
       if (!t) return ok(id, text(`No open task matches "${a.task}". Use one_focus_backlog to see the ids.`, true));
       if (a.status && !STATUS.includes(a.status)) return ok(id, text('Unknown status: ' + a.status, true));
-      await deps.update(t, { status: a.status, request: a.request, link: a.link, title: a.title, group: a.group, due: a.due, details: a.details, prompt: a.prompt, when: a.run_when });
+      await deps.update(t, { status: a.status, request: a.request, link: a.link, title: a.title, group: a.group, due: a.due, day: a.work_day, details: a.details, prompt: a.prompt, when: a.run_when });
       if (a.status === 'done') return ok(id, text(`Finished "${t.title}".`));
       const after = deps.view();
       const row = [...after.active, ...after.queued, ...after.evergreen].find((r) => r.task.id === t.id);

@@ -1122,6 +1122,8 @@ ipcMain.handle('backlog:settings', (_e, patch = {}) => {
   if ('on' in patch) b.on = !!patch.on;
   if ('auto' in patch) b.auto = !!patch.auto;
   if ('show' in patch) b.show = patch.show === 'details' ? 'details' : 'titles';
+  if ('dayTab' in patch) b.dayTab = ['today', 'tomorrow', 'later'].includes(patch.dayTab) ? patch.dayTab : 'all';
+  if (typeof patch.pushTo === 'string') b = Backlog.pushDays(b, patch.pushTo, new Date(), patch.group || null);
   if (b.on && today.syncedAt) b = Backlog.reconcile(b, today.open, new Date(), { prune: false });
   if (Array.isArray(patch.groups)) b = Backlog.setGroups(b, patch.groups);
   if ('slots' in patch) b = Backlog.setSlots(b, patch.slots, new Date(), patch.group || null);
@@ -1132,7 +1134,7 @@ ipcMain.handle('backlog:item', (_e, id, patch = {}) => {
   let b = Backlog.normalize(state.backlog);
   if (typeof patch.lane === 'string') b = Backlog.move(b, id, patch.lane, Number.isInteger(patch.index) ? patch.index : null, new Date(), typeof patch.group === 'string' ? patch.group : null);
   if (typeof patch.turn === 'string') b = Backlog.setTurn(b, id, patch.turn);
-  if ('ask' in patch || 'link' in patch || 'deadline' in patch || 'prompt' in patch || 'when' in patch || patch.didIt) b = Backlog.patchItem(b, id, patch);
+  if ('ask' in patch || 'link' in patch || 'deadline' in patch || 'day' in patch || 'prompt' in patch || 'when' in patch || patch.didIt) b = Backlog.patchItem(b, id, patch);
   if (b.auto) b = Backlog.fill(b); // a trigger may already hold
   state.backlog = b;
   return backlogChanged();
@@ -1185,7 +1187,7 @@ function claudeView() {
 // Put a task in the lane/turn Claude asked for. Active only if a slot is free.
 // claim(): a task from Claude never starts a session for itself, and takes a
 // slot held for a session started for its group.
-function claudeApply(id, { status, request, link, group, top, due, prompt, when, added = false }) {
+function claudeApply(id, { status, request, link, group, top, due, day, prompt, when, added = false }) {
   let b = Backlog.normalize(state.backlog);
   if (!b.items[id]) return;
   const now = new Date();
@@ -1206,6 +1208,7 @@ function claudeApply(id, { status, request, link, group, top, due, prompt, when,
   if (typeof request === 'string') b = Backlog.patchItem(b, id, { ask: request }, now);
   if (typeof link === 'string') b = Backlog.patchItem(b, id, { link }, now);
   if (typeof due === 'string') b = Backlog.patchItem(b, id, { deadline: due }, now);
+  if (typeof day === 'string') b = Backlog.patchItem(b, id, { day }, now);
   if (typeof prompt === 'string') b = Backlog.patchItem(b, id, { prompt }, now);
   if (typeof when === 'string') b = Backlog.patchItem(b, id, { when }, now);
   b = Backlog.patchItem(b, id, { noLaunch: true }, now); // Claude is already on it
@@ -1215,7 +1218,7 @@ function claudeApply(id, { status, request, link, group, top, due, prompt, when,
 const claudeDeps = () => ({
   version: app.getVersion(),
   view: claudeView,
-  add: async ({ title, status, request, link, top, group, due, details, prompt, when }) => {
+  add: async ({ title, status, request, link, top, group, due, day, details, prompt, when }) => {
     if (!client || !state.google.listId) throw new Error('Google Tasks is not connected in One Focus.');
     // While the insert is out, a sync may see the new task first: no session
     // starts until it's marked as Claude's (claim), so it never gets its own.
@@ -1226,7 +1229,7 @@ const claudeDeps = () => ({
       t = await client.insert(state.google.listId, { title, ...(details ? { notes: String(details).slice(0, 8000) } : {}) }, last && last.id);
       showAdded(t);
       state.backlog = Backlog.ensure({ ...Backlog.normalize(state.backlog), on: true }, { id: t.id, title: t.title });
-      claudeApply(t.id, { status, request, link, group, top, due, prompt, when, added: true });
+      claudeApply(t.id, { status, request, link, group, top, due, day, prompt, when, added: true });
     } finally {
       claudeAdding--;
     }
@@ -1236,7 +1239,7 @@ const claudeDeps = () => ({
     await resync(); // so the reply (and one_focus_backlog) shows it
     return { id: t.id, title: t.title };
   },
-  update: async (t, { status, request, link, title, group, due, details, prompt, when }) => {
+  update: async (t, { status, request, link, title, group, due, day, details, prompt, when }) => {
     if (!client || !state.google.listId) throw new Error('Google Tasks is not connected in One Focus.');
     const body = {};
     if (typeof title === 'string' && title.trim()) body.title = title.trim().slice(0, 1024);
@@ -1251,7 +1254,7 @@ const claudeDeps = () => ({
     }
     if (!state.backlog || !state.backlog.on) state.backlog = { ...Backlog.normalize(state.backlog), on: true };
     if (today.syncedAt) state.backlog = Backlog.reconcile(state.backlog, today.open, new Date(), { prune: false });
-    claudeApply(t.id, { status, request, link, group, due, prompt, when });
+    claudeApply(t.id, { status, request, link, group, due, day, prompt, when });
     store.save(state);
     push();
     if (title || typeof details === 'string') resync();

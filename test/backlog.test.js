@@ -292,3 +292,18 @@ test('triggers: empty group, a time; a task prompt starts its own session', () =
   b = B.fill(r.backlog, later(31)); // time came, a slot is free (2 slots)
   assert.equal(laneOf(b, 't'), 'active');
 });
+
+test('work days: set, never in the past (they roll to today), push today to tomorrow', () => {
+  const today = B.dayOf(T0);
+  const tomorrow = B.dayOf(later(24 * 60));
+  let b = B.reconcile({ ...B.blank(), auto: false }, open('a', 'b', 'c'), T0);
+  b = B.patchItem(b, 'a', { day: today }, T0);
+  b = B.patchItem(b, 'b', { day: '2020-01-01' }, T0); // past -> today
+  b = B.patchItem(b, 'c', { day: tomorrow }, T0);
+  assert.equal(b.items.b.day, today);
+  b = B.pushDays(b, tomorrow, T0);
+  assert.deepEqual(['a', 'b', 'c'].map((x) => b.items[x].day), [tomorrow, tomorrow, tomorrow]);
+  // two days later, a sync rolls them forward to that day
+  b = B.reconcile(b, open('a', 'b', 'c'), later(3 * 24 * 60));
+  assert.equal(b.items.a.day, B.dayOf(later(3 * 24 * 60)));
+});

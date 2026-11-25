@@ -250,6 +250,11 @@ For running several things at once (AI workflows side by side) without losing On
 - [x] Tidy (corner): a Claude Code session cleans up titles and details through the one_focus tools. Claude can now read/write details, prompts and triggers.
 - [x] Tasks show the moment they're added; Google syncs after. Active cards stand out more.
 
+## v0.42 — Days
+- [x] A work day per task (separate from the deadline): Day in the ⋯ menu (Today / Tomorrow / a date / No day). Days that pass roll to today, so nothing is ever behind; "→ Tomorrow" on the Today tab moves today's on.
+- [x] Day tabs (All · Today · Tomorrow · Later) filter each group's queue; quiet until hovered.
+- [x] Right-click a task for its menu. "New group" line at the end of View. Claude can set work_day.
+
 ## Parked
 - [x] ~~Full-screen announcements~~ → became the v0.7 blur for "Still on this?" and end of day
 

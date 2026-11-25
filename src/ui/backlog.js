@@ -71,6 +71,18 @@ function dueLabel(d) {
   if (days < 7) return 'due ' + weekdayFmt.format(day);
   return 'due ' + monthDayFmt.format(day);
 }
+// Work days: "today", "tomorrow", "Fri", "Nov 28".
+const localDay = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const todayKey = () => localDay(new Date());
+const tomorrowKey = () => localDay(new Date(Date.now() + 86400e3));
+function dayLabel(d) {
+  if (d <= todayKey()) return 'today';
+  if (d === tomorrowKey()) return 'tomorrow';
+  const day = new Date(d + 'T12:00:00');
+  return day - Date.now() < 6 * 86400e3 ? weekdayFmt.format(day) : monthDayFmt.format(day);
+}
+const inDayTab = (r, tab) =>
+  tab === 'today' ? !!r.day && r.day <= todayKey() : tab === 'tomorrow' ? r.day === tomorrowKey() : tab === 'later' ? !r.day || r.day > tomorrowKey() : true;
 const dueSoon = (d) => d && new Date(d + 'T23:59:59') - Date.now() < 86400e3;
 
 // One small ⋯ menu per row instead of a row of actions (only one open).
@@ -84,11 +96,16 @@ function closeBlMenu() {
 }
 const blMenuAway = (e) => blMenu && !blMenu.contains(e.target) && !e.target.closest('.bl-more') && closeBlMenu();
 const blMenuKey = (e) => e.key === 'Escape' && (e.stopPropagation(), closeBlMenu());
-function openBlMenu(btn, items) {
-  const had = blMenu && blMenu.parentElement === btn.parentElement;
+function openBlMenu(btn, items, at = null) {
+  const had = !at && blMenu && blMenu.parentElement === btn.parentElement;
   closeBlMenu();
   if (had) return;
   const m = el('div', 'bl-menu');
+  if (at) {
+    // Right-click: at the pointer (kept inside the row's width).
+    const r = btn.parentElement.getBoundingClientRect();
+    Object.assign(m.style, { left: Math.max(6, Math.min(at.x - r.left, r.width - 160)) + 'px', right: 'auto', top: at.y - r.top + 4 + 'px' });
+  }
   for (const [label, fn] of items) {
     const b = el('button', null, label);
     b.addEventListener('click', (e) => (e.stopPropagation(), closeBlMenu(), fn()));
@@ -218,18 +235,51 @@ function backlogList() {
       }, 'Details');
     };
     const editPrompt = () => openPromptEditor(main, r, L);
+    // Day: when you'll work on it. A row of quick picks under the title.
+    const editDay = () => {
+      rowEdit = true;
+      const card = el('div', 'bl-daypick');
+      const done = (day) => {
+        rowEdit = false;
+        card.remove();
+        if (day === undefined) return render();
+        blItem(t.id, { day });
+      };
+      const pick = (label, day) => {
+        const b = el('button', 'bl-chip' + ((r.day || '') === day ? ' is-on' : ''), label);
+        b.addEventListener('click', (e) => (e.stopPropagation(), done(day)));
+        return b;
+      };
+      const date = el('input', 'bl-date');
+      date.type = 'date';
+      date.min = todayKey();
+      date.value = r.day && r.day > tomorrowKey() ? r.day : '';
+      date.addEventListener('change', () => date.value && done(date.value));
+      date.addEventListener('click', (e) => e.stopPropagation());
+      card.append(pick('Today', todayKey()), pick('Tomorrow', tomorrowKey()), date);
+      if (r.day) card.append(pick('No day', ''));
+      card.addEventListener('keydown', (e) => (e.stopPropagation(), e.key === 'Escape' && done(undefined)));
+      card.addEventListener('focusout', (e) => !card.contains(e.relatedTarget) && setTimeout(() => card.isConnected && done(undefined), 150));
+      main.append(card);
+      card.querySelector('button').focus();
+    };
     const items = [];
     if (lane === 'active') {
       items.push([you && r.ask ? 'Edit request' : 'Needs me', () => inlineEdit(main.querySelector('.bl-ask') || below(), r.ask || '', 200, (v) => blItem(t.id, { ask: v }), 'Request')]);
       items.push(['Details', editNotes], [r.deadline ? 'Deadline · ' + r.deadline : 'Deadline', editDue], [r.link ? 'Change link' : 'Link', editLink], ['Back to queue', () => blItem(t.id, { lane: 'queued', index: 0 })]);
     } else if (lane === 'queued') {
       if (freeIn(r.group) > 0) items.push(['Start', () => blItem(t.id, { lane: 'active' })]);
-      items.push([r.prompt || r.when ? 'Prompt & trigger ·' : 'Prompt & trigger', editPrompt], ['Details', editNotes], [r.deadline ? 'Deadline · ' + r.deadline : 'Deadline', editDue], [r.link ? 'Change link' : 'Link', editLink], ['Evergreen', () => blItem(t.id, { lane: 'evergreen' })]);
+      items.push([r.day ? 'Day · ' + dayLabel(r.day) : 'Day', editDay], [r.prompt || r.when ? 'Edit prompt & trigger' : 'Prompt & trigger', editPrompt], ['Details', editNotes], [r.deadline ? 'Deadline · ' + r.deadline : 'Deadline', editDue], [r.link ? 'Change link' : 'Link', editLink], ['Evergreen', () => blItem(t.id, { lane: 'evergreen' })]);
     } else items.push(['Details', editNotes], [r.link ? 'Change link' : 'Link', editLink], ['Queue', () => blItem(t.id, { lane: 'queued' })]);
     const more = el('button', 'bl-more', '⋯');
     more.title = 'More';
     more.setAttribute('aria-label', 'More');
     more.addEventListener('click', (e) => (e.stopPropagation(), openBlMenu(more, items)));
+    li.addEventListener('contextmenu', (e) => {
+      if (e.target.closest('input, textarea, select')) return;
+      e.preventDefault();
+      openBlMenu(more, items, { x: e.clientX, y: e.clientY });
+    });
 
     // Right side: whose turn (click to flip), the deadline or queued time, or last done.
     const side = el('span', 'bl-side');
@@ -246,7 +296,8 @@ function backlogList() {
         m.title = (r.prompt ? 'Prompt: ' + r.prompt.slice(0, 200) + '\n' : '') + 'Starts ' + whenLabel(r.when, L);
         side.append(m);
       }
-      if (!r.deadline) side.append(timeNode('d', 'ago', r.queuedAt));
+      if (r.day) side.append(el('span', 'bl-day' + (r.day <= todayKey() ? ' is-today' : ''), dayLabel(r.day)));
+      else if (!r.deadline) side.append(timeNode('d', 'ago', r.queuedAt));
     } else side.append(timeNode('d', 'done', r.lastDone));
     li.append(grip, check, main, more, side);
     return li;
@@ -298,6 +349,24 @@ function backlogList() {
     return wrap;
   };
 
+  // Day tabs (quiet, on hover; they stay while one is picked): which part of
+  // each queue to show. On Today, → Tomorrow moves today's to tomorrow.
+  const tab = S.backlog.dayTab || 'all';
+  const tabs = el('div', 'bl-days' + (tab !== 'all' ? ' is-set' : ''));
+  for (const [k, label] of [['all', 'All'], ['today', 'Today'], ['tomorrow', 'Tomorrow'], ['later', 'Later']]) {
+    const b = el('button', 'bl-days__tab', label);
+    b.setAttribute('aria-selected', String(tab === k));
+    b.addEventListener('click', async () => ((S = await api.backlog({ dayTab: k })), render()));
+    tabs.append(b);
+  }
+  if (tab === 'today' && L.queued.some((r) => inDayTab(r, 'today'))) {
+    const push = el('button', 'bl-days__push', '→ Tomorrow');
+    push.title = 'Move everything planned for today to tomorrow';
+    push.addEventListener('click', async () => ((S = await api.backlog({ pushTo: tomorrowKey() })), render()));
+    tabs.append(push);
+  }
+  box.append(tabs);
+
   // One section per group (a project): what's in flight, its slots, then its
   // queue (quieter), then a field to add to it on hover.
   const many = L.groups.length > 1;
@@ -325,11 +394,30 @@ function backlogList() {
     for (let i = rows.length + holds.length; i < g.slots; i++) ul.append(el('li', 'bl-slot', 'Open slot'));
     const hd = head(many ? g.name : 'Active', `${rows.length + holds.length}/${g.slots}`, slotBtns);
     if (many) hd.classList.add('is-group');
-    const queue = list('queued', L.queued.filter((r) => r.group === g.id), g.id);
+    const queue = list('queued', L.queued.filter((r) => r.group === g.id && inDayTab(r, tab)), g.id);
     queue.classList.add('bl-queue');
     sec.append(hd, ul, queue, addField(g));
     box.append(sec);
   }
+
+  // A new group: a slim line on hover after the last one.
+  const ng = el('div', 'su-tasks__addwrap bl-add bl-newgroup');
+  const ngIn = el('input', 'su-tasks__add');
+  ngIn.type = 'text';
+  ngIn.maxLength = 40;
+  ngIn.placeholder = 'New group';
+  ngIn.addEventListener('keydown', async (e) => {
+    e.stopPropagation();
+    if (e.key === 'Escape') return ngIn.blur();
+    if (e.key !== 'Enter' || !ngIn.value.trim()) return;
+    const name = ngIn.value.trim();
+    ngIn.value = '';
+    ngIn.blur();
+    const groups = (S.backlog.groups || []).map((g) => ({ ...g }));
+    S = await api.backlog({ groups: [...groups, { id: 'g' + Date.now().toString(36), name, slots: 1, match: '', launch: 'off' }] });
+    render();
+  });
+  ng.append(ngIn);
 
   // Evergreen: standing tasks. Brighter when every slot is busy and nothing
   // needs you: it's what to do while you wait.
@@ -339,6 +427,7 @@ function backlogList() {
   if (waiting) eg.classList.add('is-now'), egList.classList.add('is-now');
   eg.append(head('Evergreen', ''), egList);
   box.append(eg);
+  if ((S.backlog.groups || []).length < 8) box.append(ng); // at the very end, so it never opens a gap
   return box;
 }
 let rowEdit = false; // a deadline picker or the prompt editor is open

@@ -1289,3 +1289,22 @@ input[type="time"]::-webkit-calendar-picker-indicator { opacity: 0.35; cursor: p
 .bl-notes > span { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
 .bl-add .su-tasks__add { margin-top: 0; }
 .bl-group .bl-head.is-group, .bl-evergreen .bl-head { padding-top: 16px; }
+
+/* Day tabs: quiet until the pointer is on the list (or one is picked). */
+.bl-days { display: flex; align-items: center; gap: 14px; padding: 0 10px 6px; opacity: 0; transition: opacity var(--dur) var(--ease); }
+.bl:hover .bl-days, .bl-days.is-set, .bl-days:focus-within { opacity: 1; }
+.bl-days__tab { font-size: 12px; color: var(--fg-tertiary); padding: 2px 0; border-bottom: 1px solid transparent; }
+.bl-days__tab:hover { color: var(--fg-secondary); }
+.bl-days__tab[aria-selected="true"] { color: var(--fg); border-bottom-color: var(--fg-tertiary); }
+.bl-days__push { margin-left: auto; font-size: 12px; color: var(--fg-tertiary); }
+.bl-days__push:hover { color: var(--fg); }
+/* A work day on a row: tertiary; today in secondary. */
+.bl-day { font-size: 12px; color: var(--fg-tertiary); white-space: nowrap; }
+.bl-day.is-today { color: var(--fg-secondary); }
+/* The day picker: a row of chips under the title. */
+.bl-daypick { margin-top: 4px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.bl-chip { font-size: 12px; padding: 3px 10px; border-radius: 999px; color: var(--fg-secondary); box-shadow: inset 0 0 0 1px var(--hairline); }
+.bl-chip:hover, .bl-chip.is-on { color: var(--fg); background: var(--fill); }
+.bl-daypick .bl-date { margin-top: 0; }
+/* New group: a slim line on hover. */
+.bl-newgroup { padding-top: 10px; }

@@ -199,6 +199,7 @@ Panels are for the occasional look, not the resting state, so they can be denser
 - One ⋯ button per row on hover opens a small menu (Prompt & trigger, Details, Deadline, Link, Start / Back to queue / Evergreen). Editors open as mini cards under the title.
 - Details: a small card under the title (12px secondary on a 3.5% fill), two lines then an ellipsis; shown only in "Details" mode (corner switch). Deadlines take the time's place: "due Fri", primary ink when due within a day. A queued task with a trigger shows a tertiary ⏵.
 - Corner (on proximity): Backlog · Manual/Auto · Titles/Details · Tidy.
+- v0.42: day tabs at the top of the list (All · Today · Tomorrow · Later, 12px tertiary, the picked one primary with a hairline underline) show on hover and stay while one is picked; on Today a quiet "→ Tomorrow" at the right. A queued task's work day takes the time's place ("today" secondary, "tomorrow", "Fri"). Work days never lie in the past: they roll to today. Right-click a row = the ⋯ menu at the pointer. "New group" is a slim hover line at the very end.
 - **No helper text** anywhere: no explanations, empty-state sentences or hint lines. Labels and data only; tooltips at most.
 
 ## Adding something new

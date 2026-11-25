@@ -90,8 +90,28 @@ const freeIn = (b, gid, now) => groupById(b, gid).slots - activeIn(b, gid) - pen
 // fetched (since, ms), which an older list can't know about yet. Titles are
 // kept for the group words.
 // prune: false (anywhere but a fresh sync) only adds what's missing.
-function reconcile(bl, open, now = new Date(), { since = null, prune = true } = {}) {
+// The local date, YYYY-MM-DD.
+const dayOf = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+// Work days never lie in the past: a day that has gone by becomes today.
+function rollDays(b, now) {
+  const today = dayOf(now);
+  for (const [id, it] of Object.entries(b.items)) if (it.day && it.day < today) b.items[id] = { ...it, day: today };
+  return b;
+}
+
+// Move the work day of the queued tasks planned for today (and any earlier)
+// to another day — the whole list, or one group.
+function pushDays(bl, to, now = new Date(), group = null) {
   const b = normalize(bl);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(to || ''))) return b;
+  const today = dayOf(now);
+  for (const [id, it] of inLane(b, 'queued')) if (it.day && it.day <= today && (!group || groupOf(b, id) === group)) b.items[id] = { ...it, day: to };
+  return b;
+}
+
+function reconcile(bl, open, now = new Date(), { since = null, prune = true } = {}) {
+  const b = rollDays(normalize(bl), now);
   const ids = new Set(open.map((t) => t.id));
   for (const [id, it] of Object.entries(b.items))
     if (prune && !ids.has(id) && !(since && Date.parse(it.addedAt || 0) >= since)) {
@@ -272,6 +292,11 @@ function patchItem(bl, id, patch, now = new Date()) {
     if (/^(slot|empty|after:[\w-]{1,80}|at:\d{4}-\d{2}-\d{2}T[\d:.]+Z?)$/.test(w)) next.when = w;
     else delete next.when;
   }
+  if ('day' in patch) {
+    const d = String(patch.day || '').slice(0, 10);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(d)) next.day = d < dayOf(now) ? dayOf(now) : d;
+    else delete next.day;
+  }
   if ('deadline' in patch) {
     const d = String(patch.deadline || '').slice(0, 10);
     if (/^\d{4}-\d{2}-\d{2}$/.test(d)) next.deadline = d;
@@ -378,4 +403,4 @@ function lanes(bl, open, now = new Date()) {
   return { active, queued: rows('queued').sort(rank), evergreen: rows('evergreen').sort(rank), slots: b.slots, groups };
 }
 
-module.exports = { blank, normalize, reconcile, ensure, fill, move, claim, release, setTurn, patchItem, setSlots, setGroups, launches, message, lanes, groupOf, LANES, MAX_SLOTS, PENDING_MS };
+module.exports = { dayOf, pushDays, rollDays, blank, normalize, reconcile, ensure, fill, move, claim, release, setTurn, patchItem, setSlots, setGroups, launches, message, lanes, groupOf, LANES, MAX_SLOTS, PENDING_MS };
