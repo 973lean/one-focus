@@ -281,6 +281,16 @@ function renderSettings() {
       : w.on && w.url
       ? `Live at ${w.url.replace('https://', '')} · updated ${w.publishedAt ? hm(w.publishedAt) : '—'}`
       : 'Off. See today and the coming days in any browser at a private link.';
+  // Claude: on/off, then add to Claude Desktop / copy the Claude Code command.
+  const cl = S.claude || {};
+  $('cl-on').hidden = !!cl.on;
+  $('cl-desktop').hidden = $('cl-code').hidden = $('cl-off').hidden = $('cl-hint').hidden = !cl.on;
+  if (!$('cl-desktop').dataset.busy) $('cl-desktop').textContent = cl.desktop ? 'In Claude Desktop ✓' : 'Add to Claude Desktop';
+  $('cl-status').textContent = cl.error
+    ? cl.error
+    : cl.on
+    ? `On${cl.port ? '' : ' · starting…'}. Claude can add its work to your backlog, mark it running, ask you for things and finish it.`
+    : 'Off. Let Claude put its work on your backlog: running tasks, requests for you, links back to the chat.';
   $('app-check').hidden = u.status === 'dev' || u.status === 'ready';
   $('app-check').classList.toggle('is-spinning', u.status === 'checking' || u.status === 'downloading');
   $('g-setup').hidden = S.connected;
@@ -422,3 +432,25 @@ renderSettings = function () {
   _renderSettings2();
   renderNotes();
 };
+
+// ---------- Claude ----------
+$('cl-on').addEventListener('click', async () => ((S = await api.claudeSet(true)), renderSettings()));
+$('cl-off').addEventListener('click', async () => ((S = await api.claudeSet(false)), renderSettings()));
+$('cl-desktop').addEventListener('click', async () => {
+  const b = $('cl-desktop');
+  b.dataset.busy = '1';
+  const r = await api.claudeDesktop();
+  b.textContent = r.error ? 'Couldn’t add' : 'Added · restart Claude';
+  if (r.error) $('cl-status').textContent = r.error;
+  setTimeout(async () => {
+    delete b.dataset.busy;
+    S = await api.getState();
+    renderSettings();
+  }, 2500);
+});
+$('cl-code').addEventListener('click', async () => {
+  const b = $('cl-code');
+  const r = await api.claudeCode();
+  b.textContent = r.error ? r.error : 'Copied · paste in a terminal';
+  setTimeout(() => (b.textContent = 'Copy for Claude Code'), 2500);
+});

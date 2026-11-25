@@ -7,6 +7,9 @@ const google = require('./google');
 const web = require('./web');
 const planning = require('./plan');
 const Backlog = require('./backlog');
+const Claude = require('./claude');
+const http = require('http');
+const crypto = require('crypto');
 
 const VIEW_BASE = 'https://973lean.github.io/one-focus/';
 
@@ -60,6 +63,7 @@ function snapshot() {
     plans: plansFor([...today.open, ...today.done]),
     notes: state.notes || '',
     backlog: Backlog.normalize(state.backlog),
+    claude: { on: !!(state.claude && state.claude.on), port: claudePort, error: claudeError, desktop: claudeDesktopOn },
     notesArchive: state.notesArchive || [],
     shortcutTaken,
     itemMins: Object.fromEntries(Object.entries(state.taskMeta).filter(([k, m]) => k.startsWith('i:') && m.mins).map(([k, m]) => [k.slice(2), m.mins])),
@@ -1120,6 +1124,199 @@ ipcMain.handle('link:open', (_e, u) => {
   if (typeof u === 'string' && /^https?:\/\/\S+$/i.test(u)) shell.openExternal(u);
 });
 
+// ---------- Claude: an MCP server on 127.0.0.1 (src/claude.js) ----------
+// Claude Desktop starts mcp-bridge.js (this exe in node mode) which forwards
+// to here; Claude Code connects over HTTP. A random token guards it, and
+// requests from web pages (an Origin header) or other hosts are refused.
+let claudeServer = null;
+let claudePort = null;
+let claudeError = null;
+let claudeDesktopOn = false; // One Focus is in a Claude Desktop config (checked on start and after adding)
+const claudeDir = () => path.join(app.getPath('userData'), 'claude');
+const claudeApiFile = () => path.join(claudeDir(), 'api.json');
+
+function claudeView() {
+  const b = Backlog.normalize(state.backlog);
+  return { on: b.on, auto: b.auto, ...Backlog.lanes(b, today.open), open: today.open };
+}
+
+// Put a task in the lane/turn Claude asked for. Active only if a slot is free.
+function claudeApply(id, { status, request, link }) {
+  let b = Backlog.normalize(state.backlog);
+  const it = b.items[id];
+  if (!it) return;
+  const wantActive = status === 'running' || status === 'needs_you' || (request && status !== 'queued' && status !== 'evergreen');
+  if (wantActive && it.lane !== 'active') b = Backlog.move(b, id, 'active');
+  else if ((status === 'queued' || status === 'evergreen') && it.lane !== status) b = Backlog.move(b, id, status);
+  if (b.items[id] && b.items[id].lane === 'active') {
+    if (status === 'running') b = Backlog.setTurn(b, id, 'agent');
+    if (status === 'needs_you' && !request) b = Backlog.setTurn(b, id, 'you');
+  }
+  if (typeof request === 'string') b = Backlog.patchItem(b, id, { ask: request });
+  if (typeof link === 'string') b = Backlog.patchItem(b, id, { link });
+  state.backlog = b;
+}
+
+const claudeDeps = () => ({
+  version: app.getVersion(),
+  view: claudeView,
+  add: async ({ title, status, request, link, top }) => {
+    if (!client || !state.google.listId) throw new Error('Google Tasks is not connected in One Focus.');
+    const last = today.open[today.open.length - 1];
+    const t = await client.insert(state.google.listId, { title }, last && last.id);
+    state.backlog = { ...Backlog.normalize(state.backlog), on: true };
+    await resync(); // the new task joins the queue
+    if (top) state.backlog = Backlog.move(state.backlog, t.id, 'queued', 0);
+    claudeApply(t.id, { status, request, link });
+    store.save(state);
+    push();
+    return { id: t.id, title: t.title };
+  },
+  update: async (t, { status, request, link, title }) => {
+    if (!client || !state.google.listId) throw new Error('Google Tasks is not connected in One Focus.');
+    if (typeof title === 'string' && title.trim()) await client.patch(state.google.listId, t.id, { title: title.trim().slice(0, 1024) });
+    if (status === 'done') {
+      await client.patch(state.google.listId, t.id, { status: 'completed' });
+      return resync();
+    }
+    if (!state.backlog || !state.backlog.on) state.backlog = Backlog.reconcile({ ...Backlog.normalize(state.backlog), on: true }, today.open);
+    claudeApply(t.id, { status, request, link });
+    store.save(state);
+    push();
+    if (title) await resync();
+  },
+});
+
+function startClaude() {
+  stopClaude();
+  claudeDesktopOn = claudeDesktopPaths().some(hasOurServer);
+  const c = (state.claude = { port: 47815, ...(state.claude || {}), on: true });
+  if (!c.token) c.token = crypto.randomBytes(24).toString('hex');
+  claudeError = null;
+  // The bridge (and the tool list it gives while the app is closed) must sit
+  // outside the asar: copy both next to api.json.
+  try {
+    fs.mkdirSync(claudeDir(), { recursive: true });
+    for (const f of ['mcp-bridge.js', 'claude.js']) fs.writeFileSync(path.join(claudeDir(), f), fs.readFileSync(path.join(__dirname, f)));
+  } catch (e) {
+    claudeError = 'Could not write the Claude bridge: ' + e.message;
+  }
+  const server = http.createServer((req, res) => {
+    const send = (code, body) => {
+      res.writeHead(code, body ? { 'Content-Type': 'application/json' } : {});
+      res.end(body ? JSON.stringify(body) : undefined);
+    };
+    const host = String(req.headers.host || '');
+    if (req.url.split('?')[0] !== '/mcp') return send(404);
+    if (req.headers.origin || !/^(127\.0\.0\.1|localhost):\d+$/.test(host)) return send(403); // never from a web page
+    const auth = String(req.headers.authorization || '');
+    const want = Buffer.from('Bearer ' + c.token);
+    if (auth.length !== want.length || !crypto.timingSafeEqual(Buffer.from(auth), want)) return send(401);
+    if (req.method !== 'POST') return send(405);
+    let raw = '';
+    req.on('data', (d) => {
+      raw += d;
+      if (raw.length > 1e6) req.destroy();
+    });
+    req.on('end', async () => {
+      let msg;
+      try {
+        msg = JSON.parse(raw);
+      } catch {
+        return send(400, { jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Parse error' } });
+      }
+      const deps = claudeDeps();
+      const replies = (await Promise.all((Array.isArray(msg) ? msg : [msg]).map((m) => Claude.handle(m, deps)))).filter(Boolean);
+      if (!replies.length) return send(202);
+      send(200, Array.isArray(msg) ? replies : replies[0]);
+    });
+  });
+  let tries = 0;
+  server.on('error', (e) => {
+    if (e.code === 'EADDRINUSE' && tries++ < 10) return server.listen(++c.port, '127.0.0.1');
+    claudeError = 'Could not start: ' + e.message;
+    push();
+  });
+  server.listen(c.port, '127.0.0.1', () => {
+    claudeServer = server;
+    claudePort = c.port;
+    try {
+      fs.writeFileSync(claudeApiFile(), JSON.stringify({ port: c.port, token: c.token }));
+    } catch (e) {
+      claudeError = 'Could not write api.json: ' + e.message;
+    }
+    store.save(state);
+    push();
+  });
+}
+function stopClaude() {
+  if (claudeServer) claudeServer.close();
+  claudeServer = null;
+  claudePort = null;
+}
+
+// Claude Desktop keeps its MCP servers in claude_desktop_config.json (the
+// Store version keeps it under its package folder).
+function claudeDesktopPaths() {
+  if (process.platform !== 'win32') return [path.join(app.getPath('appData'), 'Claude', 'claude_desktop_config.json')];
+  const out = [path.join(app.getPath('appData'), 'Claude', 'claude_desktop_config.json')];
+  const pk = path.join(process.env.LOCALAPPDATA || '', 'Packages');
+  try {
+    for (const d of fs.readdirSync(pk)) if (/^Claude_/i.test(d)) out.push(path.join(pk, d, 'LocalCache', 'Roaming', 'Claude', 'claude_desktop_config.json'));
+  } catch {}
+  return out;
+}
+function hasOurServer(file) {
+  try {
+    return !!JSON.parse(fs.readFileSync(file, 'utf8')).mcpServers['one-focus'];
+  } catch {
+    return false;
+  }
+}
+const claudeDesktopEntry = () => ({ command: process.execPath, args: [path.join(claudeDir(), 'mcp-bridge.js'), claudeApiFile()], env: { ELECTRON_RUN_AS_NODE: '1' } });
+
+ipcMain.handle('claude:set', (_e, on) => {
+  if (on) startClaude();
+  else {
+    stopClaude();
+    state.claude = { ...(state.claude || {}), on: false };
+    store.save(state);
+  }
+  push();
+  return snapshot();
+});
+// Add One Focus to Claude Desktop (every config found; the usual one if none).
+ipcMain.handle('claude:desktop', () => {
+  const found = claudeDesktopPaths().filter((f) => fs.existsSync(path.dirname(f)));
+  const targets = found.length ? found : [claudeDesktopPaths()[0]];
+  try {
+    for (const f of targets) {
+      let cfg = {};
+      try {
+        cfg = JSON.parse(fs.readFileSync(f, 'utf8'));
+      } catch (e) {
+        if (fs.existsSync(f) && fs.readFileSync(f, 'utf8').trim()) throw new Error(`${f} isn't valid JSON, so it was left alone.`);
+      }
+      cfg.mcpServers = { ...(cfg.mcpServers || {}), 'one-focus': claudeDesktopEntry() };
+      fs.mkdirSync(path.dirname(f), { recursive: true });
+      if (fs.existsSync(f)) fs.copyFileSync(f, f + '.bak');
+      fs.writeFileSync(f, JSON.stringify(cfg, null, 2));
+    }
+    claudeDesktopOn = true;
+    return { ok: true, snap: snapshot() };
+  } catch (e) {
+    return { error: e.message };
+  }
+});
+// Claude Code: one command to paste in a terminal (copied for you).
+ipcMain.handle('claude:code', () => {
+  const c = state.claude || {};
+  if (!claudePort || !c.token) return { error: 'Turn on the Claude connection first.' };
+  const cmd = `claude mcp add --scope user --transport http one-focus http://127.0.0.1:${claudePort}/mcp --header "Authorization: Bearer ${c.token}"`;
+  clipboard.writeText(cmd);
+  return { ok: true };
+});
+
 // One-off breaks placed in Setup. plan null = remove.
 ipcMain.handle('break:set', (_e, id, plan) => {
   const keep = Date.now() - 14 * 86400e3;
@@ -1622,6 +1819,7 @@ app.whenReady().then(() => {
   setupUpdates();
   watchCorners();
   applyShortcuts();
+  if (state.claude && state.claude.on) startClaude();
   applyLoginItem();
   app.on('will-quit', () => globalShortcut.unregisterAll());
 

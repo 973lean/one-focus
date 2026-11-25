@@ -229,7 +229,12 @@ For running several things at once (AI workflows side by side) without losing On
 - [x] Evergreen: standing tasks; ticking records "done 2h ago" and it stays. Comes forward ("while you wait") when every slot is busy and nothing needs you.
 - [x] Auto: finishing an active task, or adding a slot, pulls in the top of the queue.
 - [x] Drag rows between lanes (a full Active lane refuses). Links per task (e.g. the chat it runs in). Web view shows what's in flight.
-- [ ] Claude chats: Claude writes the task, the link and the request itself, and fills the backlog (needs a way in from claude.ai: API, connector or extension).
+
+## v0.39 — Claude writes to the backlog
+- [x] Settings → Claude: a local MCP server (127.0.0.1, random token; web pages and other hosts refused). Tools: read the backlog, add a task (running / needs you / queued / evergreen, request, link), update one (request, running, done, link, rename).
+- [x] "Add to Claude Desktop" writes it into claude_desktop_config.json (keeps the rest, makes a .bak); it runs through mcp-bridge.js, the app's own exe in node mode, and still starts while the app is closed. "Copy for Claude Code" copies a `claude mcp add` command.
+- [x] Instructions tell Claude to add long work as running, ask for things as requests, set running again, then done.
+- [ ] Cloud sessions and claude.ai in a browser can't reach 127.0.0.1: would need a relay (e.g. Google Tasks notes or a Gist inbox).
 
 ## Parked
 - [x] ~~Full-screen announcements~~ → became the v0.7 blur for "Still on this?" and end of day
