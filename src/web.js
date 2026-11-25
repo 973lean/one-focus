@@ -8,7 +8,7 @@ const dayKey = (d) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
 // Everything the page shows, nothing more: titles, times, totals.
-function buildView({ now = new Date(), current, open, done, sessions, live, taskMeta }) {
+function buildView({ now = new Date(), current, open, done, sessions, live, taskMeta, backlog = null }) {
   const today = dayKey(now);
   const sod = new Date(now);
   sod.setHours(0, 0, 0, 0);
@@ -30,6 +30,15 @@ function buildView({ now = new Date(), current, open, done, sessions, live, task
     ],
     blocks,
     focusedMs: focused,
+    // Backlog mode: what's in flight, what needs you, what waits.
+    backlog: backlog
+      ? {
+          slots: backlog.slots,
+          active: backlog.active.map((r) => ({ title: r.task.title, turn: r.turn, since: r.since, ask: r.ask || null })),
+          queued: backlog.queued.map((r) => ({ title: r.task.title, queuedAt: r.queuedAt })),
+          evergreen: backlog.evergreen.map((r) => ({ title: r.task.title, lastDone: r.lastDone || null })),
+        }
+      : null,
     upcoming: Object.keys(upcoming)
       .sort()
       .slice(0, 7)

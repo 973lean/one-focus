@@ -58,6 +58,7 @@ const DEFAULTS = {
   breaks: [], // one-off breaks placed in Setup: { id, start, mins }
   autoPlanFired: { date: null, at: [] }, // Planner auto-opens already done today
   remindFired: { date: null, ids: [] }, // reminders already shown today
+  backlog: { on: false, auto: true, slots: 3, items: {} }, // View's backlog mode (src/backlog.js)
 };
 
 const dir = () => app.getPath('userData');

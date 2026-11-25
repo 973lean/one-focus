@@ -6,6 +6,7 @@ const Tracker = require('./tracker');
 const google = require('./google');
 const web = require('./web');
 const planning = require('./plan');
+const Backlog = require('./backlog');
 
 const VIEW_BASE = 'https://973lean.github.io/one-focus/';
 
@@ -58,6 +59,7 @@ function snapshot() {
     goals: goalsFor([cur, held, ...today.open.map((t) => ({ key: 'g:' + t.id }))]),
     plans: plansFor([...today.open, ...today.done]),
     notes: state.notes || '',
+    backlog: Backlog.normalize(state.backlog),
     notesArchive: state.notesArchive || [],
     shortcutTaken,
     itemMins: Object.fromEntries(Object.entries(state.taskMeta).filter(([k, m]) => k.startsWith('i:') && m.mins).map(([k, m]) => [k.slice(2), m.mins])),
@@ -139,6 +141,7 @@ async function publishWeb() {
       sessions: state.sessions,
       live: state.open,
       taskMeta: state.taskMeta,
+      backlog: state.backlog && state.backlog.on ? Backlog.lanes(state.backlog, today.open) : null,
     });
     state.web.gistId = await web.publish(token, state.web.gistId, view);
     state.web.publishedAt = nowIso();
@@ -284,7 +287,7 @@ const startOfDay = () => {
   return d;
 };
 // Google stores a task's date as midnight UTC of that day: keep "YYYY-MM-DD".
-const pick = (t) => ({ id: t.id, title: t.title.trim(), notes: t.notes || '', completed: t.completed || null, due: t.due ? t.due.slice(0, 10) : null });
+const pick = (t) => ({ id: t.id, title: t.title.trim(), notes: t.notes || '', completed: t.completed || null, due: t.due ? t.due.slice(0, 10) : null, updated: t.updated || null });
 const byPosition = (a, b) => (a.position < b.position ? -1 : a.position > b.position ? 1 : 0);
 
 let syncing = null;
@@ -375,6 +378,8 @@ async function doSync() {
       .filter((t) => t.status === 'completed' && t.completed && Date.parse(t.completed) >= dayAgo && !cleared[t.id])
       .sort((a, b) => b.completed.localeCompare(a.completed));
     today = { open: open.map(withItems), done: done.map(withItems), recent: recent.map(withItems), syncedAt: new Date().toISOString(), error: null };
+    // Backlog mode: new tasks join the queue, finished ones leave, auto fills slots.
+    if (state.backlog && state.backlog.on) state.backlog = Backlog.reconcile(state.backlog, today.open);
 
     // Tasks never start on their own. If the running task was finished or
     // deleted (here or in Google Tasks), stop it and go idle.
@@ -457,6 +462,8 @@ function createWindow() {
       ? rx < b.width / 2 ? 'menu' : 'controls'
       : b.height - ry < 72 && b.width - rx < 96
       ? 'gear'
+      : b.height - ry < 72 && rx < 260
+      ? 'corner'
       : null;
     if (z !== zone) {
       zone = z;
@@ -1081,6 +1088,36 @@ ipcMain.handle('task:split', async (_e, id, cutIso, resumeIso) => {
   } catch (e) {
     return { error: e.message };
   }
+});
+
+// ---------- Backlog mode (View): active / queued / evergreen ----------
+// settings: { on, auto, slots }. item: { lane, index } moves it; { turn }
+// says whose turn; { ask, link, didIt } edit it. Every change re-runs the
+// auto fill and goes out to the page and the web view.
+function backlogChanged() {
+  store.save(state);
+  push(); // also schedules the web view
+  return snapshot();
+}
+ipcMain.handle('backlog:settings', (_e, patch = {}) => {
+  let b = Backlog.normalize(state.backlog);
+  if ('on' in patch) b.on = !!patch.on;
+  if ('auto' in patch) b.auto = !!patch.auto;
+  if (b.on) b = Backlog.reconcile(b, today.open);
+  if ('slots' in patch) b = Backlog.setSlots(b, patch.slots);
+  state.backlog = b;
+  return backlogChanged();
+});
+ipcMain.handle('backlog:item', (_e, id, patch = {}) => {
+  let b = Backlog.normalize(state.backlog);
+  if (typeof patch.lane === 'string') b = Backlog.move(b, id, patch.lane, Number.isInteger(patch.index) ? patch.index : null);
+  if (typeof patch.turn === 'string') b = Backlog.setTurn(b, id, patch.turn);
+  if ('ask' in patch || 'link' in patch || patch.didIt) b = Backlog.patchItem(b, id, patch);
+  state.backlog = b;
+  return backlogChanged();
+});
+ipcMain.handle('link:open', (_e, u) => {
+  if (typeof u === 'string' && /^https?:\/\/\S+$/i.test(u)) shell.openExternal(u);
 });
 
 // One-off breaks placed in Setup. plan null = remove.

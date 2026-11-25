@@ -216,6 +216,21 @@
 - [x] Settings → Notes: jot changes as they come up; Copy & clear puts them on the clipboard for a prompt, clears the box and keeps a dated copy ("Copied before", last 30).
 - [x] View: bigger tick circles; no Done heading; clear-all icon by the gear; add field on hover.
 
+## v0.37 — Planner and lists
+- [x] View and Planner Tasks: drag a task by a hover grip to reorder (saved to Google).
+- [x] Planner: "Remove gap" on a block that runs into a break or the gap between work blocks: it keeps the part before, a same-name copy (1/2, 2/2) takes the rest after.
+- [x] Day headers show just the name (planned total on hover). Shortcuts retry if Windows refused one.
+
+## v0.38 — Backlog mode (View)
+For running several things at once (AI workflows side by side) without losing One Focus: of everything in flight, the oldest request is the one thing to do now.
+- [x] Bottom-left corner of View (on hover): Backlog on/off, and Manual / Auto.
+- [x] Active: limited by open slots (+ / − on hover). Each is "Running" (it's working, you wait) or "Your turn" (a request: it needs you, with a short line saying what). Requests lead; the first has a soft fill. Live timers. Click the state to flip it.
+- [x] Queued: in order, with when it was queued ("3h ago"). Start fills a free slot.
+- [x] Evergreen: standing tasks; ticking records "done 2h ago" and it stays. Comes forward ("while you wait") when every slot is busy and nothing needs you.
+- [x] Auto: finishing an active task, or adding a slot, pulls in the top of the queue.
+- [x] Drag rows between lanes (a full Active lane refuses). Links per task (e.g. the chat it runs in). Web view shows what's in flight.
+- [ ] Claude chats: Claude writes the task, the link and the request itself, and fills the backlog (needs a way in from claude.ai: API, connector or extension).
+
 ## Parked
 - [x] ~~Full-screen announcements~~ → became the v0.7 blur for "Still on this?" and end of day
 

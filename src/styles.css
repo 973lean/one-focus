@@ -1111,3 +1111,83 @@ input[type="time"]::-webkit-calendar-picker-indicator { opacity: 0.35; cursor: p
 .su-block.is-busy { opacity: 0.45; pointer-events: none; }
 /* Planner Tasks tab: room on the left for the arrows, even in a narrow window. */
 .su-days > .su-tasks { padding-left: 22px; padding-right: 22px; }
+
+/* ---------- Backlog mode (View): Active · Queued · Evergreen ---------- */
+.bl { position: relative; }
+.bl-head { display: flex; align-items: baseline; gap: 8px; padding: 22px 6px 8px; font-size: 11px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: var(--fg-tertiary); }
+.bl > .bl-head:first-child { padding-top: 0; }
+.bl-head__count { font-weight: 400; letter-spacing: 0.02em; font-variant-numeric: tabular-nums; }
+.bl-head__hint { font-weight: 400; letter-spacing: 0.02em; text-transform: none; font-size: 12px; }
+.bl-head.is-now { color: var(--fg-secondary); }
+.bl-head.is-now .bl-head__hint { color: var(--fg); }
+/* + / − slot buttons: only while the pointer is on the Active heading or list. */
+.bl-slots { margin-left: auto; display: flex; gap: 2px; opacity: 0; transition: opacity var(--dur) var(--ease); }
+.bl-head:hover .bl-slots, .bl-head:has(+ .bl-list:hover) .bl-slots { opacity: 1; }
+.bl-slots .bl-act { width: 20px; height: 18px; padding: 0; font-size: 14px; line-height: 1; text-transform: none; letter-spacing: 0; text-align: center; }
+.bl-slots .bl-act:disabled { opacity: 0.3; cursor: default; }
+
+.bl-list li.bl-row { gap: 14px; }
+.bl-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.bl-line { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.bl-line > .t { flex: 0 1 auto; min-width: 0; }
+.bl-link { flex-shrink: 0; width: 14px; height: 14px; display: inline-flex; align-items: center; justify-content: center; color: var(--fg-tertiary); }
+.bl-link:hover { color: var(--fg); }
+.bl-link svg { width: 9px; height: 9px; fill: none; stroke: currentColor; stroke-width: 1.2; stroke-linecap: round; stroke-linejoin: round; }
+.bl-ask { font-size: 12px; color: var(--fg-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bl-ask::before { content: "↳ "; color: var(--fg-tertiary); }
+
+/* Hover actions take the place of the time on the right (none when hidden). */
+.bl-acts { display: none; flex-shrink: 0; gap: 12px; }
+.bl-list li.bl-row:hover .bl-acts { display: flex; }
+.bl-list li.bl-row:not([data-lane="active"]):hover > .d { display: none; }
+.bl-act { font-size: 12px; color: var(--fg-tertiary); white-space: nowrap; }
+.bl-act:hover:not(:disabled) { color: var(--fg); }
+
+/* Active: running rows are quiet with a slow pulse; requests (your turn) are
+   bright, and the first one (the one thing to do now) gets a soft fill. */
+.bl-state { flex-shrink: 0; display: inline-flex; align-items: center; gap: 7px; font-size: 12px; color: var(--fg-tertiary); font-variant-numeric: tabular-nums; }
+.bl-state:hover { color: var(--fg-secondary); }
+.bl-state i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.bl-row.is-agent .bl-state i { animation: bl-pulse 2.4s ease-in-out infinite; }
+.bl-row.is-agent .t { color: var(--fg-secondary); }
+.bl-state.is-you { color: var(--fg); }
+.bl-state.is-you i { background: none; box-shadow: inset 0 0 0 1.5px currentColor; }
+.bl-list li.bl-row.is-focus { background: var(--fill); }
+.bl-list li.bl-row.is-focus:hover { background: rgba(245, 245, 244, 0.08); }
+@keyframes bl-pulse { 50% { opacity: 0.25; } }
+@media (prefers-reduced-motion: reduce) { .bl-row.is-agent .bl-state i { animation: none; } }
+
+/* Open slots: faint dashed rows. */
+.bl-list li.bl-slot { cursor: default; margin: 6px 0 0; padding: 10px 14px; border: 1px dashed var(--hairline); border-radius: 8px; font-size: 12px; color: var(--fg-tertiary); }
+.bl-list li.bl-slot:hover { background: none; }
+.bl-list li.bl-empty { cursor: default; padding: 10px 6px; font-size: 12px; color: var(--fg-tertiary); border-bottom: 0; }
+.bl-list li.bl-empty:hover { background: none; }
+.bl-list li.bl-row.is-flash { animation: bl-flash 600ms var(--ease); }
+@keyframes bl-flash { 30% { background: rgba(245, 245, 244, 0.1); } }
+
+/* Dragging between lanes: a copy follows the pointer, a line marks the spot. */
+.bl-ghost { position: fixed; z-index: 80; margin: 0; list-style: none; display: flex; align-items: center; gap: 16px; padding: 11px 6px; font-size: 14px; color: var(--fg); background: #161617; border-radius: 6px; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45), inset 0 0 0 1px var(--hairline); pointer-events: none; }
+.bl-ghost .bl-acts { display: none !important; }
+.bl-ghost .su-tasks__grip { opacity: 1; color: var(--fg); }
+.bl-ghost .check { flex-shrink: 0; width: 20px; height: 20px; border-radius: 50%; border: 1.5px solid var(--fg-tertiary); }
+.bl-ghost .t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bl-ghost .d, .bl-ghost .bl-state { font-size: 12px; color: var(--fg-tertiary); }
+.bl-list li.bl-row.is-placeholder { opacity: 0.25; }
+.bl.is-dragging, .bl.is-dragging * { cursor: grabbing !important; }
+.bl.is-dragging .bl-list li:hover { background: none; }
+.bl.is-dragging .bl-acts { display: none !important; }
+.bl.is-dragging .bl-list li.bl-row:hover > .d { display: block; }
+.bl-dropline { position: absolute; left: 0; right: 0; height: 2px; border-radius: 1px; background: var(--fg-secondary); pointer-events: none; }
+.bl-head.is-full .bl-head__count { color: rgba(232, 140, 120, 0.9); }
+.bl-head.is-full .bl-head__count::after { content: " · full"; }
+
+/* Corner switches (View only): Backlog, then Manual / Auto when it's on. */
+.bl-corner { position: absolute; left: max(10px, env(safe-area-inset-left, 0px)); bottom: 10px; z-index: 20; display: flex; align-items: center; gap: 8px; opacity: 0; pointer-events: none; transition: opacity var(--dur) var(--ease); }
+.near-corner .bl-corner, .bl-corner:has(:focus-visible) { opacity: 1; pointer-events: auto; }
+.bl-pill, .bl-seg { height: 24px; padding: 0 10px; border-radius: 12px; font-size: 12px; color: var(--fg-tertiary); }
+.bl-pill { border: 1px solid var(--hairline); }
+.bl-pill:hover, .bl-seg:hover { color: var(--fg); }
+.bl-pill[aria-pressed="true"] { color: var(--fg); border-color: var(--fg-tertiary); }
+.bl-mode { display: flex; padding: 2px; border: 1px solid var(--hairline); border-radius: 14px; }
+.bl-mode .bl-seg { height: 20px; border-radius: 10px; }
+.bl-seg[aria-selected="true"] { color: var(--fg); background: var(--fill); }

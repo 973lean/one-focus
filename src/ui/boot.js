@@ -9,6 +9,7 @@ function render() {
   if (view === 'today') renderToday();
   if (view === 'view') renderViewTab();
   if (view === 'settings') renderSettings();
+  paintBacklogCorner();
 }
 
 // Planner tabs (Today / Week), also switched by shortcuts, corners and auto-open.

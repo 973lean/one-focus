@@ -41,7 +41,7 @@ function plannerClock(now, tId = 'su-clock-t', dId = 'su-clock-d') {
 function tick() {
   const now = new Date();
   if (setupMode || view === 'setup') plannerClock(now);
-  if (view === 'view') plannerClock(now, 'vw-time', 'vw-date');
+  if (view === 'view') plannerClock(now, 'vw-time', 'vw-date'), paintBacklogTimes();
   const parts = timeFmt.formatToParts(now);
   const period = parts.find((x) => x.type === 'dayPeriod');
   clockEl.textContent = parts.filter((x) => x.type !== 'dayPeriod').map((x) => x.value).join('').trim();

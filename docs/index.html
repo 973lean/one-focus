@@ -66,6 +66,9 @@
     ul { list-style: none; }
     li { display: flex; align-items: baseline; gap: 16px; padding: 12px 0; border-bottom: 1px solid var(--hairline); font-size: 15px; color: var(--fg-secondary); min-width: 0; }
     li .t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    li .ask { display: block; font-size: 12px; color: var(--fg-tertiary); }
+    li.you .r { color: var(--fg); }
+    li.q .t { color: var(--fg-secondary); }
     li .r { font-size: 12px; color: var(--fg-tertiary); white-space: nowrap; font-variant-numeric: tabular-nums; }
     li.done .t { color: var(--fg-tertiary); text-decoration: line-through; text-decoration-color: var(--hairline); }
     li.is-now .t { color: var(--fg); }
@@ -166,6 +169,15 @@
           return `<li class="${t.done ? 'done' : ''}${isNow ? ' is-now' : ''}"><span class="t">${esc(t.title)}</span><span class="r">${isNow ? 'now' : right}</span></li>`;
         })
         .join('');
+      // Backlog mode: what's in flight (requests first), what waits.
+      const bl = data.backlog;
+      const since = (iso) => dur(now - Date.parse(iso));
+      const inflight = bl
+        ? bl.active
+            .map((a) => `<li class="${a.turn === 'you' ? 'you' : ''}"><span class="t">${esc(a.title)}${a.ask ? `<span class="ask">↳ ${esc(a.ask)}</span>` : ''}</span><span class="r">${a.turn === 'you' ? 'your turn · ' : 'running '}${since(a.since)}</span></li>`)
+            .join('') +
+          bl.queued.map((q) => `<li class="q"><span class="t">${esc(q.title)}</span><span class="r">queued ${since(q.queuedAt)} ago</span></li>`).join('')
+        : '';
       const upcoming = data.upcoming
         .map((d) => `<div class="day"><h3>${dateFmt.format(new Date(d.date + 'T12:00:00'))}</h3><ul>${d.tasks.map((t) => `<li><span class="t">${esc(t)}</span></li>`).join('')}</ul></div>`)
         .join('');
@@ -184,6 +196,7 @@
           <div class="hours">${hours}</div>
           <p class="total">${dur(data.focusedMs)} focused</p>
         </section>
+        ${bl ? `<section><h2 class="eyebrow">In flight · ${bl.active.length}/${bl.slots}</h2>${inflight ? `<ul>${inflight}</ul>` : '<p class="empty">Nothing in flight.</p>'}${bl.evergreen.length ? `<p class="total">Evergreen: ${bl.evergreen.map((e) => esc(e.title)).join(' · ')}</p>` : ''}</section>` : ''}
         <section>
           <h2 class="eyebrow">Tasks</h2>
           ${today ? `<ul>${today}</ul>` : '<p class="empty">Nothing scheduled today.</p>'}

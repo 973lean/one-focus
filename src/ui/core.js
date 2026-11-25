@@ -96,6 +96,7 @@ api.onZone((zone) => {
   document.body.classList.toggle('near-menu', zone === 'menu');
   document.body.classList.toggle('near-controls', zone === 'controls');
   document.body.classList.toggle('near-gear', zone === 'gear');
+  document.body.classList.toggle('near-corner', zone === 'corner');
 });
 document.querySelectorAll('.controls__btn').forEach((btn) =>
   btn.addEventListener('click', () => api.windowAction(btn.dataset.action))

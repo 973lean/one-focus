@@ -920,6 +920,47 @@ function todaySummary() {
   return box;
 }
 
+// Click a task's name to rename it in place (Enter saves, Escape cancels).
+function renameOnClick(name, t) {
+  name.title = 'Click to rename';
+  name.addEventListener('click', (e) => {
+    e.stopPropagation();
+    inlineEdit(name, t.title, 1024, async (v) => {
+      if (v && v !== t.title) {
+        name.textContent = v;
+        await api.task('rename', t.id, v);
+      }
+    });
+  });
+}
+
+// Swap a node for a one-line input; save(value) on Enter or blur.
+function inlineEdit(node, value, max, save, placeholder = '') {
+  const input = el('input', 'su-tasks__edit');
+  input.type = 'text';
+  input.maxLength = max;
+  input.value = value || '';
+  input.placeholder = placeholder;
+  let finished = false;
+  const finish = async (ok) => {
+    if (finished) return;
+    finished = true;
+    input.replaceWith(node);
+    if (ok) await save(input.value.trim());
+    render();
+  };
+  input.addEventListener('keydown', (ev) => {
+    ev.stopPropagation();
+    if (ev.key === 'Enter') finish(true);
+    if (ev.key === 'Escape') finish(false);
+  });
+  input.addEventListener('click', (ev) => ev.stopPropagation());
+  input.addEventListener('blur', () => finish(true));
+  node.replaceWith(input);
+  input.focus();
+  input.select();
+}
+
 // Tasks tab: every open task in your list, as a plain list. Tick to finish,
 // click for details; finished today sit faded at the bottom.
 function tasksList(opts = {}) {
@@ -947,38 +988,7 @@ function tasksList(opts = {}) {
     const m = metaOf('g:' + t.id);
     const name = titleWithSeries(el('span', 't', t.title), t);
     li.append(check, name, el('span', 'd', (m.repeat ? '↻ ' : '') + when(t)));
-    if (opts.inMain && !done) {
-      // Click the name to rename it (Enter saves, Escape cancels).
-      name.title = 'Click to rename';
-      name.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const input = el('input', 'su-tasks__edit');
-        input.type = 'text';
-        input.maxLength = 1024;
-        input.value = t.title;
-        let finished = false;
-        const finish = async (save) => {
-          if (finished) return;
-          finished = true;
-          const v = input.value.trim();
-          if (save && v && v !== t.title) {
-            name.textContent = v;
-            input.replaceWith(name);
-            await api.task('rename', t.id, v);
-          } else input.replaceWith(name);
-          render();
-        };
-        input.addEventListener('keydown', (ev) => {
-          ev.stopPropagation();
-          if (ev.key === 'Enter') finish(true);
-          if (ev.key === 'Escape') finish(false);
-        });
-        input.addEventListener('blur', () => finish(true));
-        name.replaceWith(input);
-        input.focus();
-        input.select();
-      });
-    }
+    if (opts.inMain && !done) renameOnClick(name, t);
     if (done) {
       const x = el('button', 'act su-tasks__clear', '×');
       x.title = 'Clear (stays completed in Google Tasks)';
@@ -1113,7 +1123,7 @@ function beginRowDrag(e, li, ul, movable) {
 function paintClearDone() {
   const b = $('clear-done');
   if (!b || !S || !S.today) return;
-  const onList = (!setupMode && view === 'view') || (view === 'setup' && planTab === 'tasks');
+  const onList = (!setupMode && view === 'view' && !backlogOn()) || (view === 'setup' && planTab === 'tasks');
   b.hidden = !onList || !(S.today.recent || []).length;
 }
 $('clear-done').addEventListener('click', async () => {
@@ -1126,7 +1136,7 @@ function renderViewTab() {
   const a = document.activeElement;
   if (!box || rowDrag || (a && a.matches('input') && box.contains(a))) return; // not while typing or dragging
   const keep = $('view-view').scrollTop;
-  box.replaceChildren(tasksList({ inMain: true }));
+  box.replaceChildren(backlogOn() ? backlogList() : tasksList({ inMain: true }));
   paintClearDone();
   $('view-view').scrollTop = keep;
   plannerClock(new Date(), 'vw-time', 'vw-date');
