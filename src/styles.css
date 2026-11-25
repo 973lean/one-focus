@@ -1236,3 +1236,56 @@ input[type="time"]::-webkit-calendar-picker-indicator { opacity: 0.35; cursor: p
   .bl-list li.bl-row:hover .bl-state .bl-time { display: none; }
 }
 .grp__msg:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* Backlog v0.41: one section per project; queue sits under its slots,
+   quieter; one ⋯ menu per row; deadlines in the time's place. */
+.bl-group + .bl-group { margin-top: 6px; }
+.bl-list.bl-queue { margin-top: 6px; }
+.bl-list.bl-queue:empty { margin-top: 0; min-height: 8px; }
+.bl-add { padding: 6px 0 2px; }
+.bl-add .su-tasks__add { padding: 8px 12px !important; font-size: 13px !important; }
+.bl-side { flex-shrink: 0; display: inline-flex; align-items: center; gap: 12px; }
+.bl-due { font-size: 12px; color: var(--fg-tertiary); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.bl-due.is-soon { color: var(--fg); }
+.bl-more { flex-shrink: 0; width: 22px; height: 22px; border-radius: 6px; font-size: 15px; line-height: 1; color: var(--fg-tertiary); opacity: 0; transition: opacity var(--dur) var(--ease); }
+.bl-list li.bl-row:hover .bl-more, .bl-more:focus-visible, .bl-list li.bl-row:has(.bl-menu) .bl-more { opacity: 1; }
+.bl-more:hover { color: var(--fg); background: var(--fill); }
+.bl-menu { position: absolute; right: 6px; top: calc(100% - 4px); z-index: 30; display: flex; flex-direction: column; min-width: 150px; padding: 4px; background: #161617; border-radius: 8px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5), inset 0 0 0 1px var(--hairline); animation: bl-menu-in 120ms var(--ease); }
+@keyframes bl-menu-in { from { opacity: 0; transform: translateY(-3px); } }
+.bl-menu button { text-align: left; padding: 7px 10px; border-radius: 5px; font-size: 13px; color: var(--fg-secondary); white-space: nowrap; }
+.bl-menu button:hover { background: var(--fill); color: var(--fg); }
+.bl-list li.bl-row:has(.bl-menu) { z-index: 5; }
+.bl-date { align-self: flex-start; margin-top: 2px; font: inherit; font-size: 12px; color: var(--fg); background: transparent; border: 0; border-bottom: 1px solid var(--fg-tertiary); color-scheme: dark; padding: 1px 0; outline: none; }
+.bl-ghost .bl-more, .bl-ghost .bl-menu { display: none !important; }
+.bl.is-dragging .bl-more { opacity: 0 !important; }
+.bl-evergreen .bl-head { padding-top: 22px; }
+
+/* Active tasks read as cards: a soft fill and full-ink titles, a little
+   brighter on hover; the one thing to do now has a hairline ring. */
+.bl-list[data-lane="active"] li.bl-row { background: rgba(245, 245, 244, 0.045); border-radius: 8px; border-bottom-color: transparent; margin-bottom: 4px; padding-left: 10px; padding-right: 10px; }
+.bl-list[data-lane="active"] li.bl-row:hover { background: rgba(245, 245, 244, 0.07); }
+.bl-list[data-lane="active"] li.bl-row.is-agent .t { color: var(--fg); }
+.bl-list[data-lane="active"] li.bl-row.is-focus { background: rgba(245, 245, 244, 0.085); box-shadow: inset 0 0 0 1px rgba(245, 245, 244, 0.14); }
+.bl-list[data-lane="active"] li.bl-slot { margin: 0 0 4px; }
+
+/* Details: a small card under the title, two lines at most. */
+.bl-notes { margin-top: 3px; padding: 4px 8px; border-radius: 6px; background: rgba(245, 245, 244, 0.035); font-size: 12px; line-height: 1.4; color: var(--fg-secondary); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; white-space: pre-line; }
+
+/* A queued task's prompt and trigger: a mini card under the title. */
+.bl-trigger { font-size: 10px; color: var(--fg-tertiary); }
+.bl-prompt { margin-top: 4px; display: flex; flex-direction: column; gap: 6px; padding: 8px; border-radius: 8px; background: rgba(245, 245, 244, 0.04); box-shadow: inset 0 0 0 1px var(--hairline); }
+.bl-prompt__text { font: inherit; font-size: 12px; line-height: 1.45; color: var(--fg); background: transparent; border: 0; outline: none; resize: vertical; min-height: 36px; }
+.bl-prompt__foot { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.bl-prompt__when, .bl-prompt__at { font: inherit; font-size: 12px; color: var(--fg-secondary); background: var(--bg); border: 1px solid var(--hairline); border-radius: 6px; padding: 3px 6px; color-scheme: dark; outline: none; max-width: 100%; }
+.bl-prompt__foot .bl-act { margin-left: auto; color: var(--fg); }
+/* One left edge for every row (active cards and queued rows alike); the add
+   field is a slim line, not a block. */
+.bl-list li.bl-row { padding-left: 10px; padding-right: 10px; }
+.bl-add { padding: 2px 0 0; }
+.bl-add .su-tasks__add { padding: 5px 10px !important; font-size: 13px !important; border-color: transparent !important; background: none; }
+.bl-add:hover .su-tasks__add, .bl-add .su-tasks__add:focus { border-color: var(--hairline) !important; }
+.bl-group + .bl-group { margin-top: 0; }
+.bl-notes { display: block; }
+.bl-notes > span { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
+.bl-add .su-tasks__add { margin-top: 0; }
+.bl-group .bl-head.is-group, .bl-evergreen .bl-head { padding-top: 16px; }

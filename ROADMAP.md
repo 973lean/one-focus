@@ -243,6 +243,13 @@ For running several things at once (AI workflows side by side) without losing On
 - [x] Reviewed by two independent checks (code and hands-on UI); everything they found was fixed.
 - [x] No helper text in the UI (standing rule).
 
+## v0.41 — Projects, triggers, details
+- [x] View backlog: one section per group (project): its active cards, slots, queue and an "Add to <group>" line; tasks belong to the section they're added or dragged to (no picker).
+- [x] Auto mode no longer pulls queued tasks in by itself. A task moves in by hand, or by its own trigger: when a slot opens, when its group is empty, after another task is done, or at a time. A task can hold a prompt that a new Claude session gets when it starts.
+- [x] Deadlines per task. Details as a two-line card (Titles / Details switch in the corner). One ⋯ menu per row.
+- [x] Tidy (corner): a Claude Code session cleans up titles and details through the one_focus tools. Claude can now read/write details, prompts and triggers.
+- [x] Tasks show the moment they're added; Google syncs after. Active cards stand out more.
+
 ## Parked
 - [x] ~~Full-screen announcements~~ → became the v0.7 blur for "Still on this?" and end of day
 

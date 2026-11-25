@@ -1121,6 +1121,7 @@ ipcMain.handle('backlog:settings', (_e, patch = {}) => {
   let b = Backlog.normalize(state.backlog);
   if ('on' in patch) b.on = !!patch.on;
   if ('auto' in patch) b.auto = !!patch.auto;
+  if ('show' in patch) b.show = patch.show === 'details' ? 'details' : 'titles';
   if (b.on && today.syncedAt) b = Backlog.reconcile(b, today.open, new Date(), { prune: false });
   if (Array.isArray(patch.groups)) b = Backlog.setGroups(b, patch.groups);
   if ('slots' in patch) b = Backlog.setSlots(b, patch.slots, new Date(), patch.group || null);
@@ -1131,9 +1132,35 @@ ipcMain.handle('backlog:item', (_e, id, patch = {}) => {
   let b = Backlog.normalize(state.backlog);
   if (typeof patch.lane === 'string') b = Backlog.move(b, id, patch.lane, Number.isInteger(patch.index) ? patch.index : null, new Date(), typeof patch.group === 'string' ? patch.group : null);
   if (typeof patch.turn === 'string') b = Backlog.setTurn(b, id, patch.turn);
-  if ('ask' in patch || 'link' in patch || patch.didIt) b = Backlog.patchItem(b, id, patch);
+  if ('ask' in patch || 'link' in patch || 'deadline' in patch || 'prompt' in patch || 'when' in patch || patch.didIt) b = Backlog.patchItem(b, id, patch);
+  if (b.auto) b = Backlog.fill(b); // a trigger may already hold
   state.backlog = b;
   return backlogChanged();
+});
+// A new task shows right away; the full sync with Google follows on its own.
+function showAdded(t) {
+  if (!t || today.open.some((x) => x.id === t.id)) return;
+  today.open = [...today.open, { ...pick(t), items: [] }];
+  if (state.backlog && state.backlog.on) state.backlog = Backlog.ensure(state.backlog, t);
+  push();
+}
+// View: a task added inside a group's section belongs to that group (no picker).
+ipcMain.handle('backlog:add', async (_e, title, group) => {
+  const t0 = String(title || '').trim().slice(0, 1024);
+  if (!t0 || !client || !state.google.listId) return { error: 'Connect Google Tasks in Settings first.' };
+  try {
+    const last = today.open[today.open.length - 1];
+    const t = await client.insert(state.google.listId, { title: t0 }, last && last.id);
+    let b = Backlog.ensure(Backlog.normalize(state.backlog), { id: t.id, title: t.title });
+    b = Backlog.move(b, t.id, 'queued', null, new Date(), typeof group === 'string' ? group : null);
+    state.backlog = b;
+    showAdded(t);
+    backlogChanged();
+    resync(); // in its own time
+    return snapshot();
+  } catch (e) {
+    return { error: e.message };
+  }
 });
 ipcMain.handle('link:open', (_e, u) => {
   if (typeof u === 'string' && /^https?:\/\/\S+$/i.test(u)) shell.openExternal(u);
@@ -1158,7 +1185,7 @@ function claudeView() {
 // Put a task in the lane/turn Claude asked for. Active only if a slot is free.
 // claim(): a task from Claude never starts a session for itself, and takes a
 // slot held for a session started for its group.
-function claudeApply(id, { status, request, link, group, top, added = false }) {
+function claudeApply(id, { status, request, link, group, top, due, prompt, when, added = false }) {
   let b = Backlog.normalize(state.backlog);
   if (!b.items[id]) return;
   const now = new Date();
@@ -1178,6 +1205,9 @@ function claudeApply(id, { status, request, link, group, top, added = false }) {
   }
   if (typeof request === 'string') b = Backlog.patchItem(b, id, { ask: request }, now);
   if (typeof link === 'string') b = Backlog.patchItem(b, id, { link }, now);
+  if (typeof due === 'string') b = Backlog.patchItem(b, id, { deadline: due }, now);
+  if (typeof prompt === 'string') b = Backlog.patchItem(b, id, { prompt }, now);
+  if (typeof when === 'string') b = Backlog.patchItem(b, id, { when }, now);
   b = Backlog.patchItem(b, id, { noLaunch: true }, now); // Claude is already on it
   state.backlog = b;
 }
@@ -1185,7 +1215,7 @@ function claudeApply(id, { status, request, link, group, top, added = false }) {
 const claudeDeps = () => ({
   version: app.getVersion(),
   view: claudeView,
-  add: async ({ title, status, request, link, top, group }) => {
+  add: async ({ title, status, request, link, top, group, due, details, prompt, when }) => {
     if (!client || !state.google.listId) throw new Error('Google Tasks is not connected in One Focus.');
     // While the insert is out, a sync may see the new task first: no session
     // starts until it's marked as Claude's (claim), so it never gets its own.
@@ -1193,9 +1223,10 @@ const claudeDeps = () => ({
     let t;
     try {
       const last = today.open[today.open.length - 1];
-      t = await client.insert(state.google.listId, { title }, last && last.id);
+      t = await client.insert(state.google.listId, { title, ...(details ? { notes: String(details).slice(0, 8000) } : {}) }, last && last.id);
+      showAdded(t);
       state.backlog = Backlog.ensure({ ...Backlog.normalize(state.backlog), on: true }, { id: t.id, title: t.title });
-      claudeApply(t.id, { status, request, link, group, top, added: true });
+      claudeApply(t.id, { status, request, link, group, top, due, prompt, when, added: true });
     } finally {
       claudeAdding--;
     }
@@ -1205,19 +1236,25 @@ const claudeDeps = () => ({
     await resync(); // so the reply (and one_focus_backlog) shows it
     return { id: t.id, title: t.title };
   },
-  update: async (t, { status, request, link, title, group }) => {
+  update: async (t, { status, request, link, title, group, due, details, prompt, when }) => {
     if (!client || !state.google.listId) throw new Error('Google Tasks is not connected in One Focus.');
-    if (typeof title === 'string' && title.trim()) await client.patch(state.google.listId, t.id, { title: title.trim().slice(0, 1024) });
+    const body = {};
+    if (typeof title === 'string' && title.trim()) body.title = title.trim().slice(0, 1024);
+    if (typeof details === 'string') body.notes = details.slice(0, 8000);
+    if (Object.keys(body).length) {
+      await client.patch(state.google.listId, t.id, body);
+      today.open = today.open.map((x) => (x.id === t.id ? { ...x, ...(body.title ? { title: body.title } : {}), ...('notes' in body ? { notes: body.notes } : {}) } : x));
+    }
     if (status === 'done') {
       await client.patch(state.google.listId, t.id, { status: 'completed' });
       return resync();
     }
     if (!state.backlog || !state.backlog.on) state.backlog = { ...Backlog.normalize(state.backlog), on: true };
     if (today.syncedAt) state.backlog = Backlog.reconcile(state.backlog, today.open, new Date(), { prune: false });
-    claudeApply(t.id, { status, request, link, group });
+    claudeApply(t.id, { status, request, link, group, due, prompt, when });
     store.save(state);
     push();
-    if (title) await resync();
+    if (title || typeof details === 'string') resync();
   },
 });
 
@@ -1377,7 +1414,7 @@ function runLaunches() {
 // A start that fails gives back its held slot and its place in the cap.
 function startSession(l, { test = false } = {}) {
   const msg = Backlog.message(l, !test && mcpOn());
-  const entry = { at: nowIso(), group: l.group.name, kind: l.kind, how: l.group.launch, title: l.title || '' };
+  const entry = { at: nowIso(), group: l.group.name, kind: l.kind, how: l.how || l.group.launch, title: l.title || '' };
   const failed = (e) => {
     entry.error = e.message;
     if (l.at) state.backlog = Backlog.release(state.backlog, l.group.id, l.at, l.kind === 'task' ? l.id : null);
@@ -1385,8 +1422,9 @@ function startSession(l, { test = false } = {}) {
     push();
   };
   try {
-    if (l.group.launch === 'chat') shell.openExternal('https://claude.ai/new?q=' + encodeURIComponent(msg)).catch(failed);
-    else if (l.group.launch === 'code') startClaudeCode(l.group.dir, msg, l.kind === 'task' ? l.title : l.group.name, failed);
+    const how = l.how || l.group.launch;
+    if (how === 'chat') shell.openExternal('https://claude.ai/new?q=' + encodeURIComponent(msg)).catch(failed);
+    else if (how === 'code') startClaudeCode(l.group.dir, msg, l.kind === 'task' ? l.title : l.group.name, failed);
   } catch (e) {
     failed(e);
   }
@@ -1426,6 +1464,20 @@ setInterval(() => {
   runLaunches();
   push();
 }, 60e3);
+
+// View corner → Tidy: a Claude Code session that cleans up titles and details.
+const TIDY = `Tidy up my One Focus backlog using the one_focus tools.
+1. Call one_focus_backlog to see every task.
+2. For each task: make the title short and specific, starting with its project ("Roblox: jump animation pass"); fix typos; keep details to at most two short lines (cut filler, keep only what's needed to act); merge nothing and delete nothing.
+3. Don't change status, deadlines, groups, triggers or order.
+4. Apply each change with one_focus_update_task (title, details), then list what you changed in a few lines.`;
+ipcMain.handle('backlog:tidy', () => {
+  if (!mcpOn()) return { error: 'Turn on Settings → Claude first.' };
+  const b = Backlog.normalize(state.backlog);
+  const g = b.groups.find((x) => x.launch === 'code' && x.dir) || {};
+  startSession({ kind: 'empty', group: { id: 'tidy', name: 'Tidy', launch: 'code', dir: g.dir || '', emptyMsg: TIDY } }, { test: true });
+  return { ok: true, last: launchLog[0] };
+});
 
 // Settings → Groups: start one now, to check the folder and the message.
 ipcMain.handle('backlog:test', (_e, gid) => {
@@ -1765,7 +1817,8 @@ ipcMain.handle('task:action', async (_e, action, id, value) => {
     else if (action === 'add' && title) {
       // Added from the Today tab: scheduled for today. From All: no date.
       const last = today.open[today.open.length - 1];
-      await client.insert(listId, { title, ...(id === 'today' ? { due: todayDue() } : {}) }, last && last.id);
+      const t = await client.insert(listId, { title, ...(id === 'today' ? { due: todayDue() } : {}) }, last && last.id);
+      showAdded(t);
     } else if (action === 'schedule') await client.patch(listId, id, { due: todayDue() });
     else if (action === 'unschedule') {
       // Later: off today. Clears its date and any planned time.

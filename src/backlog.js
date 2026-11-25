@@ -117,6 +117,20 @@ function ensure(bl, t, now = new Date()) {
 }
 
 // Each group's free slots take its queued tasks, top first.
+// Triggers (auto mode): a queued task moves into a free slot of its group
+// only when its own trigger says so — a plain queued task waits for you.
+//   'slot'        a slot in its group is free
+//   'empty'       nothing is active in its group
+//   'after:<id>'  that task is done (gone from the list)
+//   'at:<iso>'    that time has come
+function triggered(b, it, gid, now) {
+  const w = String(it.when || '');
+  if (w === 'slot') return true;
+  if (w === 'empty') return activeIn(b, gid) === 0 && pendingIn(b, gid, now) === 0;
+  if (w.startsWith('after:')) return !b.items[w.slice(6)];
+  if (w.startsWith('at:')) return Date.parse(w.slice(3)) <= now.getTime();
+  return false;
+}
 function fill(bl, now = new Date()) {
   const b = normalize(bl);
   b.pending = livePending(b, now);
@@ -124,7 +138,10 @@ function fill(bl, now = new Date()) {
     let free = freeIn(b, g.id, now);
     for (const [id] of inLane(b, 'queued').filter(([x]) => groupOf(b, x) === g.id).sort(byRank)) {
       if (free <= 0) break;
-      b.items[id] = activate(b, b.items[id], g, now);
+      if (!triggered(b, b.items[id], g.id, now)) continue;
+      const next = activate(b, b.items[id], g, now);
+      delete next.when; // a trigger fires once
+      b.items[id] = next;
       free--;
     }
   }
@@ -137,7 +154,7 @@ function activate(b, it, g, now) {
   bump(b, g.id);
   const next = { ...it, lane: 'active', activeAt: now.toISOString(), since: now.toISOString(), turn: 'you', group: g.id };
   if (!it.group) next.pinned = true;
-  if (g.launch !== 'off' && g.taskMsg.trim() && !it.fromClaude) next.launchDue = true;
+  if (((g.launch !== 'off' && g.taskMsg.trim()) || it.prompt) && !it.fromClaude) next.launchDue = true;
   else delete next.launchDue;
   return next;
 }
@@ -177,7 +194,12 @@ function move(bl, id, lane, index = null, now = new Date(), group = null) {
     .filter(([x]) => x !== id)
     .sort(byRank)
     .map(([x]) => x);
-  const at = index == null ? order.length : Math.min(Math.max(index, 0), order.length);
+  // The queue is shown per group, so a position there counts within the group.
+  let at = index == null ? order.length : Math.min(Math.max(index, 0), order.length);
+  if (lane === 'queued') {
+    const peers = order.filter((x) => groupOf(b, x) === gid);
+    at = index != null && index < peers.length ? order.indexOf(peers[Math.max(index, 0)]) : peers.length ? order.indexOf(peers[peers.length - 1]) + 1 : order.length;
+  }
   order.splice(at, 0, id);
   b.items[id] = next;
   order.forEach((x, i) => (b.items[x] = { ...b.items[x], rank: i + 1 }));
@@ -240,6 +262,21 @@ function patchItem(bl, id, patch, now = new Date()) {
     else delete next.ask;
   }
   if (patch.didIt && it.lane === 'evergreen') next.lastDone = now.toISOString();
+  if ('prompt' in patch) {
+    const p = String(patch.prompt || '').trim().slice(0, 4000);
+    if (p) next.prompt = p;
+    else delete next.prompt;
+  }
+  if ('when' in patch) {
+    const w = String(patch.when || '');
+    if (/^(slot|empty|after:[\w-]{1,80}|at:\d{4}-\d{2}-\d{2}T[\d:.]+Z?)$/.test(w)) next.when = w;
+    else delete next.when;
+  }
+  if ('deadline' in patch) {
+    const d = String(patch.deadline || '').slice(0, 10);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(d)) next.deadline = d;
+    else delete next.deadline;
+  }
   if (patch.noLaunch) delete next.launchDue;
   b.items[id] = next;
   return b;
@@ -281,7 +318,7 @@ function launches(bl, now = new Date(), { mcp = true } = {}) {
   const todo = [];
   for (const [id, it] of inLane(b, 'active').filter(([, x]) => x.launchDue)) {
     const g = groupById(b, groupOf(b, id));
-    if (g.launch === 'off' || it.fromClaude) {
+    if ((g.launch === 'off' && !it.prompt) || it.fromClaude) {
       const next = { ...it };
       delete next.launchDue;
       b.items[id] = next;
@@ -293,7 +330,8 @@ function launches(bl, now = new Date(), { mcp = true } = {}) {
     b.items[id] = next;
     const at = now.toISOString();
     b.launched.push({ group: g.id, at });
-    todo.push({ kind: 'task', group: g, id, title: it.title || '', at });
+    // A task's own prompt goes where its group sends sessions (Claude Code if nowhere).
+    todo.push({ kind: 'task', group: g, id, title: it.title || '', at, prompt: it.prompt || '', how: g.launch !== 'off' ? g.launch : 'code' });
   }
   if (b.on && b.auto && mcp)
     for (const g of b.groups) {
@@ -314,7 +352,7 @@ function launches(bl, now = new Date(), { mcp = true } = {}) {
 // The message a session starts with. {task}, {group} and {id} are filled in;
 // with the Claude connection on, a note says how to report back.
 function message(l, mcp) {
-  const tpl = l.kind === 'task' ? l.group.taskMsg : l.group.emptyMsg;
+  const tpl = l.prompt ? l.prompt : l.kind === 'task' ? l.group.taskMsg : l.group.emptyMsg;
   const vals = { task: l.title || '', group: l.group.name, id: l.id || '' };
   let m = tpl.replace(/\{(task|group|id)\}/g, (_, k) => vals[k]).trim();
   if (mcp)

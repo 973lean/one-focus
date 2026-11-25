@@ -59,7 +59,49 @@ async function blItem(id, patch) {
   render();
 }
 
+// Deadlines: "today", "tomorrow", "overdue", "Fri", "Nov 28".
+function dueLabel(d) {
+  const day = new Date(d + 'T12:00:00');
+  const t0 = new Date();
+  t0.setHours(12, 0, 0, 0);
+  const days = Math.round((day - t0) / 86400e3);
+  if (days < 0) return 'overdue';
+  if (days === 0) return 'due today';
+  if (days === 1) return 'due tomorrow';
+  if (days < 7) return 'due ' + weekdayFmt.format(day);
+  return 'due ' + monthDayFmt.format(day);
+}
+const dueSoon = (d) => d && new Date(d + 'T23:59:59') - Date.now() < 86400e3;
+
+// One small ⋯ menu per row instead of a row of actions (only one open).
+let blMenu = null;
+function closeBlMenu() {
+  if (!blMenu) return;
+  blMenu.remove();
+  blMenu = null;
+  document.removeEventListener('pointerdown', blMenuAway, true);
+  document.removeEventListener('keydown', blMenuKey, true);
+}
+const blMenuAway = (e) => blMenu && !blMenu.contains(e.target) && !e.target.closest('.bl-more') && closeBlMenu();
+const blMenuKey = (e) => e.key === 'Escape' && (e.stopPropagation(), closeBlMenu());
+function openBlMenu(btn, items) {
+  const had = blMenu && blMenu.parentElement === btn.parentElement;
+  closeBlMenu();
+  if (had) return;
+  const m = el('div', 'bl-menu');
+  for (const [label, fn] of items) {
+    const b = el('button', null, label);
+    b.addEventListener('click', (e) => (e.stopPropagation(), closeBlMenu(), fn()));
+    m.append(b);
+  }
+  btn.parentElement.append(m);
+  blMenu = m;
+  document.addEventListener('pointerdown', blMenuAway, true);
+  document.addEventListener('keydown', blMenuKey, true);
+}
+
 function backlogList() {
+  closeBlMenu();
   const L = backlogLanes();
   const box = el('div', 'su-tasks bl');
   const full = L.groups.every((g) => L.active.filter((r) => r.group === g.id).length + (g.pending || []).length >= g.slots);
@@ -69,7 +111,6 @@ function backlogList() {
     const g = L.groups.find((x) => x.id === gid) || L.groups[0];
     return g.slots - L.active.filter((r) => r.group === g.id).length - (g.pending || []).length;
   };
-
   const act = (label, title, fn) => {
     const b = el('button', 'bl-act', label);
     b.title = title;
@@ -82,7 +123,7 @@ function backlogList() {
     return n;
   };
 
-  const row = (r, lane, i) => {
+  const row = (r, lane) => {
     const t = r.task;
     const you = lane === 'active' && r.turn === 'you';
     const running = S.current && S.current.googleId === t.id;
@@ -124,43 +165,90 @@ function backlogList() {
       line.append(go);
     }
     if (you && r.ask) main.append(el('span', 'bl-ask', r.ask));
+    if (S.backlog.show === 'details' && (t.notes || '').trim()) {
+      const card = el('div', 'bl-notes');
+      card.append(el('span', null, t.notes.trim())); // the clamp sits inside the padding
+      card.title = t.notes.trim();
+      main.append(card);
+    }
 
-    // Quiet actions on hover.
-    const acts = el('span', 'bl-acts');
+    // Editors open on a line under the title, so the title stays in view.
     const below = () => {
       const slot = el('span', 'bl-ask');
       main.append(slot);
       return slot;
     };
-    const editLink = act('Link', r.link ? 'Change the link (empty removes it)' : 'Add a link', () =>
-      inlineEdit(below(), r.link || '', 2000, (v) => blItem(t.id, { link: v && !/^https?:\/\//i.test(v) && /^[\w.-]+\.[a-z]{2,}(\/|$)/i.test(v) ? 'https://' + v : v }), 'Link')
-    );
-    editLink.classList.add('bl-act--link');
+    const editLink = () =>
+      inlineEdit(below(), r.link || '', 2000, (v) => blItem(t.id, { link: v && !/^https?:\/\//i.test(v) && /^[\w.-]+\.[a-z]{2,}(\/|$)/i.test(v) ? 'https://' + v : v }), 'Link');
+    const editDue = () => {
+      const input = el('input', 'bl-date');
+      input.type = 'date';
+      input.value = r.deadline || '';
+      let done = false;
+      const finish = (save) => {
+        if (done) return;
+        done = true;
+        rowEdit = false;
+        input.remove();
+        if (save && input.value !== (r.deadline || '')) blItem(t.id, { deadline: input.value });
+        else render();
+      };
+      input.addEventListener('change', () => finish(true));
+      input.addEventListener('blur', () => finish(true));
+      input.addEventListener('keydown', (e) => {
+        e.stopPropagation();
+        if (e.key === 'Enter') finish(true);
+        if (e.key === 'Escape') finish(false);
+        if ((e.key === 'Backspace' || e.key === 'Delete') && !input.value) finish(true);
+      });
+      input.addEventListener('click', (e) => e.stopPropagation());
+      rowEdit = true;
+      main.append(input);
+      input.focus();
+      try {
+        input.showPicker();
+      } catch {}
+    };
+    const editNotes = () => {
+      const old = (t.notes || '').trim();
+      inlineEdit(main.querySelector('.bl-notes') || below(), old, 8000, async (v) => {
+        if (v === old) return;
+        t.notes = v;
+        await api.taskDetail(t.id, { notes: v });
+      }, 'Details');
+    };
+    const editPrompt = () => openPromptEditor(main, r, L);
+    const items = [];
     if (lane === 'active') {
-      acts.append(
-        act(you ? 'Edit request' : 'Needs me', 'What it needs from you (makes it your turn)', () =>
-          inlineEdit(main.querySelector('.bl-ask') || below(), r.ask || '', 200, (v) => blItem(t.id, { ask: v }), 'Request')
-        ),
-        editLink,
-        act('Queue', 'Back to the queue (frees the slot)', () => blItem(t.id, { lane: 'queued', index: 0 }))
-      );
+      items.push([you && r.ask ? 'Edit request' : 'Needs me', () => inlineEdit(main.querySelector('.bl-ask') || below(), r.ask || '', 200, (v) => blItem(t.id, { ask: v }), 'Request')]);
+      items.push(['Details', editNotes], [r.deadline ? 'Deadline · ' + r.deadline : 'Deadline', editDue], [r.link ? 'Change link' : 'Link', editLink], ['Back to queue', () => blItem(t.id, { lane: 'queued', index: 0 })]);
     } else if (lane === 'queued') {
-      if (freeIn(r.group) > 0) acts.append(act('Start', 'Make it active', () => blItem(t.id, { lane: 'active' })));
-      acts.append(editLink, act('Evergreen', 'Keep it as a standing task', () => blItem(t.id, { lane: 'evergreen' })));
-    } else acts.append(editLink, act('Queue', 'Move it to the queue', () => blItem(t.id, { lane: 'queued' })));
+      if (freeIn(r.group) > 0) items.push(['Start', () => blItem(t.id, { lane: 'active' })]);
+      items.push([r.prompt || r.when ? 'Prompt & trigger ·' : 'Prompt & trigger', editPrompt], ['Details', editNotes], [r.deadline ? 'Deadline · ' + r.deadline : 'Deadline', editDue], [r.link ? 'Change link' : 'Link', editLink], ['Evergreen', () => blItem(t.id, { lane: 'evergreen' })]);
+    } else items.push(['Details', editNotes], [r.link ? 'Change link' : 'Link', editLink], ['Queue', () => blItem(t.id, { lane: 'queued' })]);
+    const more = el('button', 'bl-more', '⋯');
+    more.title = 'More';
+    more.setAttribute('aria-label', 'More');
+    more.addEventListener('click', (e) => (e.stopPropagation(), openBlMenu(more, items)));
 
-    // Right side: whose turn (click to flip), queued time, or last done.
-    let side;
+    // Right side: whose turn (click to flip), the deadline or queued time, or last done.
+    const side = el('span', 'bl-side');
+    if (r.deadline && lane !== 'evergreen') side.append(el('span', 'bl-due' + (dueSoon(r.deadline) ? ' is-soon' : ''), lane === 'active' ? dueLabel(r.deadline).replace(/^due /, '') : dueLabel(r.deadline)));
     if (lane === 'active') {
-      side = el('button', 'bl-state' + (you ? ' is-you' : ''));
-      side.title = you ? 'Hand it back: mark it running' : 'Mark it as needing you';
-      side.append(el('i'), timeNode('bl-time', you ? 'you' : 'run', r.since));
-      side.addEventListener('click', (e) => (e.stopPropagation(), blItem(t.id, { turn: you ? 'agent' : 'you' })));
-    } else side = timeNode('d', lane === 'queued' ? 'ago' : 'done', lane === 'queued' ? r.queuedAt : r.lastDone);
-    li.append(grip, check, main, acts);
-    const grp = L.groups.find((g) => g.id === r.group);
-    if (lane === 'queued' && L.groups.length > 1 && grp && !t.title.toLowerCase().includes(grp.name.toLowerCase())) li.append(el('span', 'bl-tag', grp.name));
-    li.append(side);
+      const st = el('button', 'bl-state' + (you ? ' is-you' : ''));
+      st.title = you ? 'Hand it back: mark it running' : 'Mark it as needing you';
+      st.append(el('i'), timeNode('bl-time', you ? 'you' : 'run', r.since));
+      st.addEventListener('click', (e) => (e.stopPropagation(), blItem(t.id, { turn: you ? 'agent' : 'you' })));
+      side.append(st);
+    } else if (lane === 'queued') {
+      if (r.when || r.prompt) {
+        const m = el('span', 'bl-trigger', '⏵');
+        m.title = (r.prompt ? 'Prompt: ' + r.prompt.slice(0, 200) + '\n' : '') + 'Starts ' + whenLabel(r.when, L);
+        side.append(m);
+      }
+      if (!r.deadline) side.append(timeNode('d', 'ago', r.queuedAt));
+    } else side.append(timeNode('d', 'done', r.lastDone));
+    li.append(grip, check, main, more, side);
     return li;
   };
 
@@ -171,17 +259,51 @@ function backlogList() {
     if (extra) h.append(extra);
     return h;
   };
-  const list = (lane, rows) => {
+  const list = (lane, rows, gid) => {
     const ul = el('ul', 'su-tasks__list bl-list');
     ul.dataset.lane = lane;
-    rows.forEach((r, i) => ul.append(row(r, lane, i)));
+    if (gid) ul.dataset.group = gid;
+    rows.forEach((r) => ul.append(row(r, lane)));
     return ul;
   };
+  const addField = (g) => {
+    const wrap = el('div', 'su-tasks__addwrap bl-add');
+    const add = el('input', 'su-tasks__add');
+    add.type = 'text';
+    add.maxLength = 300;
+    add.placeholder = L.groups.length > 1 ? 'Add to ' + g.name : 'Add a task';
+    add.addEventListener('keydown', async (e) => {
+      e.stopPropagation();
+      if (e.key === 'Escape') return add.blur();
+      if (e.key !== 'Enter' || !add.value.trim()) return;
+      const title = add.value.trim();
+      add.value = '';
+      // Shown at once; Google catches up in its own time.
+      const tmp = 'tmp-' + Date.now().toString(36);
+      S = {
+        ...S,
+        today: { ...S.today, open: [...S.today.open, { id: tmp, title, notes: '', items: [] }] },
+        backlog: { ...S.backlog, items: { ...S.backlog.items, [tmp]: { lane: 'queued', rank: 1e9, queuedAt: new Date().toISOString(), title, group: g.id } }, groupOf: { ...(S.backlog.groupOf || {}), [tmp]: g.id } },
+      };
+      render();
+      const r = await api.backlogAdd(title, g.id);
+      if (r && r.backlog) S = r;
+      render();
+      setTimeout(() => {
+        const again = document.querySelector(`#vw-list .bl-group[data-group="${CSS.escape(g.id)}"] .su-tasks__add`);
+        if (again) again.focus();
+      }, 60);
+    });
+    wrap.append(add);
+    return wrap;
+  };
 
-  // Active: one section per group (just "Active" with one group). Requests
-  // first, then running, then held slots ("Starting Claude…") and open ones.
+  // One section per group (a project): what's in flight, its slots, then its
+  // queue (quieter), then a field to add to it on hover.
   const many = L.groups.length > 1;
   for (const g of L.groups) {
+    const sec = el('section', 'bl-group');
+    sec.dataset.group = g.id;
     const rows = L.active.filter((r) => r.group === g.id);
     const holds = g.pending || [];
     const slotBtns = el('span', 'bl-slots');
@@ -191,53 +313,100 @@ function backlogList() {
     minus.disabled = g.slots <= Math.max(1, rows.length);
     plus.disabled = g.slots >= 9;
     slotBtns.append(minus, plus);
-    const ul = list('active', rows);
-    ul.dataset.group = g.id;
+    const ul = list('active', rows, g.id);
     for (const p of holds) {
       const h = el('li', 'bl-slot is-starting');
-      const t = el('span', 'bl-slot__time', ago(p.at));
-      Object.assign(t.dataset, { kind: 'ago', at: p.at });
-      h.append(el('i'), el('span', null, 'Starting Claude ·'), t);
+      const tm = el('span', 'bl-slot__time', ago(p.at));
+      Object.assign(tm.dataset, { kind: 'ago', at: p.at });
+      h.append(el('i'), el('span', null, 'Starting Claude ·'), tm);
       h.title = 'A Claude session was started for this group; the slot is held until it adds its task (up to 15 minutes).';
       ul.append(h);
     }
-    for (let i = rows.length + holds.length; i < g.slots; i++)
-      ul.append(el('li', 'bl-slot', 'Open slot'));
+    for (let i = rows.length + holds.length; i < g.slots; i++) ul.append(el('li', 'bl-slot', 'Open slot'));
     const hd = head(many ? g.name : 'Active', `${rows.length + holds.length}/${g.slots}`, slotBtns);
     if (many) hd.classList.add('is-group');
-    box.append(hd, ul);
+    const queue = list('queued', L.queued.filter((r) => r.group === g.id), g.id);
+    queue.classList.add('bl-queue');
+    sec.append(hd, ul, queue, addField(g));
+    box.append(sec);
   }
 
-  // Evergreen comes forward (above the queue, brighter) when every slot is
-  // busy and nothing needs you: it's what to do while you wait.
+  // Evergreen: standing tasks. Brighter when every slot is busy and nothing
+  // needs you: it's what to do while you wait.
   const waiting = full && !needsYou && L.active.length > 0;
-  const eg = head('Evergreen', '');
+  const eg = el('section', 'bl-group bl-evergreen');
   const egList = list('evergreen', L.evergreen);
-  const q = [head('Queued', L.queued.length ? String(L.queued.length) : ''), list('queued', L.queued)];
-  if (waiting) {
-    eg.classList.add('is-now');
-    egList.classList.add('is-now');
-    box.append(eg, egList, ...q);
-  } else box.append(...q, eg, egList);
-
-  // Add a task: it joins the queue.
-  const addWrap = el('div', 'su-tasks__addwrap');
-  const add = el('input', 'su-tasks__add');
-  add.type = 'text';
-  add.maxLength = 300;
-  add.placeholder = 'Add a task to the queue';
-  add.addEventListener('keydown', async (e) => {
-    e.stopPropagation();
-    if (e.key === 'Escape') return add.blur();
-    if (e.key !== 'Enter' || !add.value.trim()) return;
-    const title = add.value.trim();
-    add.value = '';
-    await api.task('add', null, title);
-    setTimeout(() => { const again = document.querySelector('#vw-list .su-tasks__add'); if (again) again.focus(); }, 60);
-  });
-  addWrap.append(add);
-  box.append(addWrap);
+  if (waiting) eg.classList.add('is-now'), egList.classList.add('is-now');
+  eg.append(head('Evergreen', ''), egList);
+  box.append(eg);
   return box;
+}
+let rowEdit = false; // a deadline picker or the prompt editor is open
+
+function whenLabel(w, L) {
+  w = String(w || '');
+  if (w === 'slot') return 'when a slot opens';
+  if (w === 'empty') return 'when its group is empty';
+  if (w.startsWith('after:')) {
+    const t = S.today.open.find((x) => x.id === w.slice(6));
+    return 'after ' + (t ? '“' + t.title + '”' : 'a task') + ' is done';
+  }
+  if (w.startsWith('at:')) return 'at ' + new Date(w.slice(3)).toLocaleString('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit' });
+  return 'by hand';
+}
+
+// A queued task's prompt (sent to a new Claude session when it starts) and
+// its trigger (when it starts by itself, in auto mode). A mini card under
+// the title; Save or Escape.
+function openPromptEditor(main, r, L) {
+  rowEdit = true;
+  const card = el('div', 'bl-prompt');
+  const text = el('textarea', 'bl-prompt__text');
+  text.rows = 2;
+  text.maxLength = 4000;
+  text.placeholder = 'Prompt';
+  text.value = r.prompt || '';
+  const sel = el('select', 'bl-prompt__when');
+  const opt = (v, label) => {
+    const o = el('option', null, label);
+    o.value = v;
+    sel.append(o);
+  };
+  opt('', 'By hand');
+  opt('slot', 'When a slot opens');
+  opt('empty', 'When the group is empty');
+  for (const x of [...L.active, ...L.queued].filter((y) => y.group === r.group && y.task.id !== r.task.id)) opt('after:' + x.task.id, 'After “' + (x.task.title.length > 40 ? x.task.title.slice(0, 39) + '…' : x.task.title) + '”');
+  opt('at', 'At a time');
+  const at = el('input', 'bl-prompt__at');
+  at.type = 'datetime-local';
+  const w = String(r.when || '');
+  sel.value = w.startsWith('at:') ? 'at' : w;
+  if (w.startsWith('at:')) {
+    const d = new Date(w.slice(3));
+    at.value = new Date(d.getTime() - d.getTimezoneOffset() * 60e3).toISOString().slice(0, 16);
+  }
+  at.hidden = sel.value !== 'at';
+  sel.addEventListener('change', () => (at.hidden = sel.value !== 'at'));
+  const save = el('button', 'bl-act', 'Save');
+  const close = (ok) => {
+    rowEdit = false;
+    card.remove();
+    if (!ok) return render();
+    const when = sel.value === 'at' ? (at.value ? 'at:' + new Date(at.value).toISOString() : '') : sel.value;
+    blItem(r.task.id, { prompt: text.value, when });
+  };
+  save.addEventListener('click', (e) => (e.stopPropagation(), close(true)));
+  card.addEventListener('keydown', (e) => {
+    e.stopPropagation();
+    if (e.key === 'Escape') close(false);
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) close(true);
+  });
+  card.addEventListener('click', (e) => e.stopPropagation());
+  const foot = el('div', 'bl-prompt__foot');
+  foot.append(sel, at, save);
+  card.append(text, foot);
+  main.append(card);
+  text.focus();
 }
 
 // Drag a row by its grip to another place or lane. A copy follows the
@@ -250,6 +419,7 @@ function beginLaneDrag(e, li, box) {
   grip.setPointerCapture(e.pointerId);
   const from = li.dataset.lane;
   const r0 = li.getBoundingClientRect();
+  closeBlMenu();
   const ghost = li.cloneNode(true);
   ghost.classList.add('bl-ghost');
   Object.assign(ghost.style, { left: r0.left + 'px', top: r0.top + 'px', width: r0.width + 'px', height: r0.height + 'px' });
@@ -268,18 +438,19 @@ function beginLaneDrag(e, li, box) {
     // The lane under the pointer (its heading counts), else the nearest.
     let best = null;
     for (const ul of lists) {
-      const top = (ul.previousElementSibling || ul).getBoundingClientRect().top;
+      const top = ul.getBoundingClientRect().top - (ul.dataset.lane === 'queued' ? 0 : 24);
       const bottom = ul.getBoundingClientRect().bottom;
       const d = ev.clientY < top ? top - ev.clientY : ev.clientY > bottom ? ev.clientY - bottom : 0;
       if (!best || d < best.d) best = { ul, d };
     }
     const ul = best.ul;
     const lane = ul.dataset.lane;
-    for (const x of lists) x.previousElementSibling.classList.remove('is-full');
+    const headOf = (x) => x.closest('.bl-group').querySelector('.bl-head');
+    for (const x of lists) headOf(x).classList.remove('is-full');
     const g = lane === 'active' ? groupInfo.find((x) => x.id === ul.dataset.group) : null;
     const used = g ? ul.querySelectorAll('.bl-row:not(.is-placeholder)').length : 0;
     if (g && li.parentElement !== ul && used + (g.pending || []).length >= g.slots) {
-      ul.previousElementSibling.classList.add('is-full');
+      headOf(ul).classList.add('is-full');
       line.hidden = true;
       target = null;
       return;
@@ -294,7 +465,7 @@ function beginLaneDrag(e, li, box) {
     else y = rows[rows.length - 1].getBoundingClientRect().bottom;
     line.hidden = false;
     line.style.top = y - boxTop - 1 + 'px';
-    target = { lane, index, group: g ? g.id : undefined };
+    target = { lane, index, group: ul.dataset.group || undefined };
   };
   const end = (commit) => {
     grip.removeEventListener('pointermove', move);
@@ -305,7 +476,7 @@ function beginLaneDrag(e, li, box) {
     line.remove();
     li.classList.remove('is-placeholder');
     box.classList.remove('is-dragging');
-    for (const x of lists) x.previousElementSibling.classList.remove('is-full');
+    for (const x of lists) x.closest('.bl-group').querySelector('.bl-head').classList.remove('is-full');
     rowDrag = null;
     const t = target;
     if (commit && t) {
@@ -330,7 +501,8 @@ function paintBacklogCorner() {
   if (c.hidden) return;
   const on = backlogOn();
   $('bl-toggle').setAttribute('aria-pressed', String(on));
-  $('bl-mode').hidden = !on;
+  $('bl-mode').hidden = $('bl-show').hidden = $('bl-tidy').hidden = !on;
+  $('bl-show').textContent = S.backlog && S.backlog.show === 'details' ? 'Details' : 'Titles';
   c.classList.toggle('is-on', on);
   document.querySelectorAll('#bl-mode .bl-seg').forEach((b) => b.setAttribute('aria-selected', String((b.dataset.v === 'auto') === !!(S.backlog && S.backlog.auto))));
 }
@@ -344,3 +516,14 @@ document.querySelectorAll('#bl-mode .bl-seg').forEach((b) =>
     render();
   })
 );
+$('bl-show').addEventListener('click', async () => {
+  S = await api.backlog({ show: S.backlog.show === 'details' ? 'titles' : 'details' });
+  render();
+});
+$('bl-tidy').addEventListener('click', async () => {
+  const b = $('bl-tidy');
+  const r = await api.backlogTidy();
+  b.textContent = r.error ? 'Claude is off' : r.last && r.last.error ? 'Couldn’t start' : 'Tidying…';
+  b.title = r.error || (r.last && r.last.error) || 'A Claude Code session is tidying titles and details';
+  setTimeout(() => ((b.textContent = 'Tidy'), (b.title = 'Claude tidies titles and details')), 4000);
+});

@@ -195,6 +195,10 @@ Panels are for the occasional look, not the resting state, so they can be denser
 - Queued titles are secondary ink (not yet actionable); the right side is the relative queued time. A group tag (hairline box) only when the title doesn't already say the group.
 - Evergreen: when every slot is busy and nothing needs you, it moves above Queued and its titles go primary.
 - Hover: a 6-dot grip in the left margin; text actions replace the time on the right. On narrow windows Link drops out and the state keeps just its dot, still clickable. Dragging: a lifted copy follows the pointer, a 2px secondary line marks the drop; a full group's count reads "· full".
+- v0.41: each group is a project section: its active cards (soft fill, full-ink titles, the one-thing-now card with a hairline ring), its open slots, its queue right under them (secondary ink, thin rules), then a slim "Add to <group>" line on hover. Evergreen is one section at the end. Every row shares one left edge.
+- One ⋯ button per row on hover opens a small menu (Prompt & trigger, Details, Deadline, Link, Start / Back to queue / Evergreen). Editors open as mini cards under the title.
+- Details: a small card under the title (12px secondary on a 3.5% fill), two lines then an ellipsis; shown only in "Details" mode (corner switch). Deadlines take the time's place: "due Fri", primary ink when due within a day. A queued task with a trigger shows a tertiary ⏵.
+- Corner (on proximity): Backlog · Manual/Auto · Titles/Details · Tidy.
 - **No helper text** anywhere: no explanations, empty-state sentences or hint lines. Labels and data only; tooltips at most.
 
 ## Adding something new

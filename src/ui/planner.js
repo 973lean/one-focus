@@ -1134,9 +1134,17 @@ $('clear-done').addEventListener('click', async () => {
 function renderViewTab() {
   const box = $('vw-list');
   const a = document.activeElement;
-  if (!box || rowDrag || (a && a.matches('input') && box.contains(a))) return; // not while typing or dragging
+  if (!box || rowDrag || (typeof blMenu !== 'undefined' && blMenu) || (typeof rowEdit !== 'undefined' && rowEdit)) return; // not while dragging or in a menu
+  // Not while typing — but an empty add field (just used) redraws and keeps focus.
+  const typing = a && a.matches('input, textarea') && box.contains(a);
+  if (typing && !(a.matches('.su-tasks__add') && !a.value)) return;
+  const refocus = typing ? (a.closest('.bl-group') || {}).dataset?.group || '*' : null;
   const keep = $('view-view').scrollTop;
   box.replaceChildren(backlogOn() ? backlogList() : tasksList({ inMain: true }));
+  if (refocus) {
+    const f = refocus === '*' ? box.querySelector('.su-tasks__add') : box.querySelector(`.bl-group[data-group="${CSS.escape(refocus)}"] .su-tasks__add`);
+    if (f) f.focus();
+  }
   paintClearDone();
   $('view-view').scrollTop = keep;
   plannerClock(new Date(), 'vw-time', 'vw-date');
