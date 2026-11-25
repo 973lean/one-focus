@@ -187,6 +187,16 @@ Panels are for the occasional look, not the resting state, so they can be denser
 - `--jolt: #5B8CFF`. It is the only colour in the app and is used for nothing else.
 - Every N minutes (Off / 30 / 60 / 90 / 120, set in Settings) the time and task turn blue for 0.3s, then fade back over 240ms. This is the one deliberate exception to "calm motion".
 
+## Backlog mode (View, v0.38–0.40)
+- Switch: View's bottom-left corner only, on pointer proximity: a hairline "Backlog" pill and a Manual / Auto segment, on a solid backing. The list keeps 56px clear at the bottom so the switches never cover a row.
+- Sections: one Active section per group (just "Active" with one group), then Queued, then Evergreen. Headings are 11px uppercase tertiary with a tabular count ("2/3", holds included); + / − slots appear on hovering the heading or its list.
+- Active rows: running = secondary title, tertiary "Running 34m" with a slow-pulsing 6px dot; your turn = primary title, a hollow ring and "Your turn · 5m" in primary ink, an optional request line ("↳ …", 12px secondary). Only the single oldest request anywhere gets the soft fill (`--fill`): the one thing to do now. Sections with requests come first.
+- Open slots: dashed hairline rows reading just "Open slot". A slot held for a started Claude session: solid hairline, pulsing dot, "Starting Claude · 2m".
+- Queued titles are secondary ink (not yet actionable); the right side is the relative queued time. A group tag (hairline box) only when the title doesn't already say the group.
+- Evergreen: when every slot is busy and nothing needs you, it moves above Queued and its titles go primary.
+- Hover: a 6-dot grip in the left margin; text actions replace the time on the right (and replace the state too on narrow windows). Dragging: a lifted copy follows the pointer, a 2px secondary line marks the drop; a full group's count reads "· full".
+- **No helper text** anywhere: no explanations, empty-state sentences or hint lines. Labels and data only; tooltips at most.
+
 ## Adding something new
 
 Before adding an element, ask: does it help the user know what to do *right now*? If not, it doesn't go on the main view.

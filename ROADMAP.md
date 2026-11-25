@@ -236,6 +236,13 @@ For running several things at once (AI workflows side by side) without losing On
 - [x] Instructions tell Claude to add long work as running, ask for things as requests, set running again, then done.
 - [ ] Cloud sessions and claude.ai in a browser can't reach 127.0.0.1: would need a relay (e.g. Google Tasks notes or a Gist inbox).
 
+## v0.40 — Groups and Claude sessions
+- [x] Settings → Groups: Active splits into groups, each with its own slots and words that sort tasks into it.
+- [x] A group can start a Claude session when a slot opens: Claude Code (a PowerShell window in its folder running `claude "<message>"`) or a claude.ai chat, for the task that takes the slot ({task}, {group}, {id}), or with a standing message when nothing is queued. The started session's slot is held until Claude adds its task (15 min at most); a standing session isn't restarted until the group changes; a per-hour cap per group; failed starts give their slot back.
+- [x] Tasks Claude adds never start a session for themselves; an active task's group is fixed when it takes the slot.
+- [x] Reviewed by two independent checks (code and hands-on UI); everything they found was fixed.
+- [x] No helper text in the UI (standing rule).
+
 ## Parked
 - [x] ~~Full-screen announcements~~ → became the v0.7 blur for "Still on this?" and end of day
 
