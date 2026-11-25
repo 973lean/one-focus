@@ -255,6 +255,9 @@ For running several things at once (AI workflows side by side) without losing On
 - [x] Day tabs (All · Today · Tomorrow · Later) filter each group's queue; quiet until hovered.
 - [x] Right-click a task for its menu. "New group" line at the end of View. Claude can set work_day.
 
+## v0.43 — Light settings in View
+- [x] A sliders button in View's corner opens the backlog settings right there: Manual/Auto, Titles/Details, the Claude connection, and groups (name, slots, what a free slot starts, add, remove). The corner is now Backlog · settings · Tidy.
+
 ## Parked
 - [x] ~~Full-screen announcements~~ → became the v0.7 blur for "Still on this?" and end of day
 

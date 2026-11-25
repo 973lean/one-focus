@@ -582,33 +582,163 @@ function beginLaneDrag(e, li, box) {
   document.addEventListener('keydown', esc, true);
 }
 
-// View's bottom-left corner: Backlog on/off and, when on, Manual / Auto.
+// View's bottom-left corner: Backlog on/off, then (when on) the light
+// settings and Tidy.
 function paintBacklogCorner() {
   const c = $('bl-corner');
   if (!c || !S) return;
   c.hidden = setupMode || view !== 'view';
-  if (c.hidden) return;
+  if (c.hidden) return closeMini();
   const on = backlogOn();
   $('bl-toggle').setAttribute('aria-pressed', String(on));
-  $('bl-mode').hidden = $('bl-show').hidden = $('bl-tidy').hidden = !on;
-  $('bl-show').textContent = S.backlog && S.backlog.show === 'details' ? 'Details' : 'Titles';
+  $('bl-opts').hidden = $('bl-tidy').hidden = !on;
+  $('bl-opts').setAttribute('aria-pressed', String(!!mini));
   c.classList.toggle('is-on', on);
-  document.querySelectorAll('#bl-mode .bl-seg').forEach((b) => b.setAttribute('aria-selected', String((b.dataset.v === 'auto') === !!(S.backlog && S.backlog.auto))));
+  c.classList.toggle('is-open', !!mini);
+  if (mini) paintMini();
 }
 $('bl-toggle').addEventListener('click', async () => {
   S = await api.backlog({ on: !backlogOn() });
+  if (!backlogOn()) closeMini();
   render();
 });
-document.querySelectorAll('#bl-mode .bl-seg').forEach((b) =>
-  b.addEventListener('click', async () => {
-    S = await api.backlog({ auto: b.dataset.v === 'auto' });
-    render();
-  })
-);
-$('bl-show').addEventListener('click', async () => {
-  S = await api.backlog({ show: S.backlog.show === 'details' ? 'titles' : 'details' });
-  render();
+
+// Light settings for backlog mode, in View: mode, cards, the Claude
+// connection, and the groups (name, slots, what a free slot starts).
+// Folders, words and messages stay in Settings → Groups.
+let mini = null;
+function closeMini() {
+  if (!mini) return;
+  mini.remove();
+  mini = null;
+  document.removeEventListener('pointerdown', miniAway, true);
+  document.removeEventListener('keydown', miniKey, true);
+  const c = $('bl-corner');
+  if (c) c.classList.remove('is-open');
+}
+const miniAway = (e) => mini && !mini.contains(e.target) && !e.target.closest('#bl-opts') && closeMini();
+const miniKey = (e) => e.key === 'Escape' && (e.stopPropagation(), closeMini());
+$('bl-opts').addEventListener('click', () => {
+  if (mini) return closeMini();
+  mini = el('div', 'bl-mini');
+  mini.addEventListener('keydown', (e) => e.key !== 'Escape' && e.stopPropagation());
+  $('bl-corner').append(mini);
+  document.addEventListener('pointerdown', miniAway, true);
+  document.addEventListener('keydown', miniKey, true);
+  paintMini(true);
+  $('bl-corner').classList.add('is-open');
 });
+function paintMini(force) {
+  if (!mini || !S || !S.backlog) return;
+  if (!force && mini.contains(document.activeElement) && document.activeElement.matches('input')) return; // not while typing
+  const b = S.backlog;
+  const seg = (opts, cur, set) => {
+    const w = el('div', 'tabs st-seg');
+    for (const [v, label] of opts) {
+      const x = el('button', 'tab', label);
+      x.setAttribute('aria-selected', String(cur === v));
+      x.addEventListener('click', async () => ((S = await set(v)), render()));
+      w.append(x);
+    }
+    return w;
+  };
+  const row = (label, ctl) => {
+    const r = el('div', 'bl-mini__row');
+    r.append(el('span', 'bl-mini__label', label), ctl);
+    return r;
+  };
+  mini.replaceChildren();
+  mini.append(
+    row('Mode', seg([['manual', 'Manual'], ['auto', 'Auto']], b.auto ? 'auto' : 'manual', (v) => api.backlog({ auto: v === 'auto' }))),
+    row('Cards', seg([['titles', 'Titles'], ['details', 'Details']], b.show === 'details' ? 'details' : 'titles', (v) => api.backlog({ show: v })))
+  );
+  // Claude: on/off; when on, add to Desktop / copy for Code.
+  const cl = S.claude || {};
+  const clBox = el('div', 'bl-mini__btns');
+  clBox.append(seg([['off', 'Off'], ['on', 'On']], cl.on ? 'on' : 'off', (v) => api.claudeSet(v === 'on')));
+  if (cl.on) {
+    const d = el('button', 'bl-act', cl.desktop ? 'Desktop ✓' : 'Add to Desktop');
+    d.title = 'Add One Focus to Claude Desktop (then restart it)';
+    d.addEventListener('click', async () => {
+      const r = await api.claudeDesktop();
+      d.textContent = r.error ? 'Couldn’t add' : 'Added · restart Claude';
+      if (r.error) d.title = r.error;
+    });
+    const c = el('button', 'bl-act', 'Copy for Code');
+    c.title = 'Copy the command that adds One Focus to Claude Code';
+    c.addEventListener('click', async () => {
+      const r = await api.claudeCode();
+      c.textContent = r.error ? 'Couldn’t copy' : 'Copied';
+      setTimeout(() => c.isConnected && (c.textContent = 'Copy for Code'), 2000);
+    });
+    clBox.append(d, c);
+  }
+  mini.append(row('Claude', clBox));
+  // Groups: name, slots, what a free slot starts.
+  const head = el('div', 'bl-mini__head');
+  head.append(el('span', 'bl-mini__label', 'Groups'));
+  const more = el('button', 'bl-act', 'All settings');
+  more.title = 'Folders, words and messages: Settings → Groups';
+  more.addEventListener('click', () => {
+    closeMini();
+    setView('settings');
+    setTimeout(() => $('grp-card') && $('grp-card').scrollIntoView({ block: 'start' }), 60);
+  });
+  head.append(more);
+  mini.append(head);
+  const groups = (b.groups || []).map((g) => ({ ...g }));
+  const save = async () => ((S = await api.backlog({ groups })), render());
+  for (const g of groups) {
+    const r = el('div', 'bl-mini__grp');
+    const name = el('input', 'bl-mini__name');
+    Object.assign(name, { type: 'text', value: g.name, maxLength: 40, spellcheck: false });
+    name.addEventListener('change', () => ((g.name = name.value.trim() || g.name), save()));
+    name.addEventListener('keydown', (e) => e.key === 'Enter' && name.blur());
+    const slots = el('span', 'bl-mini__slots');
+    const minus = el('button', 'bl-act', '−');
+    const n = el('span', null, String(g.slots));
+    const plus = el('button', 'bl-act', '+');
+    minus.disabled = g.slots <= 1;
+    plus.disabled = g.slots >= 9;
+    minus.title = 'One slot fewer';
+    plus.title = 'One slot more';
+    minus.addEventListener('click', () => ((g.slots -= 1), save()));
+    plus.addEventListener('click', () => ((g.slots += 1), save()));
+    slots.append(minus, n, plus);
+    const starts = el('select', 'bl-mini__starts');
+    for (const [v, label] of [['off', 'Starts nothing'], ['code', 'Claude Code'], ['chat', 'Claude chat']]) {
+      const o = el('option', null, label);
+      o.value = v;
+      starts.append(o);
+    }
+    starts.value = g.launch;
+    starts.title = 'What a free slot starts';
+    starts.addEventListener('change', () => ((g.launch = starts.value), save()));
+    r.append(name, slots, starts);
+    if (groups.length > 1) {
+      const del = el('button', 'bl-act bl-mini__del', '×');
+      del.title = 'Remove group';
+      del.addEventListener('click', () => {
+        groups.splice(groups.indexOf(g), 1);
+        save();
+      });
+      r.append(del);
+    }
+    mini.append(r);
+  }
+  if (groups.length < 8) {
+    const add = el('input', 'bl-mini__name bl-mini__add');
+    Object.assign(add, { type: 'text', maxLength: 40, placeholder: 'New group', spellcheck: false });
+    add.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter' || !add.value.trim()) return;
+      groups.push({ id: 'g' + Date.now().toString(36), name: add.value.trim(), slots: 1, match: '', launch: 'off' });
+      add.value = '';
+      add.blur();
+      save();
+    });
+    mini.append(add);
+  }
+}
 $('bl-tidy').addEventListener('click', async () => {
   const b = $('bl-tidy');
   const r = await api.backlogTidy();

@@ -1308,3 +1308,27 @@ input[type="time"]::-webkit-calendar-picker-indicator { opacity: 0.35; cursor: p
 .bl-daypick .bl-date { margin-top: 0; }
 /* New group: a slim line on hover. */
 .bl-newgroup { padding-top: 10px; }
+
+/* View's light backlog settings: a small panel above the corner switches. */
+.bl-corner.is-open { opacity: 1; pointer-events: auto; }
+.bl-pill--icon { width: 24px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
+.bl-pill--icon svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.2; stroke-linecap: round; }
+.bl-pill--icon circle { fill: var(--bg); }
+.bl-pill[aria-pressed="true"]#bl-opts { color: var(--fg); border-color: var(--fg-tertiary); }
+.bl-mini { position: absolute; left: 0; bottom: calc(100% + 8px); width: min(320px, calc(100vw - 20px)); max-height: min(70vh, 520px); overflow-y: auto; display: flex; flex-direction: column; gap: 10px; padding: 12px; background: #161617; border-radius: 10px; box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55), inset 0 0 0 1px var(--hairline); animation: bl-menu-in 120ms var(--ease); }
+.bl-mini__row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.bl-mini__label { font-size: 11px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: var(--fg-tertiary); }
+.bl-mini .st-seg .tab { font-size: 12px; padding: 4px 10px; }
+.bl-mini .st-seg .tab[aria-selected="true"] { color: var(--fg); background: var(--fill); }
+.bl-mini__btns { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+.bl-mini__head { display: flex; align-items: center; justify-content: space-between; padding-top: 6px; border-top: 1px solid var(--hairline); margin-top: 2px; }
+.bl-mini__head .bl-label { margin: 0; }
+.bl-mini__grp { display: grid; grid-template-columns: 1fr auto auto auto; align-items: center; gap: 8px; }
+.bl-mini__name { font-size: 13px !important; padding: 3px 0 !important; min-width: 0; }
+.bl-mini__slots { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--fg-secondary); font-variant-numeric: tabular-nums; }
+.bl-mini__slots .bl-act { width: 18px; text-align: center; }
+.bl-mini__slots .bl-act:disabled { opacity: 0.3; }
+.bl-mini__starts { font: inherit; font-size: 12px; color: var(--fg-secondary); background: var(--bg); border: 1px solid var(--hairline); border-radius: 6px; padding: 2px 4px; color-scheme: dark; outline: none; }
+.bl-mini__del { font-size: 14px; }
+.bl-mini__add { opacity: 0.7; }
+.bl-mini__add:focus { opacity: 1; }
