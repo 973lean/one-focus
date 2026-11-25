@@ -152,6 +152,7 @@ button:focus-visible, input:focus-visible { outline: 1px solid var(--fg-tertiary
   align-items: center;
   gap: var(--space-1);
   min-width: 0;
+  width: 85vw; /* the task stays inside 85% of the window */
   max-width: 100%;
 }
 
@@ -165,9 +166,15 @@ button:focus-visible, input:focus-visible { outline: 1px solid var(--fg-tertiary
 }
 
 .task__text {
-  white-space: nowrap;
+  /* Long tasks wrap to two lines, then end in an ellipsis. */
+  max-width: 100%;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
   overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
+  line-height: 1.3;
   cursor: pointer;
   outline: none;
   transition: color var(--dur) var(--ease);
