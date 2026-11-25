@@ -1217,11 +1217,15 @@ input[type="time"]::-webkit-calendar-picker-indicator { opacity: 0.35; cursor: p
    and a solid backing); the queue reads quieter than what's in flight; on a
    narrow window hover actions take the state's place instead of squashing
    the title. */
-.bl { padding-bottom: 56px; }
+.bl { padding-bottom: 8px; }
+/* View keeps a strip at the bottom for the corner switches, so they never sit on a row. */
+#view-view { bottom: 40px; }
 .bl-pill, .bl-mode { background: var(--bg); }
 .bl-list[data-lane="queued"] li.bl-row .t { color: var(--fg-secondary); }
 .bl-list.is-now li.bl-row .t { color: var(--fg); }
 @container (max-width: 560px) {
-  .bl-list li.bl-row:hover > .bl-state { display: none; }
+  .bl-acts .bl-act--link { display: none; }
   .bl-list li.bl-row:hover .bl-acts { gap: 10px; }
+  .bl-list li.bl-row:hover .bl-state .bl-time { display: none; }
 }
+.grp__msg:disabled { opacity: 0.45; cursor: not-allowed; }

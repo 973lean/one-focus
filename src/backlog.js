@@ -89,11 +89,12 @@ const freeIn = (b, gid, now) => groupById(b, gid).slots - activeIn(b, gid) - pen
 // open (finished or deleted) leave — except ones added after this list was
 // fetched (since, ms), which an older list can't know about yet. Titles are
 // kept for the group words.
-function reconcile(bl, open, now = new Date(), { since = null } = {}) {
+// prune: false (anywhere but a fresh sync) only adds what's missing.
+function reconcile(bl, open, now = new Date(), { since = null, prune = true } = {}) {
   const b = normalize(bl);
   const ids = new Set(open.map((t) => t.id));
   for (const [id, it] of Object.entries(b.items))
-    if (!ids.has(id) && !(since && Date.parse(it.addedAt || 0) >= since)) {
+    if (prune && !ids.has(id) && !(since && Date.parse(it.addedAt || 0) >= since)) {
       if (it.lane === 'active') bump(b, groupOf(b, id));
       delete b.items[id];
     }
@@ -183,27 +184,30 @@ function move(bl, id, lane, index = null, now = new Date(), group = null) {
   return b.auto && lane !== 'active' ? fill(b, now) : b;
 }
 
-// A task Claude added or is updating: it never gets a session of its own,
-// and if a session was started for its group, this is that session's task:
-// the held slot is released so the task can take it.
+// A task Claude just added: it never gets a session of its own, and if a
+// session was started for its group, this is that session's task — it takes
+// the held slot itself (not whatever else is queued).
 function claim(bl, id, now = new Date()) {
   const b = normalize(bl);
   const it = b.items[id];
   if (!it) return b;
-  const next = { ...it, fromClaude: true };
+  let next = { ...it, fromClaude: true };
   delete next.launchDue;
-  b.items[id] = next;
-  if (!it.fromClaude) {
-    const gid = groupOf(b, id);
-    const p = livePending(b, now).find((x) => x.group === gid);
-    if (p) b.pending = b.pending.filter((x) => x !== p);
+  const gid = groupOf(b, id);
+  const p = it.fromClaude ? null : livePending(b, now).find((x) => x.group === gid);
+  if (p) {
+    b.pending = b.pending.filter((x) => x !== p);
+    if (next.lane !== 'active') next = activate(b, next, groupById(b, gid), now);
   }
-  return b.auto ? fill(b, now) : b;
+  b.items[id] = next;
+  return b;
 }
 
-// A start that failed: give back its held slot and its place in the hourly cap.
-function release(bl, gid, at) {
+// A start that failed: give back its held slot and its place in the hourly
+// cap; a task that was marked running for it waits on you again.
+function release(bl, gid, at, id = null, now = new Date()) {
   const b = normalize(bl);
+  if (id && b.items[id] && b.items[id].lane === 'active') b.items[id] = { ...b.items[id], turn: 'you', since: now.toISOString() };
   b.pending = b.pending.filter((p) => !(p.group === gid && p.at === at));
   const i = b.launched.findIndex((l) => l.group === gid && l.at === at);
   if (i >= 0) b.launched.splice(i, 1);

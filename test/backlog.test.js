@@ -215,3 +215,29 @@ test('slots per group; without groups the old single lane still works', () => {
   assert.equal(old.groups.length, 1);
   assert.equal(old.groups[0].slots, 2);
 });
+
+test("Claude's task takes its held slot, not an older queued task", () => {
+  let b = B.setGroups({ ...B.blank(), on: true }, G({ rbx: { emptyMsg: 'Go' } }), T0);
+  b = B.launches(B.reconcile(b, [], T0), T0).backlog; // hold
+  b = B.reconcile(b, titled(['u', 'Roblox: mine']), later(1)); // queued while held
+  assert.equal(laneOf(b, 'u'), 'queued');
+  b = B.claim(B.ensure(b, { id: 'c', title: 'Roblox: claude' }, later(2)), 'c', later(2));
+  assert.equal(laneOf(b, 'c'), 'active');
+  assert.equal(laneOf(b, 'u'), 'queued');
+  assert.equal(B.launches(b, later(3)).todo.length, 0);
+});
+
+test('a failed task start puts the task back to "your turn"', () => {
+  let b = B.setGroups({ ...B.blank(), on: true }, G(), T0);
+  b = B.reconcile(b, titled(['a', 'Roblox: a']), T0);
+  const r = B.launches(b, T0);
+  assert.equal(r.backlog.items.a.turn, 'agent');
+  b = B.release(r.backlog, 'rbx', r.todo[0].at, 'a', later(1));
+  assert.equal(b.items.a.turn, 'you');
+});
+
+test('only a fresh sync prunes (prune: false keeps tasks not in the list)', () => {
+  let b = B.reconcile({ ...B.blank(), auto: false }, titled(['a', 'a'], ['b', 'b']), T0);
+  b = B.reconcile(b, titled(['a', 'a']), later(1), { prune: false });
+  assert.ok(b.items.b);
+});

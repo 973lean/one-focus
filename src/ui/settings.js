@@ -513,6 +513,7 @@ function renderGroups(force) {
       input.addEventListener('keydown', (e) => e.stopPropagation());
       f.append(el('span', null, label), input);
       if (attrs.hide) f.hidden = true;
+      if (attrs.off) Object.assign(input, { disabled: true, title: attrs.off });
       return f;
     };
     const row = el('div', 'grp__row');
@@ -536,7 +537,7 @@ function renderGroups(force) {
       when,
       field('Folder', 'dir', g.dir, { hide: g.launch !== 'code' }),
       field('Message for a task', 'taskMsg', g.taskMsg, { area: true, hide: off }),
-      field('Message when nothing is queued', 'emptyMsg', g.emptyMsg, { area: true, hide: off })
+      field('Message when nothing is queued', 'emptyMsg', g.emptyMsg, { area: true, hide: off, off: S.claude && S.claude.on ? '' : 'Needs Settings → Claude turned on, so the session can add its task here.' })
     );
     const acts = el('div', 'actions');
     if (!off) {

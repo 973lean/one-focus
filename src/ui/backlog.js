@@ -135,6 +135,7 @@ function backlogList() {
     const editLink = act('Link', r.link ? 'Change the link (empty removes it)' : 'Add a link', () =>
       inlineEdit(below(), r.link || '', 2000, (v) => blItem(t.id, { link: v && !/^https?:\/\//i.test(v) && /^[\w.-]+\.[a-z]{2,}(\/|$)/i.test(v) ? 'https://' + v : v }), 'Link')
     );
+    editLink.classList.add('bl-act--link');
     if (lane === 'active') {
       acts.append(
         act(you ? 'Edit request' : 'Needs me', 'What it needs from you (makes it your turn)', () =>
@@ -180,12 +181,7 @@ function backlogList() {
   // Active: one section per group (just "Active" with one group). Requests
   // first, then running, then held slots ("Starting Claude…") and open ones.
   const many = L.groups.length > 1;
-  const oldestAsk = (g) => {
-    const r = L.active.find((x) => x.group === g.id && x.turn === 'you');
-    return r ? Date.parse(r.since) : Infinity;
-  };
-  const order = L.groups.map((g, i) => ({ g, i })).sort((a, b) => oldestAsk(a.g) - oldestAsk(b.g) || a.i - b.i).map((x) => x.g);
-  for (const g of order) {
+  for (const g of L.groups) {
     const rows = L.active.filter((r) => r.group === g.id);
     const holds = g.pending || [];
     const slotBtns = el('span', 'bl-slots');
@@ -282,7 +278,7 @@ function beginLaneDrag(e, li, box) {
     for (const x of lists) x.previousElementSibling.classList.remove('is-full');
     const g = lane === 'active' ? groupInfo.find((x) => x.id === ul.dataset.group) : null;
     const used = g ? ul.querySelectorAll('.bl-row:not(.is-placeholder)').length : 0;
-    if (g && li.parentElement !== ul && used >= g.slots && !(g.pending || []).length) {
+    if (g && li.parentElement !== ul && used + (g.pending || []).length >= g.slots) {
       ul.previousElementSibling.classList.add('is-full');
       line.hidden = true;
       target = null;

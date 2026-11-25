@@ -1121,7 +1121,7 @@ ipcMain.handle('backlog:settings', (_e, patch = {}) => {
   let b = Backlog.normalize(state.backlog);
   if ('on' in patch) b.on = !!patch.on;
   if ('auto' in patch) b.auto = !!patch.auto;
-  if (b.on && today.syncedAt) b = Backlog.reconcile(b, today.open);
+  if (b.on && today.syncedAt) b = Backlog.reconcile(b, today.open, new Date(), { prune: false });
   if (Array.isArray(patch.groups)) b = Backlog.setGroups(b, patch.groups);
   if ('slots' in patch) b = Backlog.setSlots(b, patch.slots, new Date(), patch.group || null);
   state.backlog = b;
@@ -1158,7 +1158,7 @@ function claudeView() {
 // Put a task in the lane/turn Claude asked for. Active only if a slot is free.
 // claim(): a task from Claude never starts a session for itself, and takes a
 // slot held for a session started for its group.
-function claudeApply(id, { status, request, link, group, top }) {
+function claudeApply(id, { status, request, link, group, top, added = false }) {
   let b = Backlog.normalize(state.backlog);
   if (!b.items[id]) return;
   const now = new Date();
@@ -1166,7 +1166,7 @@ function claudeApply(id, { status, request, link, group, top }) {
   const gid = g ? g.id : null;
   const wasActive = b.items[id].lane === 'active';
   if (gid) b = Backlog.move(b, id, b.items[id].lane, null, now, gid); // regroup (an active one only if the group has room)
-  b = Backlog.claim(b, id, now);
+  if (added) b = Backlog.claim(b, id, now);
   const lane = b.items[id].lane;
   const wantActive = status === 'running' || status === 'needs_you' || (request && status !== 'queued' && status !== 'evergreen') || (wasActive && !status);
   if (wantActive && lane !== 'active') b = Backlog.move(b, id, 'active', null, now);
@@ -1178,6 +1178,7 @@ function claudeApply(id, { status, request, link, group, top }) {
   }
   if (typeof request === 'string') b = Backlog.patchItem(b, id, { ask: request }, now);
   if (typeof link === 'string') b = Backlog.patchItem(b, id, { link }, now);
+  b = Backlog.patchItem(b, id, { noLaunch: true }, now); // Claude is already on it
   state.backlog = b;
 }
 
@@ -1186,15 +1187,22 @@ const claudeDeps = () => ({
   view: claudeView,
   add: async ({ title, status, request, link, top, group }) => {
     if (!client || !state.google.listId) throw new Error('Google Tasks is not connected in One Focus.');
-    const last = today.open[today.open.length - 1];
-    const t = await client.insert(state.google.listId, { title }, last && last.id);
-    // In the backlog (and Claude's) before any sync sees it: nothing pruned,
-    // and it can't start a session of its own.
-    state.backlog = Backlog.ensure({ ...Backlog.normalize(state.backlog), on: true }, { id: t.id, title: t.title });
-    claudeApply(t.id, { status, request, link, group, top });
+    // While the insert is out, a sync may see the new task first: no session
+    // starts until it's marked as Claude's (claim), so it never gets its own.
+    claudeAdding++;
+    let t;
+    try {
+      const last = today.open[today.open.length - 1];
+      t = await client.insert(state.google.listId, { title }, last && last.id);
+      state.backlog = Backlog.ensure({ ...Backlog.normalize(state.backlog), on: true }, { id: t.id, title: t.title });
+      claudeApply(t.id, { status, request, link, group, top, added: true });
+    } finally {
+      claudeAdding--;
+    }
+    runLaunches();
     store.save(state);
-    await resync();
     push();
+    await resync(); // so the reply (and one_focus_backlog) shows it
     return { id: t.id, title: t.title };
   },
   update: async (t, { status, request, link, title, group }) => {
@@ -1205,7 +1213,7 @@ const claudeDeps = () => ({
       return resync();
     }
     if (!state.backlog || !state.backlog.on) state.backlog = { ...Backlog.normalize(state.backlog), on: true };
-    if (today.syncedAt) state.backlog = Backlog.reconcile(state.backlog, today.open);
+    if (today.syncedAt) state.backlog = Backlog.reconcile(state.backlog, today.open, new Date(), { prune: false });
     claudeApply(t.id, { status, request, link, group });
     store.save(state);
     push();
@@ -1357,8 +1365,9 @@ ipcMain.handle('claude:code', () => {
 // trouble). Claude chat: claude.ai/new with the message filled in.
 let launchLog = []; // the last few, for Settings: { at, group, kind, title, error }
 const mcpOn = () => !!(state.claude && state.claude.on && claudePort);
+let claudeAdding = 0; // Claude adds in flight
 function runLaunches() {
-  if (!state.backlog || !state.backlog.on) return;
+  if (!state.backlog || !state.backlog.on || claudeAdding > 0) return;
   const { backlog, todo } = Backlog.launches(state.backlog, new Date(), { mcp: mcpOn() });
   state.backlog = backlog;
   if (!todo.length) return;
@@ -1371,7 +1380,7 @@ function startSession(l, { test = false } = {}) {
   const entry = { at: nowIso(), group: l.group.name, kind: l.kind, how: l.group.launch, title: l.title || '' };
   const failed = (e) => {
     entry.error = e.message;
-    if (l.at) state.backlog = Backlog.release(state.backlog, l.group.id, l.at);
+    if (l.at) state.backlog = Backlog.release(state.backlog, l.group.id, l.at, l.kind === 'task' ? l.id : null);
     store.save(state);
     push();
   };
