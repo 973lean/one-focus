@@ -9,4 +9,5 @@ Small Electron app for a secondary monitor: time, date, one task at a time from 
 - Releases are automatic: pushing app changes to `main` runs `.github/workflows/publish.yml`, which builds the Windows installer and force-replaces the `builds` branch. Installed apps auto-update from there (electron-updater, generic provider on raw.githubusercontent). Don't push builds by hand. Bump the minor version in package.json for notable releases; the patch number is the workflow run number.
 - `docs/index.html` is the web view (GitHub Pages, reads a secret Gist the app updates via `src/web.js`).
 - The user tests on Windows; this repo is usually edited from a Linux cloud session.
+- **No helper text in the UI** (the user's standing rule, 2026-11-25): no explanatory subtext, empty-state sentences or hints like "Standing tasks for while things run…" or "Open slot · queue is empty". Labels and data only; explanations go in tooltips at most.
 - Before calling any visible change done, run the `self-check` skill (`.claude/skills/self-check`): render, drive, score, fix, repeat.

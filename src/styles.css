@@ -1211,3 +1211,4 @@ input[type="time"]::-webkit-calendar-picker-indicator { opacity: 0.35; cursor: p
 .grp__msg { min-height: 64px; }
 .grp__row input[type="number"] { -moz-appearance: textfield; }
 .grp__row input[type="number"]::-webkit-inner-spin-button { opacity: 0.4; }
+.bl-list:empty { min-height: 14px; }

@@ -189,23 +189,20 @@ function backlogList() {
       h.title = 'A Claude session was started for this group; the slot is held until it adds its task (up to 15 minutes).';
       ul.append(h);
     }
-    const queuedHere = L.queued.some((r) => r.group === g.id);
     for (let i = rows.length + holds.length; i < g.slots; i++)
-      ul.append(el('li', 'bl-slot', S.backlog.auto ? (queuedHere ? 'Open slot' : 'Open slot · queue is empty') : 'Open slot · Start a queued task or drag one here'));
+      ul.append(el('li', 'bl-slot', 'Open slot'));
     const hd = head(many ? g.name : 'Active', `${rows.length}/${g.slots}`, slotBtns);
     if (many) hd.classList.add('is-group');
     box.append(hd, ul);
   }
 
   box.append(head('Queued', L.queued.length ? String(L.queued.length) : ''), list('queued', L.queued));
-  if (!L.queued.length) box.lastChild.append(el('li', 'bl-empty', 'Nothing waiting.'));
 
   // Evergreen comes forward when every slot is busy and nothing needs you.
   const waiting = full && !needsYou && L.active.length > 0;
-  const eg = head('Evergreen', '', waiting ? el('span', 'bl-head__hint', 'while you wait') : null);
+  const eg = head('Evergreen', '');
   if (waiting) eg.classList.add('is-now');
   box.append(eg, list('evergreen', L.evergreen));
-  if (!L.evergreen.length) box.lastChild.append(el('li', 'bl-empty', 'Standing tasks for while things run. Move one here with Evergreen.'));
 
   // Add a task: it joins the queue.
   const addWrap = el('div', 'su-tasks__addwrap');
