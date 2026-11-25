@@ -510,7 +510,7 @@ function renderNowStrip() {
 }
 
 function renderSetup() {
-  if (!S || suDrag || suDraft) return;
+  if (!S || suDrag || suDraft || rowDrag) return;
   const behindNow = behindToday();
   renderNowStrip();
   paintClearDone();
@@ -991,21 +991,14 @@ function tasksList(opts = {}) {
       li.append(x);
     }
     if (!done && movable.includes(t)) {
-      // Tiny up/down arrows in the left margin, shown on hover.
-      const i = movable.indexOf(t);
-      const mv = el('span', 'su-tasks__move');
-      const arrow = (dir, path) => {
-        const b = el('button', dir < 0 ? 'up' : 'down');
-        b.setAttribute('aria-label', dir < 0 ? 'Move up' : 'Move down');
-        b.title = dir < 0 ? 'Move up' : 'Move down';
-        b.innerHTML = `<svg viewBox="0 0 8 5"><path d="${path}"/></svg>`;
-        const other = movable[i + dir];
-        if (!other) b.disabled = true;
-        else b.addEventListener('click', (e) => (e.stopPropagation(), moveRow(t, other, dir)));
-        return b;
-      };
-      mv.append(arrow(-1, 'M1 4 4 1l3 3'), arrow(1, 'M1 1l3 3 3-3'));
-      li.prepend(mv);
+      // A small grip in the left margin (on hover): drag it to reorder.
+      const grip = el('span', 'su-tasks__grip');
+      grip.title = 'Drag to move';
+      grip.innerHTML = '<svg viewBox="0 0 6 10"><circle cx="1.2" cy="1.2" r="1"/><circle cx="4.8" cy="1.2" r="1"/><circle cx="1.2" cy="5" r="1"/><circle cx="4.8" cy="5" r="1"/><circle cx="1.2" cy="8.8" r="1"/><circle cx="4.8" cy="8.8" r="1"/></svg>';
+      grip.addEventListener('pointerdown', (e) => beginRowDrag(e, li, ul, movable));
+      grip.addEventListener('click', (e) => e.stopPropagation());
+      li.dataset.id = t.id;
+      li.prepend(grip);
     }
     if (opts.inMain) {
       // On View: a quiet Start on hover instead of the details panel.
@@ -1046,19 +1039,73 @@ function tasksList(opts = {}) {
   return box;
 }
 
-// Swap a task with its neighbour (up: -1, down: 1). Shown at once; Google gets
-// "put the lower one after the upper one", so tasks in between don't matter.
-// Moves are queued so quick clicks reach Google in order.
+// Drag a task by its grip to reorder (View and the Planner's Tasks tab).
+// The row follows the pointer; the others slide out of its way. On drop the
+// order shows at once and Google gets "put it after the one above" (none =
+// top, which among the untimed tasks is the same thing). Moves are queued so
+// quick drags reach Google in order. Escape cancels.
+let rowDrag = null;
 let moveQueue = Promise.resolve();
-function moveRow(t, other, dir) {
-  const open = S.today.open;
-  const a = open.indexOf(t);
-  const b = open.indexOf(other);
-  if (a < 0 || b < 0) return;
-  [open[a], open[b]] = [open[b], open[a]];
-  render();
-  const [upper, lower] = dir < 0 ? [t, other] : [other, t];
-  moveQueue = moveQueue.then(() => api.task('move', lower.id, upper.id)).catch(() => {});
+function beginRowDrag(e, li, ul, movable) {
+  if (e.button !== 0 || rowDrag) return;
+  e.preventDefault();
+  e.stopPropagation();
+  const rows = movable.map((t) => ul.querySelector(`li[data-id="${CSS.escape(t.id)}"]`)).filter(Boolean);
+  const from = rows.indexOf(li);
+  if (from < 0 || rows.length < 2) return;
+  const rects = rows.map((r) => r.getBoundingClientRect());
+  const h = rects[from].height;
+  const minDy = rects[0].top - rects[from].top;
+  const maxDy = rects[rows.length - 1].bottom - rects[from].bottom;
+  let to = from;
+  const grip = e.currentTarget;
+  grip.setPointerCapture(e.pointerId);
+  rowDrag = { y: e.clientY };
+  li.classList.add('is-lifted');
+  ul.classList.add('is-sorting');
+  const move = (ev) => {
+    const dy = Math.min(Math.max(ev.clientY - rowDrag.y, minDy), maxDy);
+    li.style.transform = `translateY(${dy}px)`;
+    const mid = rects[from].top + h / 2 + dy;
+    to = from;
+    rows.forEach((r, i) => {
+      if (i === from) return;
+      const m = rects[i].top + rects[i].height / 2;
+      const shift = i < from && mid <= m ? h : i > from && mid >= m ? -h : 0;
+      if (shift > 0) to--;
+      if (shift < 0) to++;
+      r.style.transform = shift ? `translateY(${shift}px)` : '';
+    });
+  };
+  const end = (commit) => {
+    grip.removeEventListener('pointermove', move);
+    grip.removeEventListener('pointerup', up);
+    grip.removeEventListener('pointercancel', cancel);
+    document.removeEventListener('keydown', esc, true);
+    rowDrag = null;
+    ul.classList.remove('is-sorting');
+    li.classList.remove('is-lifted');
+    for (const r of rows) r.style.transform = '';
+    if (commit && to !== from) {
+      const ids = movable.map((x) => x.id);
+      const [id] = ids.splice(from, 1);
+      ids.splice(to, 0, id);
+      // Untimed tasks follow the timed ones in the list: rebuild that part
+      // (by id, in case fresh state arrived during the drag).
+      const byId = new Map(S.today.open.map((x) => [x.id, x]));
+      S.today.open = [...S.today.open.filter((x) => !ids.includes(x.id)), ...ids.map((x) => byId.get(x)).filter(Boolean)];
+      const previous = to > 0 ? ids[to - 1] : null;
+      moveQueue = moveQueue.then(() => api.task('move', id, previous)).catch(() => {});
+    }
+    render();
+  };
+  const up = () => end(true);
+  const cancel = () => end(false);
+  const esc = (ev) => ev.key === 'Escape' && (ev.stopPropagation(), end(false));
+  grip.addEventListener('pointermove', move);
+  grip.addEventListener('pointerup', up);
+  grip.addEventListener('pointercancel', cancel);
+  document.addEventListener('keydown', esc, true);
 }
 
 // One Focus · View: the time and date over the whole list, made to be left up.
@@ -1077,7 +1124,7 @@ $('clear-done').addEventListener('click', async () => {
 function renderViewTab() {
   const box = $('vw-list');
   const a = document.activeElement;
-  if (!box || (a && a.matches('input') && box.contains(a))) return; // not while typing
+  if (!box || rowDrag || (a && a.matches('input') && box.contains(a))) return; // not while typing or dragging
   const keep = $('view-view').scrollTop;
   box.replaceChildren(tasksList({ inMain: true }));
   paintClearDone();
