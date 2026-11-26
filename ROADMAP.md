@@ -258,6 +258,9 @@ For running several things at once (AI workflows side by side) without losing On
 ## v0.43 — Light settings in View
 - [x] A sliders button in View's corner opens the backlog settings right there: Manual/Auto, Titles/Details, the Claude connection, and groups (name, slots, what a free slot starts, add, remove). The corner is now Backlog · settings · Tidy.
 
+## v0.44 — Project tabs
+- [x] With more than one project, each has its own tab in View (always shown); a dot marks one with something waiting on you. Drag a task onto a tab to move it; + adds a project. → Tomorrow moves only the open project's tasks. "Groups" are called "Projects" in the UI.
+
 ## Parked
 - [x] ~~Full-screen announcements~~ → became the v0.7 blur for "Still on this?" and end of day
 

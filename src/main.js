@@ -1123,6 +1123,7 @@ ipcMain.handle('backlog:settings', (_e, patch = {}) => {
   if ('auto' in patch) b.auto = !!patch.auto;
   if ('show' in patch) b.show = patch.show === 'details' ? 'details' : 'titles';
   if ('dayTab' in patch) b.dayTab = ['today', 'tomorrow', 'later'].includes(patch.dayTab) ? patch.dayTab : 'all';
+  if (typeof patch.projectTab === 'string') b.projectTab = patch.projectTab.slice(0, 40);
   if (typeof patch.pushTo === 'string') b = Backlog.pushDays(b, patch.pushTo, new Date(), patch.group || null);
   if (b.on && today.syncedAt) b = Backlog.reconcile(b, today.open, new Date(), { prune: false });
   if (Array.isArray(patch.groups)) b = Backlog.setGroups(b, patch.groups);

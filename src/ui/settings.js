@@ -550,7 +550,7 @@ function renderGroups(force) {
       acts.append(test);
     }
     if (groups.length > 1) {
-      const del = el('button', 'btn btn--quiet', 'Remove group');
+      const del = el('button', 'btn btn--quiet', 'Remove project');
       del.addEventListener('click', () => saveGroups(readGroups().filter((x) => x.id !== g.id)));
       acts.append(del);
     }
@@ -563,5 +563,5 @@ function renderGroups(force) {
 $('grp-add').addEventListener('click', () => {
   const id = 'g' + Date.now().toString(36);
   grpOpen.add(id);
-  saveGroups([...readGroups(), { id, name: 'Group ' + (readGroups().length + 1), slots: 1, launch: 'off' }]);
+  saveGroups([...readGroups(), { id, name: 'Project ' + (readGroups().length + 1), slots: 1, launch: 'off' }]);
 });

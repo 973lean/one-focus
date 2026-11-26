@@ -322,7 +322,7 @@ function backlogList() {
     const add = el('input', 'su-tasks__add');
     add.type = 'text';
     add.maxLength = 300;
-    add.placeholder = L.groups.length > 1 ? 'Add to ' + g.name : 'Add a task';
+    add.placeholder = 'Add a task';
     add.addEventListener('keydown', async (e) => {
       e.stopPropagation();
       if (e.key === 'Escape') return add.blur();
@@ -351,6 +351,58 @@ function backlogList() {
 
   // Day tabs (quiet, on hover; they stay while one is picked): which part of
   // each queue to show. On Today, → Tomorrow moves today's to tomorrow.
+  // Projects: with more than one, each has its own tab (always shown). A dot
+  // marks a project with a task waiting on you; drop a task on a tab to move
+  // it there; + adds a project.
+  const many = L.groups.length > 1;
+  const cur = many ? (L.groups.find((g) => g.id === S.backlog.projectTab) || L.groups[0]).id : null;
+  if (many) {
+    const pt = el('div', 'bl-ptabs');
+    for (const g of L.groups) {
+      const b = el('button', 'bl-ptab', g.name);
+      b.dataset.group = g.id;
+      b.setAttribute('aria-selected', String(g.id === cur));
+      if (L.active.some((r) => r.group === g.id && r.turn === 'you')) {
+        b.classList.add('has-ask');
+        b.title = 'Something here is waiting on you';
+      }
+      b.addEventListener('click', async () => ((S = await api.backlog({ projectTab: g.id })), render()));
+      pt.append(b);
+    }
+    if (L.groups.length < 8) {
+      const plus = el('button', 'bl-ptab bl-ptab--add', '+');
+      plus.title = 'New project';
+      plus.addEventListener('click', () => {
+        const input = el('input', 'bl-ptab__new');
+        Object.assign(input, { type: 'text', maxLength: 40, placeholder: 'Project', spellcheck: false });
+        let done = false;
+        const finish = async (save) => {
+          if (done) return;
+          done = true;
+          rowEdit = false;
+          const name = input.value.trim();
+          input.remove(); // so the redraw isn't held back as typing
+          if (!save || !name) return render();
+          const id = 'g' + Date.now().toString(36);
+          const groups = (S.backlog.groups || []).map((g) => ({ ...g }));
+          S = await api.backlog({ groups: [...groups, { id, name, slots: 1, match: '', launch: 'off' }], projectTab: id });
+          render();
+        };
+        input.addEventListener('keydown', (e) => {
+          e.stopPropagation();
+          if (e.key === 'Enter') finish(true);
+          if (e.key === 'Escape') finish(false);
+        });
+        input.addEventListener('blur', () => finish(true));
+        rowEdit = true;
+        plus.replaceWith(input);
+        input.focus();
+      });
+      pt.append(plus);
+    }
+    box.append(pt);
+  }
+
   const tab = S.backlog.dayTab || 'all';
   const tabs = el('div', 'bl-days' + (tab !== 'all' ? ' is-set' : ''));
   for (const [k, label] of [['all', 'All'], ['today', 'Today'], ['tomorrow', 'Tomorrow'], ['later', 'Later']]) {
@@ -359,18 +411,17 @@ function backlogList() {
     b.addEventListener('click', async () => ((S = await api.backlog({ dayTab: k })), render()));
     tabs.append(b);
   }
-  if (tab === 'today' && L.queued.some((r) => inDayTab(r, 'today'))) {
+  if (tab === 'today' && L.queued.some((r) => inDayTab(r, 'today') && (!cur || r.group === cur))) {
     const push = el('button', 'bl-days__push', '→ Tomorrow');
     push.title = 'Move everything planned for today to tomorrow';
-    push.addEventListener('click', async () => ((S = await api.backlog({ pushTo: tomorrowKey() })), render()));
+    push.addEventListener('click', async () => ((S = await api.backlog({ pushTo: tomorrowKey(), ...(cur ? { group: cur } : {}) })), render()));
     tabs.append(push);
   }
   box.append(tabs);
 
-  // One section per group (a project): what's in flight, its slots, then its
-  // queue (quieter), then a field to add to it on hover.
-  const many = L.groups.length > 1;
-  for (const g of L.groups) {
+  // The project's section: what's in flight, its slots, then its queue
+  // (quieter), then a field to add to it on hover.
+  for (const g of many ? L.groups.filter((x) => x.id === cur) : L.groups) {
     const sec = el('section', 'bl-group');
     sec.dataset.group = g.id;
     const rows = L.active.filter((r) => r.group === g.id);
@@ -388,12 +439,11 @@ function backlogList() {
       const tm = el('span', 'bl-slot__time', ago(p.at));
       Object.assign(tm.dataset, { kind: 'ago', at: p.at });
       h.append(el('i'), el('span', null, 'Starting Claude ·'), tm);
-      h.title = 'A Claude session was started for this group; the slot is held until it adds its task (up to 15 minutes).';
+      h.title = 'A Claude session was started for this project; the slot is held until it adds its task (up to 15 minutes).';
       ul.append(h);
     }
     for (let i = rows.length + holds.length; i < g.slots; i++) ul.append(el('li', 'bl-slot', 'Open slot'));
-    const hd = head(many ? g.name : 'Active', `${rows.length + holds.length}/${g.slots}`, slotBtns);
-    if (many) hd.classList.add('is-group');
+    const hd = head('Active', `${rows.length + holds.length}/${g.slots}`, slotBtns);
     const queue = list('queued', L.queued.filter((r) => r.group === g.id && inDayTab(r, tab)), g.id);
     queue.classList.add('bl-queue');
     sec.append(hd, ul, queue, addField(g));
@@ -405,7 +455,7 @@ function backlogList() {
   const ngIn = el('input', 'su-tasks__add');
   ngIn.type = 'text';
   ngIn.maxLength = 40;
-  ngIn.placeholder = 'New group';
+  ngIn.placeholder = 'New project';
   ngIn.addEventListener('keydown', async (e) => {
     e.stopPropagation();
     if (e.key === 'Escape') return ngIn.blur();
@@ -414,7 +464,8 @@ function backlogList() {
     ngIn.value = '';
     ngIn.blur();
     const groups = (S.backlog.groups || []).map((g) => ({ ...g }));
-    S = await api.backlog({ groups: [...groups, { id: 'g' + Date.now().toString(36), name, slots: 1, match: '', launch: 'off' }] });
+    const id = 'g' + Date.now().toString(36);
+    S = await api.backlog({ groups: [...groups, { id, name, slots: 1, match: '', launch: 'off' }], projectTab: id });
     render();
   });
   ng.append(ngIn);
@@ -427,7 +478,7 @@ function backlogList() {
   if (waiting) eg.classList.add('is-now'), egList.classList.add('is-now');
   eg.append(head('Evergreen', ''), egList);
   box.append(eg);
-  if ((S.backlog.groups || []).length < 8) box.append(ng); // at the very end, so it never opens a gap
+  if (!many) box.append(ng); // one project: a slim line at the very end (with tabs, + does it)
   return box;
 }
 let rowEdit = false; // a deadline picker or the prompt editor is open
@@ -435,7 +486,7 @@ let rowEdit = false; // a deadline picker or the prompt editor is open
 function whenLabel(w, L) {
   w = String(w || '');
   if (w === 'slot') return 'when a slot opens';
-  if (w === 'empty') return 'when its group is empty';
+  if (w === 'empty') return 'when its project is empty';
   if (w.startsWith('after:')) {
     const t = S.today.open.find((x) => x.id === w.slice(6));
     return 'after ' + (t ? '“' + t.title + '”' : 'a task') + ' is done';
@@ -463,7 +514,7 @@ function openPromptEditor(main, r, L) {
   };
   opt('', 'By hand');
   opt('slot', 'When a slot opens');
-  opt('empty', 'When the group is empty');
+  opt('empty', 'When the project is empty');
   for (const x of [...L.active, ...L.queued].filter((y) => y.group === r.group && y.task.id !== r.task.id)) opt('after:' + x.task.id, 'After “' + (x.task.title.length > 40 ? x.task.title.slice(0, 39) + '…' : x.task.title) + '”');
   opt('at', 'At a time');
   const at = el('input', 'bl-prompt__at');
@@ -519,11 +570,20 @@ function beginLaneDrag(e, li, box) {
   const lists = [...box.querySelectorAll('.bl-list')];
   const groupInfo = backlogLanes().groups;
   let target = null;
-  rowDrag = { y: e.clientY };
+  rowDrag = { x: e.clientX, y: e.clientY };
   box.classList.add('is-dragging');
 
+  const ptabs = [...document.querySelectorAll('#vw-list .bl-ptab[data-group]')];
   const move = (ev) => {
-    ghost.style.transform = `translateY(${ev.clientY - rowDrag.y}px)`;
+    ghost.style.transform = `translate(${ev.clientX - rowDrag.x}px, ${ev.clientY - rowDrag.y}px)`;
+    // Over another project's tab: it moves to that project's queue.
+    const overTab = ptabs.find((t) => { const r = t.getBoundingClientRect(); return ev.clientX >= r.left && ev.clientX <= r.right && ev.clientY >= r.top - 6 && ev.clientY <= r.bottom + 6; });
+    for (const t of ptabs) t.classList.toggle('is-drop', t === overTab);
+    if (overTab && overTab.getAttribute('aria-selected') !== 'true') {
+      line.hidden = true;
+      target = { lane: 'queued', index: null, group: overTab.dataset.group };
+      return;
+    }
     // The lane under the pointer (its heading counts), else the nearest.
     let best = null;
     for (const ul of lists) {
@@ -563,6 +623,7 @@ function beginLaneDrag(e, li, box) {
     document.removeEventListener('keydown', esc, true);
     ghost.remove();
     line.remove();
+    for (const t of ptabs) t.classList.remove('is-drop');
     li.classList.remove('is-placeholder');
     box.classList.remove('is-dragging');
     for (const x of lists) x.closest('.bl-group').querySelector('.bl-head').classList.remove('is-full');
@@ -676,9 +737,9 @@ function paintMini(force) {
   mini.append(row('Claude', clBox));
   // Groups: name, slots, what a free slot starts.
   const head = el('div', 'bl-mini__head');
-  head.append(el('span', 'bl-mini__label', 'Groups'));
+  head.append(el('span', 'bl-mini__label', 'Projects'));
   const more = el('button', 'bl-act', 'All settings');
-  more.title = 'Folders, words and messages: Settings → Groups';
+  more.title = 'Folders, words and messages: Settings → Projects';
   more.addEventListener('click', () => {
     closeMini();
     setView('settings');
@@ -717,7 +778,7 @@ function paintMini(force) {
     r.append(name, slots, starts);
     if (groups.length > 1) {
       const del = el('button', 'bl-act bl-mini__del', '×');
-      del.title = 'Remove group';
+      del.title = 'Remove project';
       del.addEventListener('click', () => {
         groups.splice(groups.indexOf(g), 1);
         save();
@@ -728,7 +789,7 @@ function paintMini(force) {
   }
   if (groups.length < 8) {
     const add = el('input', 'bl-mini__name bl-mini__add');
-    Object.assign(add, { type: 'text', maxLength: 40, placeholder: 'New group', spellcheck: false });
+    Object.assign(add, { type: 'text', maxLength: 40, placeholder: 'New project', spellcheck: false });
     add.addEventListener('keydown', (e) => {
       if (e.key !== 'Enter' || !add.value.trim()) return;
       groups.push({ id: 'g' + Date.now().toString(36), name: add.value.trim(), slots: 1, match: '', launch: 'off' });
