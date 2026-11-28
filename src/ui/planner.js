@@ -976,6 +976,19 @@ function tasksList(opts = {}) {
     if (t.due) return t.due === S.todayDate ? 'Today' : t.due < S.todayDate ? 'Overdue' : shortDay.format(new Date(t.due + 'T12:00:00'));
     return '';
   };
+  // Running or finished: minutes spent today, then when it started: 47m [03:22 PM].
+  const worked = (t) => {
+    if (!logData) return '';
+    const sod = new Date().setHours(0, 0, 0, 0);
+    const key = 'g:' + t.id;
+    const all = [...logData.sessions, ...(logData.open && logData.open.key === key ? [{ ...logData.open, end: null }] : [])].filter(
+      (x) => x.key === key && (x.end ? Date.parse(x.end) : Date.now()) > sod
+    );
+    if (!all.length) return '';
+    const first = Math.min(...all.map((x) => Math.max(Date.parse(x.start), sod)));
+    const ms = all.reduce((a, x) => a + ((x.end ? Date.parse(x.end) : Date.now()) - Math.max(Date.parse(x.start), sod)), 0);
+    return `${Math.max(1, Math.round(ms / 60e3))}m [${hm(first)}]`; // minutes spent [started]
+  };
   const row = (t, done) => {
     const li = el('li', done ? 'is-done' : S.current && S.current.googleId === t.id ? 'is-running' : '');
     const check = el('button', 'check');
@@ -987,7 +1000,9 @@ function tasksList(opts = {}) {
     });
     const m = metaOf('g:' + t.id);
     const name = titleWithSeries(el('span', 't', t.title), t);
-    li.append(check, name, el('span', 'd', (m.repeat ? '↻ ' : '') + when(t)));
+    // Running or finished: real time on it (minutes [first start]); others: planned/due.
+    const active = done || (S.current && S.current.googleId === t.id);
+    li.append(check, name, el('span', 'd', (m.repeat ? '↻ ' : '') + ((active && worked(t)) || when(t))));
     if (opts.inMain && !done) renameOnClick(name, t);
     if (done) {
       const x = el('button', 'act su-tasks__clear', '×');
@@ -1140,6 +1155,13 @@ function renderViewTab() {
   if (typing && !(a.matches('.su-tasks__add') && !a.value)) return;
   const refocus = typing ? (a.closest('.bl-group') || {}).dataset?.group || '*' : null;
   const keep = $('view-view').scrollTop;
+  // View loads the time log itself (for minutes spent on running/finished tasks).
+  const workSig = (S.current ? S.current.key + S.current.since : '') + '|' + (S.today.recent || S.today.done).length;
+  if (Date.now() - logFetched > 30e3 || workSig !== logSig) {
+    logFetched = Date.now();
+    logSig = workSig;
+    api.getLog().then((d) => ((logData = d), renderViewTab()));
+  }
   box.replaceChildren(backlogOn() ? backlogList() : tasksList({ inMain: true }));
   if (refocus) {
     const f = refocus === '*' ? box.querySelector('.su-tasks__add') : box.querySelector(`.bl-group[data-group="${CSS.escape(refocus)}"] .su-tasks__add`);
